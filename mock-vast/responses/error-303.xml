@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- VAST Error Code 303 — No ads available after wrapper chain limit reached -->
+<!-- Usar para verificar error handling y fallback del player -->
+<VAST version="3.0">
+  <Ad id="error-303">
+    <InLine>
+      <AdSystem>MockVAST QA Server</AdSystem>
+      <AdTitle>Error Response</AdTitle>
+      <Error><![CDATA[http://localhost:9999/track/error?code=[ERRORCODE]]]></Error>
+      <Creatives/>
+    </InLine>
+  </Ad>
+</VAST>

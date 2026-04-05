@@ -1,0 +1,52 @@
+name: Nightly — Tier 2 (BrowserStack) + Performance
+
+on:
+  schedule:
+    - cron: '0 3 * * *'  # 3 AM UTC cada día
+  workflow_dispatch:       # Permite correr manualmente
+
+jobs:
+  performance-qoe:
+    name: QoE Metrics (Chromium)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npx playwright install chromium --with-deps
+
+      - name: Run QoE tests
+        run: npx playwright test tests/performance/ --project=performance
+        env:
+          PLAYER_BASE_URL: ${{ secrets.STAGING_PLAYER_URL }}
+
+      - name: Upload QoE report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qoe-report-${{ github.run_number }}
+          path: playwright-report/
+
+  browserstack-tier2:
+    name: BrowserStack Cross-Browser
+    runs-on: ubuntu-latest
+    if: ${{ vars.BROWSERSTACK_ENABLED == 'true' }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+
+      - name: Run BrowserStack tests
+        run: npx playwright test --config playwright.browserstack.config.ts
+        env:
+          PLAYER_BASE_URL: ${{ secrets.STAGING_PLAYER_URL }}
+          BROWSERSTACK_USERNAME: ${{ secrets.BROWSERSTACK_USERNAME }}
+          BROWSERSTACK_ACCESS_KEY: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}

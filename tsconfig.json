@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "commonjs",
+    "lib": ["ES2022", "DOM"],
+    "strict": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "outDir": "./dist",
+    "rootDir": "./",
+    "baseUrl": "./",
+    "paths": {
+      "@fixtures/*": ["fixtures/*"],
+      "@helpers/*": ["helpers/*"],
+      "@tests/*": ["tests/*"]
+    },
+    "skipLibCheck": true
+  },
+  "include": [
+    "fixtures/**/*.ts",
+    "helpers/**/*.ts",
+    "tests/**/*.ts",
+    "mock-vast/**/*.ts",
+    "scripts/**/*.ts",
+    "agents/**/*.ts",
+    "skills/**/*.ts"
+  ],
+  "exclude": ["node_modules", "dist"]
+}

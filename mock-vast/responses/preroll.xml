@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- VAST 3.0 - Pre-roll no skippable - 15 segundos -->
+<!-- Usado para tests: ad lifecycle, beacons de cuartiles, content pause/resume -->
+<VAST version="3.0">
+  <Ad id="preroll-test-001">
+    <InLine>
+      <AdSystem>MockVAST QA Server</AdSystem>
+      <AdTitle>QA Pre-Roll Ad</AdTitle>
+      <Impression id="impression"><![CDATA[http://localhost:9999/track/impression]]></Impression>
+      <Creatives>
+        <Creative id="creative-001" sequence="1">
+          <Linear>
+            <Duration>00:00:15</Duration>
+            <TrackingEvents>
+              <Tracking event="start"><![CDATA[http://localhost:9999/track/start]]></Tracking>
+              <Tracking event="firstQuartile"><![CDATA[http://localhost:9999/track/firstQuartile]]></Tracking>
+              <Tracking event="midpoint"><![CDATA[http://localhost:9999/track/midpoint]]></Tracking>
+              <Tracking event="thirdQuartile"><![CDATA[http://localhost:9999/track/thirdQuartile]]></Tracking>
+              <Tracking event="complete"><![CDATA[http://localhost:9999/track/complete]]></Tracking>
+            </TrackingEvents>
+            <VideoClicks>
+              <ClickThrough id="clickthrough"><![CDATA[https://example.com/ad-click]]></ClickThrough>
+              <ClickTracking id="clicktracking"><![CDATA[http://localhost:9999/track/click]]></ClickTracking>
+            </VideoClicks>
+            <MediaFiles>
+              <MediaFile id="mf-1" delivery="progressive" type="video/mp4" width="1280" height="720" bitrate="2000">
+                <![CDATA[https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4]]>
+              </MediaFile>
+              <MediaFile id="mf-2" delivery="progressive" type="video/mp4" width="640" height="360" bitrate="800">
+                <![CDATA[https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4]]>
+              </MediaFile>
+            </MediaFiles>
+          </Linear>
+        </Creative>
+      </Creatives>
+    </InLine>
+  </Ad>
+</VAST>

@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- VAST vacío — simula respuesta sin ads (ad server sin fill) -->
+<!-- Usar para verificar que el player continúa con el contenido sin ads -->
+<VAST version="3.0"/>

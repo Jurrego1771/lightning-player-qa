@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo \"\n════════════════════════════════════════\n  SESSION PROTOCOL — LIGHTNING PLAYER QA\n════════════════════════════════════════\nAntes de terminar esta sesión, sigue el\nSESSION END PROTOCOL definido en CLAUDE.md:\n\n1. ¿Qué aprendiste del player o del proyecto que no estaba en la memoria?\n2. ¿Qué decisiones técnicas tomaste y por qué?\n3. ¿Qué falló y cómo lo resolviste?\n4. Guarda los learnings relevantes en .claude/memory/\n5. Actualiza MEMORY.md con los nuevos punteros\n════════════════════════════════════════\""
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(npx playwright *)",
+      "Bash(npx ts-node *)",
+      "Bash(git *)",
+      "Bash(ls *)",
+      "Bash(mkdir *)",
+      "Bash(echo *)"
+    ]
+  }
+}

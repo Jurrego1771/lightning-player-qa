@@ -1,0 +1,80 @@
+name: CI — Tier 1 Tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-tier1:
+    name: E2E + Integration + A11y + Visual (${{ matrix.project }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [chromium, firefox, webkit]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install ${{ matrix.project }} --with-deps
+
+      - name: Start mock VAST server
+        run: npx ts-node mock-vast/server.ts &
+        env:
+          MOCK_VAST_PORT: 9999
+
+      - name: Wait for mock server
+        run: npx wait-on http://localhost:9999/health --timeout 10000
+
+      - name: Run tests
+        run: npx playwright test tests/e2e/ tests/integration/ tests/a11y/ --project=${{ matrix.project }}
+        env:
+          CI: true
+          PLAYER_BASE_URL: ${{ secrets.STAGING_PLAYER_URL }}
+          MOCK_VAST_BASE_URL: http://localhost:9999
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ matrix.project }}
+          path: playwright-report/
+          retention-days: 14
+
+  visual-regression:
+    name: Visual Regression (Chromium)
+    runs-on: ubuntu-latest
+    needs: test-tier1
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npx playwright install chromium --with-deps
+
+      - name: Run visual tests
+        run: npx playwright test tests/visual/ --project=chromium
+        env:
+          CI: true
+          PLAYER_BASE_URL: ${{ secrets.STAGING_PLAYER_URL }}
+
+      - name: Upload visual diff
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-diff
+          path: test-results/

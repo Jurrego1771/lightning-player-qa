@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- VAST 3.0 - Pre-roll SKIPPABLE a los 5 segundos -->
+<VAST version="3.0">
+  <Ad id="preroll-skippable-001">
+    <InLine>
+      <AdSystem>MockVAST QA Server</AdSystem>
+      <AdTitle>QA Skippable Pre-Roll</AdTitle>
+      <Impression><![CDATA[http://localhost:9999/track/impression]]></Impression>
+      <Creatives>
+        <Creative id="creative-skip-001" sequence="1">
+          <Linear skipoffset="00:00:05">
+            <Duration>00:00:30</Duration>
+            <TrackingEvents>
+              <Tracking event="start"><![CDATA[http://localhost:9999/track/start]]></Tracking>
+              <Tracking event="skip"><![CDATA[http://localhost:9999/track/skip]]></Tracking>
+              <Tracking event="firstQuartile"><![CDATA[http://localhost:9999/track/firstQuartile]]></Tracking>
+              <Tracking event="complete"><![CDATA[http://localhost:9999/track/complete]]></Tracking>
+            </TrackingEvents>
+            <MediaFiles>
+              <MediaFile delivery="progressive" type="video/mp4" width="1280" height="720" bitrate="2000">
+                <![CDATA[https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4]]>
+              </MediaFile>
+            </MediaFiles>
+          </Linear>
+        </Creative>
+      </Creatives>
+    </InLine>
+  </Ad>
+</VAST>

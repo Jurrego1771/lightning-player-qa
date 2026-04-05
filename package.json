@@ -1,0 +1,31 @@
+{
+  "name": "lightning-player-qa",
+  "version": "0.1.0",
+  "description": "Independent QA automation suite for Mediastream Lightning Player",
+  "private": true,
+  "scripts": {
+    "test": "playwright test",
+    "test:e2e": "playwright test tests/e2e/",
+    "test:integration": "playwright test tests/integration/",
+    "test:visual": "playwright test tests/visual/",
+    "test:a11y": "playwright test tests/a11y/",
+    "test:performance": "playwright test tests/performance/",
+    "test:ci": "playwright test tests/e2e/ tests/integration/ tests/visual/ tests/a11y/",
+    "test:nightly": "playwright test --config playwright.browserstack.config.ts",
+    "test:update-snapshots": "playwright test tests/visual/ --update-snapshots",
+    "mock-vast:start": "ts-node mock-vast/server.ts",
+    "report": "playwright show-report",
+    "lint": "eslint . --ext .ts"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.10.0",
+    "@playwright/test": "^1.50.0",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.0.0",
+    "dotenv": "^16.4.0",
+    "eslint": "^9.0.0",
+    "express": "^4.21.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.0"
+  }
+}
