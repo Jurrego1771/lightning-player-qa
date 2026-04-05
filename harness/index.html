@@ -8,107 +8,132 @@
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { background: #000; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
     #player-container { width: 100%; max-width: 1280px; aspect-ratio: 16/9; }
+    #harness-error { color: #f55; font-family: monospace; padding: 20px; display: none; }
   </style>
 </head>
 <body>
   <div id="player-container"></div>
+  <div id="harness-error"></div>
 
-  <!--
-    HARNESS — Lightning Player QA Test Page
-
-    El script del player se inyecta dinámicamente por el Page Object (player.ts).
-    Esta página solo provee el contenedor y el sistema de tracking de eventos.
-
-    NO MODIFICAR sin actualizar fixtures/player.ts en paralelo.
-  -->
   <script>
-    // ── Sistema de tracking de eventos para los tests ────────────────────
-    window.__lightningPlayerEvents = []
-    window.__lightningPlayer = null
-    window.__lightningPlayerReady = false
+    // ── Sistema de tracking interno ──────────────────────────────────────────
+    // Almacena estado observable por Playwright via page.evaluate()
 
-    // Escucha eventos postMessage del player (prefijo "msp:")
-    window.addEventListener('message', function(event) {
-      if (!event.data) return
-      var data = event.data
+    window.__qa = {
+      ready: false,
+      events: [],          // lista de nombres de eventos disparados
+      eventData: {},       // último payload por evento
+      errors: [],          // errores capturados
+      initError: null,     // error de inicialización
+    }
 
-      // El player emite eventos con prefijo msp: via postMessage
-      if (typeof data === 'object' && data.type) {
-        window.__lightningPlayerEvents.push(data.type)
-      }
-      if (typeof data === 'string' && data.startsWith('msp:')) {
-        window.__lightningPlayerEvents.push(data.replace('msp:', ''))
-      }
-    })
+    // ── Método principal de inicialización ───────────────────────────────────
+    //
+    // Usa loadMSPlayer() — la API oficial del Lightning Player.
+    // Retorna una Promise que resuelve con la instancia del player.
+    //
+    // Métodos de inicialización soportados (doc: lightning_player.md):
+    //   1. loadMSPlayer(containerId, config) → Promise<player>   ← PRIORIDAD
+    //   2. Script tag con data-loaded callback
+    //   3. Script tag con playerloaded event
+    //
+    // Este harness implementa el método 1 como primario.
 
-    // ── Inicialización del player ─────────────────────────────────────────
-    // La config viene como JSON en el query param ?config=...
-    // El script del player se agrega dinámicamente por fixtures/player.ts
-    window.__initPlayer = function(config) {
-      if (typeof MediastreamPlayer === 'undefined') {
-        console.error('[harness] MediastreamPlayer no está definido. ¿Se cargó el script?')
+    window.__initPlayer = function (config) {
+      if (typeof loadMSPlayer === 'undefined') {
+        var msg = '[harness] loadMSPlayer no está definido. El script del player no cargó correctamente.'
+        console.error(msg)
+        window.__qa.initError = msg
+        document.getElementById('harness-error').textContent = msg
+        document.getElementById('harness-error').style.display = 'block'
         return
       }
 
-      try {
-        var instance = new MediastreamPlayer('player-container', config)
-        window.__lightningPlayer = instance
+      loadMSPlayer('player-container', config)
+        .then(function (player) {
+          // ── Exponer instancia al Page Object ──────────────────────────────
+          window.__player = player
 
-        // Proxy de la API pública para los tests
-        window.__lightningPlayer = {
-          // La instancia real
-          _instance: instance,
-          ready: false,
-
-          // Métodos de control
-          play:    function() { return instance.play && instance.play() },
-          pause:   function() { return instance.pause && instance.pause() },
-          destroy: function() { return instance.destroy && instance.destroy() },
-          isPlayingAd: function() { return instance.isPlayingAd ? instance.isPlayingAd() : false },
-          getStatus: function() { return instance.status || 'idle' },
-
-          // Props get/set
-          get currentTime() { return instance.currentTime || 0 },
-          set currentTime(v) { instance.currentTime = v },
-          get duration()    { return instance.duration || 0 },
-          get volume()      { return instance.volume !== undefined ? instance.volume : 1 },
-          set volume(v)     { instance.volume = v },
-          get paused()      { return instance.paused !== undefined ? instance.paused : true },
-        }
-
-        // Marcar como ready cuando el player emita el evento
-        if (instance.on) {
-          instance.on('ready', function() {
-            window.__lightningPlayerReady = true
-            window.__lightningPlayer.ready = true
-            window.__lightningPlayerEvents.push('ready')
-          })
-
-          // Trackear todos los eventos conocidos
-          var TRACKED_EVENTS = [
-            'play', 'playing', 'pause', 'seeking', 'seeked', 'ended', 'error',
-            'buffering', 'waiting', 'canplay', 'loadedmetadata', 'loadstart',
-            'timeupdate', 'levelchanged', 'durationchange',
-            'adsStarted', 'adsComplete', 'adsAllAdsCompleted', 'adsError',
-            'adsSkipped', 'adsPaused', 'adsResumed',
-            'adsContentPauseRequested', 'adsContentResumeRequested',
-            'texttrackchange', 'audiotrackchange',
+          // ── Suscribir todos los eventos conocidos ─────────────────────────
+          var CUSTOM_EVENTS = [
+            'loaded', 'ready', 'sourcechange', 'error', 'buffering',
+            'programdatetime', 'adblockerDetected', 'share',
+            'levelchange', 'levelchanged',
+            'metadataloading', 'metadataloaded', 'metadatachanged',
           ]
 
-          TRACKED_EVENTS.forEach(function(eventName) {
-            instance.on(eventName, function() {
-              if (!window.__lightningPlayerEvents.includes(eventName) ||
-                  eventName === 'timeupdate') {
-                window.__lightningPlayerEvents.push(eventName)
+          var HTML5_EVENTS = [
+            'abort', 'canplay', 'canplaythrough', 'durationchange', 'emptied',
+            'ended', 'loadeddata', 'loadedmetadata', 'loadstart',
+            'pause', 'play', 'playing', 'progress', 'ratechange',
+            'seeked', 'seeking', 'stalled', 'suspend', 'timeupdate',
+            'volumechange', 'waiting',
+          ]
+
+          var AD_EVENTS = [
+            'adsAdBreakReady', 'adsAdMetadata', 'adsAllAdsCompleted',
+            'adsClick', 'adsComplete', 'adsContentPauseRequested',
+            'adsContentResumeRequested', 'adsDurationChange',
+            'adsFirstQuartile', 'adsImpression', 'adsLinearChanged',
+            'adsLoaded', 'adsLog', 'adsMidpoint', 'adsPaused',
+            'adsResumed', 'adsSkippableStateChanged', 'adsSkipped',
+            'adsStarted', 'adsThirdQuartile', 'adsTimeUpdate',
+            'adsUserClose', 'adsVolumeChanged', 'adsVolumeMuted',
+            'adsError', 'adsAdBuffering', 'adsAdProgress',
+            'adsInteraction', 'adsVideoClicked', 'adsVideoIconClicked',
+          ]
+
+          var TRACK_EVENTS = [
+            'texttrackchange', 'texttrackaddtrack', 'texttrackremovetrak',
+            'audiotrackchange', 'audiotrackaddtrack', 'audiotrackremovetrak',
+          ]
+
+          var ALL_EVENTS = CUSTOM_EVENTS.concat(HTML5_EVENTS, AD_EVENTS, TRACK_EVENTS)
+
+          ALL_EVENTS.forEach(function (eventName) {
+            player.on(eventName, function (data) {
+              // timeupdate se dispara muy seguido — solo registrar la primera vez
+              if (eventName === 'timeupdate') {
+                if (!window.__qa.events.includes('timeupdate')) {
+                  window.__qa.events.push('timeupdate')
+                }
+                return
+              }
+              window.__qa.events.push(eventName)
+              if (data !== undefined) {
+                window.__qa.eventData[eventName] = data
+              }
+
+              // El evento 'ready' marca al player como listo
+              if (eventName === 'ready') {
+                window.__qa.ready = true
+              }
+
+              // Capturar errores
+              if (eventName === 'error') {
+                window.__qa.errors.push(data || { message: 'unknown error' })
               }
             })
           })
-        }
+        })
+        .catch(function (err) {
+          var msg = '[harness] Error en loadMSPlayer: ' + (err && err.message ? err.message : String(err))
+          console.error(msg, err)
+          window.__qa.initError = msg
+          document.getElementById('harness-error').textContent = msg
+          document.getElementById('harness-error').style.display = 'block'
+        })
+    }
 
-      } catch(e) {
-        console.error('[harness] Error inicializando player:', e)
-        window.__lightningPlayerInitError = e.message
+    // ── Método secundario: load() dinámico ──────────────────────────────────
+    // Permite cargar nuevo contenido en un player ya inicializado.
+    // Requiere: { type, id }
+    window.__loadContent = function (options) {
+      if (!window.__player) {
+        console.error('[harness] No hay instancia de player. Llamar __initPlayer primero.')
+        return Promise.reject(new Error('Player not initialized'))
       }
+      return window.__player.load(options)
     }
   </script>
 </body>

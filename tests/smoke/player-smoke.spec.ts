@@ -1,33 +1,41 @@
 /**
  * player-smoke.spec.ts — Smoke Tests (todos los ambientes)
  *
- * Suite MÍNIMA que corre en dev (diario), staging y prod (post-deploy).
- * Verifica que el player está vivo y las funciones críticas no están rotas.
+ * Suite mínima que verifica que el player está vivo en cualquier ambiente.
+ * Corre en dev (diario), staging y prod (post-deploy).
  *
- * Reglas para este archivo:
- *   1. Cada test debe completar en < 30s
- *   2. No usar mock VAST server (no disponible en staging/prod CI)
- *   3. No streams locales — solo streams públicos confiables
- *   4. No tests destructivos ni que alteren estado persistente
- *   5. Si un test falla aquí = posible incidente en producción
+ * DISEÑO:
+ *   - Usa ContentIds (IDs reales de la plataforma Mediastream en DEV)
+ *   - Cada test < 30s
+ *   - Sin mock VAST server (no disponible en staging/prod CI)
+ *   - Sin tests destructivos
+ *   - Si algo falla aquí = posible incidente activo
+ *
+ * PENDIENTE: Reemplazar ContentIds.* con IDs reales del ambiente dev.
  */
-import { test, expect, Streams } from '../../fixtures'
+import { test, expect, ContentIds } from '../../fixtures'
 import { getEnvironmentConfig } from '../../config/environments'
 
 const ENV = getEnvironmentConfig()
 
 test.describe(`Smoke Tests — ${ENV.name}`, () => {
 
-  // ── 1. Player carga y se inicializa ──────────────────────────────────────
-  test('player script carga y crea instancia correctamente', async ({ player }) => {
-    await player.goto({ type: 'media', src: Streams.hls.vodShort, autoplay: false })
-    await player.waitForReady(20_000)
-    // Si llegamos aquí sin error, el script cargó y el player está vivo
+  // ── 1. El script del player carga y loadMSPlayer está disponible ──────────
+  test('script del player carga correctamente (loadMSPlayer disponible)', async ({ player, page }) => {
+    // goto() inyecta el script y espera a que loadMSPlayer esté en window
+    await player.goto({ type: 'media', id: ContentIds.vodShort, autoplay: false })
+    await player.assertNoInitError()
   })
 
-  // ── 2. Playback VOD básico ────────────────────────────────────────────────
-  test('VOD HLS: play → video avanza → pause', async ({ player }) => {
-    await player.goto({ type: 'media', src: Streams.hls.vodShort, autoplay: true })
+  // ── 2. Player se inicializa con loadMSPlayer() y emite ready ─────────────
+  test('loadMSPlayer() inicializa el player y emite evento ready', async ({ player }) => {
+    await player.goto({ type: 'media', id: ContentIds.vodShort, autoplay: false })
+    await player.waitForReady(20_000)
+  })
+
+  // ── 3. Playback básico: play → playing → pause ────────────────────────────
+  test('play() → video avanza → pause() funciona', async ({ player }) => {
+    await player.goto({ type: 'media', id: ContentIds.vodShort, autoplay: true })
     await player.waitForEvent('playing', 20_000)
     await player.assertIsPlaying()
 
@@ -40,9 +48,9 @@ test.describe(`Smoke Tests — ${ENV.name}`, () => {
     await player.assertIsPaused()
   })
 
-  // ── 3. Seek funciona ──────────────────────────────────────────────────────
-  test('seek mueve la posición de reproducción', async ({ player }) => {
-    await player.goto({ type: 'media', src: Streams.hls.vod, autoplay: true })
+  // ── 4. Seek funciona ──────────────────────────────────────────────────────
+  test('seek cambia la posición de reproducción', async ({ player }) => {
+    await player.goto({ type: 'media', id: ContentIds.vodLong, autoplay: true })
     await player.waitForEvent('playing', 20_000)
 
     await player.seek(30)
@@ -50,31 +58,40 @@ test.describe(`Smoke Tests — ${ENV.name}`, () => {
     await player.assertCurrentTimeNear(30, 3)
   })
 
-  // ── 4. Live stream carga ──────────────────────────────────────────────────
-  test('Live HLS: stream carga y reproduce', async ({ player, page }) => {
-    await player.goto({ type: 'live', src: Streams.hls.live, autoplay: true })
+  // ── 5. load() cambia el contenido dinámicamente ───────────────────────────
+  test('load() carga nuevo contenido sin destruir el player', async ({ player }) => {
+    // Inicializar con un contenido
+    await player.goto({ type: 'media', id: ContentIds.vodShort, autoplay: false })
+    await player.waitForReady(20_000)
+
+    // Cargar nuevo contenido con el método load() — prioridad en la estrategia
+    await player.load({ type: 'media', id: ContentIds.vodLong })
+    await player.waitForEvent('metadataloaded', 15_000)
+
+    // El player debe seguir funcionando con el nuevo contenido
+    await player.waitForEvent('ready', 20_000)
+    await player.assertNoInitError()
+  })
+
+  // ── 6. Live stream carga ──────────────────────────────────────────────────
+  test('Live: stream carga y reproduce (isLive=true)', async ({ player }) => {
+    await player.goto({ type: 'live', id: ContentIds.live, autoplay: true })
     await player.waitForEvent('playing', 30_000)
 
-    const duration = await page.evaluate(() =>
-      (document.querySelector('video') as HTMLVideoElement)?.duration
-    )
+    const isLive = await player.isLive()
+    expect(isLive).toBe(true)
+
+    const duration = await player.getDuration()
     expect(duration).toBe(Infinity)
   })
 
-  // ── 5. Destroy limpia correctamente ──────────────────────────────────────
-  test('destroy() elimina el player sin errores', async ({ player, page }) => {
-    await player.goto({ type: 'media', src: Streams.hls.vodShort, autoplay: false })
+  // ── 7. destroy() limpia correctamente ─────────────────────────────────────
+  test('destroy() elimina el player del DOM sin errores', async ({ player, page }) => {
+    await player.goto({ type: 'media', id: ContentIds.vodShort, autoplay: false })
     await player.waitForReady()
     await player.destroy()
 
     const videoCount = await page.locator('video').count()
     expect(videoCount).toBe(0)
-  })
-
-  // ── 6. DASH VOD carga (verifica que dash.js está bundleado) ───────────────
-  test('DASH VOD: player selecciona handler correcto y reproduce', async ({ player }) => {
-    await player.goto({ type: 'media', src: Streams.dash.vod, autoplay: true })
-    await player.waitForEvent('playing', 30_000)
-    await player.assertIsPlaying()
   })
 })

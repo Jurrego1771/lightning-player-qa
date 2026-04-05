@@ -1,99 +1,102 @@
 /**
- * streams.ts — Catálogo de streams de test controlados
+ * streams.ts — Catálogo de contenido de test
  *
- * REGLA: Nunca usar streams de producción en tests automatizados.
- * Todos los streams deben ser deterministas y disponibles 24/7.
+ * El Lightning Player carga contenido principalmente por ID de la plataforma
+ * Mediastream. Los IDs de test son contenidos reales del ambiente DEV.
  *
- * Fuentes utilizadas:
- * - Bitmovin public test streams (HLS/DASH, múltiples calidades)
- * - Axinom public test vectors (DRM: Widevine, PlayReady, FairPlay)
- * - Eyevinn web-player demo streams (Live simulado)
+ * REGLA: Nunca usar IDs ni streams de producción en tests automatizados.
+ *
+ * ── Sobre IDs vs src ──────────────────────────────────────────────────────
+ * La API oficial usa `id` (ID de la plataforma):
+ *   loadMSPlayer('container', { type: 'media', id: '5f7f563e...' })
+ *
+ * `src` es un HTML5 attribute del player (get/set después de init).
+ * Para tests de integración que validan ABR o comportamientos de stream
+ * puros (sin plataforma), se puede usar src como fallback.
+ *
+ * TODO: Completar con IDs reales del ambiente DEV cuando estén disponibles.
+ * Preguntar a jurrego1771 por contenidos de test representativos.
  */
 
-export const Streams = {
-  // ── VOD HLS ────────────────────────────────────────────────────────────
+// ── IDs de contenido en la plataforma Mediastream (DEV) ──────────────────
+//
+// PENDIENTE: Reemplazar los placeholders con IDs reales del ambiente dev.
+// Cada tipo de contenido necesita al menos un ID de test estable.
+
+export const ContentIds = {
+  /** VOD de video — contenido corto (~2 min) para tests rápidos */
+  vodShort: 'TODO_VOD_SHORT_ID',
+
+  /** VOD de video — contenido largo (>10 min) para tests de ABR y buffer */
+  vodLong: 'TODO_VOD_LONG_ID',
+
+  /** Stream en vivo activo */
+  live: 'TODO_LIVE_ID',
+
+  /** Stream DVR activo */
+  dvr: 'TODO_DVR_ID',
+
+  /** Audio / Radio */
+  audio: 'TODO_AUDIO_ID',
+  radio: 'TODO_RADIO_ID',
+
+  /** Podcast con capítulos */
+  podcast: 'TODO_PODCAST_ID',
+
+  /** VOD con subtítulos en múltiples idiomas */
+  vodWithSubtitles: 'TODO_VOD_SUBTITLES_ID',
+
+  /** VOD con múltiples audio tracks */
+  vodMultiAudio: 'TODO_VOD_MULTI_AUDIO_ID',
+
+  /** VOD con ads habilitados en la configuración de la plataforma */
+  vodWithAds: 'TODO_VOD_WITH_ADS_ID',
+} as const
+
+// ── Streams externos (fallback para tests de integración pura) ────────────
+//
+// Usados cuando el test valida comportamiento del stream (ABR, buffer, etc.)
+// sin necesidad de la plataforma Mediastream.
+// Pasados como `src` en InitConfig — puede requerir que el player los acepte.
+
+export const ExternalStreams = {
   hls: {
-    /** HLS VOD multi-calidad (Bitmovin) — confiable, sin DRM */
-    vod: 'https://bitdash-a.akamaihd.net/content/sintel/hls/playlist.m3u8',
-
-    /** HLS VOD con subtítulos WebVTT */
-    vodWithSubtitles: 'https://bitdash-a.akamaihd.net/content/MI201109210084_mpeg-4_hd_ready/m3u8s/f08e80da-bf1d-4e3d-8899-f0f6155f6efa.m3u8',
-
-    /** HLS con múltiples audio tracks */
-    vodMultiAudio: 'https://playertest.longtailvideo.com/adaptive/elephants_dream_v4/index.m3u8',
-
-    /** HLS VOD corto (~30s) para tests rápidos */
     vodShort: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
-
-    /** HLS Live simulado (stream que siempre está activo — Mux) */
+    vod: 'https://bitdash-a.akamaihd.net/content/sintel/hls/playlist.m3u8',
     live: 'https://test-streams.mux.dev/tos_ismc/master.m3u8',
   },
-
-  // ── VOD DASH ───────────────────────────────────────────────────────────
   dash: {
-    /** DASH VOD multi-calidad (Bitmovin) */
     vod: 'https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd',
-
-    /** DASH VOD con subtítulos TTML */
-    vodWithSubtitles: 'https://livesim.dashif.org/dash/vod/testpic_2s/multi_subs.mpd',
-
-    /** DASH Live (DASH-IF live sim) */
-    live: 'https://livesim.dashif.org/dash/vod/testpic_2s/multi_subs.mpd',
   },
-
-  // ── DRM (Axinom Public Test Vectors) ───────────────────────────────────
-  // Source: https://github.com/Axinom/public-test-vectors
-  drm: {
-    /** DASH + Widevine + PlayReady (multi-key) */
-    dashMultiKey: {
-      src: 'https://media.axprod.net/TestVectors/v7-MultiDRM-SingleKey/Manifest.mpd',
-      widevine: {
-        licenseUrl: 'https://drm-widevine-licensing.axtest.net/AcquireLicense',
-        headers: { 'X-AxDRM-Message': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ2ZXJzaW9uIjoxLCJjb21fa2V5X2lkIjoiYjMzNjRlYjUtNTFmNi00YWUzLThjOTgtMzNjZWQ1ZTM1YjY5IiwibWVzc2FnZSI6eyJ0eXBlIjoiZW50aXRsZW1lbnRfbWVzc2FnZSIsImtleXMiOlt7ImlkIjoiOWViNDA1MGQtZTQ0Yi00ODAyLTkzMmUtMjdkNzUwODNlMjY2IiwiZW5jcnlwdGVkX2tleSI6ImxLM09qSExZVzI0Y3Iya3RSNzRmbnc9PSJ9XX19.4luyXfRKSA' },
-      },
-    },
-
-    /** DASH + Widevine simple key (para tests básicos de DRM) */
-    dashSingleKey: {
-      src: 'https://storage.googleapis.com/wvmedia/cbc/h264/tears_of_steel/tears_of_steel.mpd',
-      widevine: { licenseUrl: 'https://proxy.uat.widevine.com/proxy?provider=widevine_test&video_id=2015_tears' },
-    },
-  },
-
-  // ── Audio Only ──────────────────────────────────────────────────────────
   audio: {
-    /** MP3 directo */
     mp3: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3',
-
-    /** HLS Audio only */
-    hlsAudio: 'https://playertest.longtailvideo.com/adaptive/oceans-aes/oceans-aes.m3u8',
   },
 } as const
 
-// ── Configuraciones de Red (para simular condiciones) ─────────────────────
+// ── Alias para compatibilidad con tests existentes ────────────────────────
+// Mientras se obtienen los IDs reales, los tests de stream puro usan ExternalStreams.
+export const Streams = ExternalStreams
+
+// ── Perfiles de red (para tests de ABR con CDP throttling) ───────────────
 
 export const NetworkProfiles = {
-  /** Broadband normal */
   broadband: {
-    downloadThroughput: (25 * 1024 * 1024) / 8, // 25 Mbps
+    downloadThroughput: (25 * 1024 * 1024) / 8,
     uploadThroughput: (10 * 1024 * 1024) / 8,
     latency: 5,
   },
-  /** 4G móvil */
   mobile4G: {
-    downloadThroughput: (20 * 1024 * 1024) / 8, // 20 Mbps
+    downloadThroughput: (20 * 1024 * 1024) / 8,
     uploadThroughput: (10 * 1024 * 1024) / 8,
     latency: 30,
   },
-  /** 3G degradado — fuerza calidad baja en ABR */
   degraded3G: {
-    downloadThroughput: (500 * 1024) / 8, // 500 Kbps
+    downloadThroughput: (500 * 1024) / 8,
     uploadThroughput: (250 * 1024) / 8,
     latency: 100,
   },
-  /** Conexión casi offline — para tests de error recovery */
   almostOffline: {
-    downloadThroughput: (50 * 1024) / 8, // 50 Kbps
+    downloadThroughput: (50 * 1024) / 8,
     uploadThroughput: (20 * 1024) / 8,
     latency: 500,
   },
