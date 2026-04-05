@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lightning Player QA Harness</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+    #player-container { width: 100%; max-width: 1280px; aspect-ratio: 16/9; }
+  </style>
+</head>
+<body>
+  <div id="player-container"></div>
+
+  <!--
+    HARNESS — Lightning Player QA Test Page
+
+    El script del player se inyecta dinámicamente por el Page Object (player.ts).
+    Esta página solo provee el contenedor y el sistema de tracking de eventos.
+
+    NO MODIFICAR sin actualizar fixtures/player.ts en paralelo.
+  -->
+  <script>
+    // ── Sistema de tracking de eventos para los tests ────────────────────
+    window.__lightningPlayerEvents = []
+    window.__lightningPlayer = null
+    window.__lightningPlayerReady = false
+
+    // Escucha eventos postMessage del player (prefijo "msp:")
+    window.addEventListener('message', function(event) {
+      if (!event.data) return
+      var data = event.data
+
+      // El player emite eventos con prefijo msp: via postMessage
+      if (typeof data === 'object' && data.type) {
+        window.__lightningPlayerEvents.push(data.type)
+      }
+      if (typeof data === 'string' && data.startsWith('msp:')) {
+        window.__lightningPlayerEvents.push(data.replace('msp:', ''))
+      }
+    })
+
+    // ── Inicialización del player ─────────────────────────────────────────
+    // La config viene como JSON en el query param ?config=...
+    // El script del player se agrega dinámicamente por fixtures/player.ts
+    window.__initPlayer = function(config) {
+      if (typeof MediastreamPlayer === 'undefined') {
+        console.error('[harness] MediastreamPlayer no está definido. ¿Se cargó el script?')
+        return
+      }
+
+      try {
+        var instance = new MediastreamPlayer('player-container', config)
+        window.__lightningPlayer = instance
+
+        // Proxy de la API pública para los tests
+        window.__lightningPlayer = {
+          // La instancia real
+          _instance: instance,
+          ready: false,
+
+          // Métodos de control
+          play:    function() { return instance.play && instance.play() },
+          pause:   function() { return instance.pause && instance.pause() },
+          destroy: function() { return instance.destroy && instance.destroy() },
+          isPlayingAd: function() { return instance.isPlayingAd ? instance.isPlayingAd() : false },
+          getStatus: function() { return instance.status || 'idle' },
+
+          // Props get/set
+          get currentTime() { return instance.currentTime || 0 },
+          set currentTime(v) { instance.currentTime = v },
+          get duration()    { return instance.duration || 0 },
+          get volume()      { return instance.volume !== undefined ? instance.volume : 1 },
+          set volume(v)     { instance.volume = v },
+          get paused()      { return instance.paused !== undefined ? instance.paused : true },
+        }
+
+        // Marcar como ready cuando el player emita el evento
+        if (instance.on) {
+          instance.on('ready', function() {
+            window.__lightningPlayerReady = true
+            window.__lightningPlayer.ready = true
+            window.__lightningPlayerEvents.push('ready')
+          })
+
+          // Trackear todos los eventos conocidos
+          var TRACKED_EVENTS = [
+            'play', 'playing', 'pause', 'seeking', 'seeked', 'ended', 'error',
+            'buffering', 'waiting', 'canplay', 'loadedmetadata', 'loadstart',
+            'timeupdate', 'levelchanged', 'durationchange',
+            'adsStarted', 'adsComplete', 'adsAllAdsCompleted', 'adsError',
+            'adsSkipped', 'adsPaused', 'adsResumed',
+            'adsContentPauseRequested', 'adsContentResumeRequested',
+            'texttrackchange', 'audiotrackchange',
+          ]
+
+          TRACKED_EVENTS.forEach(function(eventName) {
+            instance.on(eventName, function() {
+              if (!window.__lightningPlayerEvents.includes(eventName) ||
+                  eventName === 'timeupdate') {
+                window.__lightningPlayerEvents.push(eventName)
+              }
+            })
+          })
+        }
+
+      } catch(e) {
+        console.error('[harness] Error inicializando player:', e)
+        window.__lightningPlayerInitError = e.message
+      }
+    }
+  </script>
+</body>
+</html>

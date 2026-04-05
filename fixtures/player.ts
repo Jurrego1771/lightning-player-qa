@@ -8,8 +8,14 @@
  *   - Métodos globales en window (instancia del player)
  *   - Eventos via window.postMessage con prefijo "msp:"
  *   - El elemento <video>/<audio> del DOM
+ *
+ * El harness se carga con page.setContent() + addScriptTag() para evitar
+ * depender de un servidor local. El script del player viene de CDN.
  */
+import * as fs from 'fs'
+import * as path from 'path'
 import { Page, expect } from '@playwright/test'
+import { getEnvironmentConfig } from '../config/environments'
 
 export type PlayerStatus = 'playing' | 'pause' | 'buffering' | 'idle'
 export type PlayerType = 'live' | 'dvr' | 'media' | 'audio' | 'radio' | 'reels' | 'podcast'
@@ -46,12 +52,31 @@ export class LightningPlayerPage {
   // ── Navegación ────────────────────────────────────────────────────────────
 
   /**
-   * Carga la página de harness con la config dada.
-   * El harness es un HTML mínimo que inicializa el player con la config provista.
+   * Carga el harness HTML + script del player y lo inicializa con la config dada.
+   *
+   * Estrategia: usa page.setContent() para no depender de un servidor local.
+   * El script del player se carga desde CDN según el ambiente activo (PLAYER_ENV).
+   *
+   * Ambientes:
+   *   dev     → develop/api.js  (default, pruebas diarias)
+   *   staging → staging/api.js  (smoke post-deploy)
+   *   prod    → api.js          (smoke post-deploy prod)
    */
   async goto(config: PlayerConfig): Promise<void> {
-    const params = new URLSearchParams({ config: JSON.stringify(config) })
-    await this.page.goto(`/harness.html?${params.toString()}`)
+    const envConfig = getEnvironmentConfig()
+    const harnessPath = path.join(__dirname, '..', 'harness', 'index.html')
+    const harnessHtml = fs.readFileSync(harnessPath, 'utf-8')
+
+    // Cargar el HTML del harness
+    await this.page.setContent(harnessHtml, { waitUntil: 'domcontentloaded' })
+
+    // Inyectar el script del player desde CDN según el ambiente
+    await this.page.addScriptTag({ url: envConfig.playerScriptUrl })
+
+    // Inicializar el player con la config
+    await this.page.evaluate((cfg) => {
+      window.__initPlayer(cfg)
+    }, config as Record<string, unknown>)
   }
 
   // ── Estado del Player ─────────────────────────────────────────────────────

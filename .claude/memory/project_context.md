@@ -28,12 +28,27 @@ Contiene todos los tests automatizados excepto unit tests (que se sugieren al re
 | Cross-device (BrowserStack) | Este repo / playwright.browserstack.config.ts | Config creada |
 | Stream validation (canary) | Pendiente | No implementado |
 
+## Ambientes
+
+| Env | PLAYER_ENV | Script URL | Uso |
+|---|---|---|---|
+| Development | `dev` | `.../develop/api.js` | Pruebas diarias (default) |
+| Staging | `staging` | `.../staging/api.js` | Smoke post-deploy, raro |
+| Producción | `prod` | `.../api.js` | Smoke post-deploy prod |
+
+Selección: variable `PLAYER_ENV=dev|staging|prod` (ver `config/environments.ts`)
+
+## Harness
+
+El harness es `harness/index.html` — cargado via `page.setContent()` en `fixtures/player.ts`.
+No requiere servidor local. El script del player se inyecta desde CDN según el ambiente.
+
 ## Estado del Proyecto
 
-- Fase: **Setup inicial completado** — 2026-04-05
+- Fase: **Setup completo con multi-ambiente** — 2026-04-05
 - Estructura de directorios: lista
 - Dependencias instaladas: Playwright 1.59.1, axe-core, TypeScript, Express (mock VAST)
-- Primer commit: pendiente
+- Commits: db06b6d (setup inicial) + multi-ambiente
 
 ## Relación con el Player
 
@@ -43,6 +58,7 @@ Contiene todos los tests automatizados excepto unit tests (que se sugieren al re
 
 ## Próximos Pasos
 
-**Why:** El proyecto necesita un harness HTML para que Playwright pueda cargar el player
-**How to apply:** Antes de correr tests, se necesita definir cómo se sirve el player en test.
-La opción A es apuntar a una URL de staging. La opción B es un harness local.
+**Pendiente:** Verificar que `window.__initPlayer` en el harness coincide con cómo
+el player real expone su API (puede requerir ajuste una vez que se pruebe contra dev real).
+**Why:** El harness asume `new MediastreamPlayer(id, config)` pero no hemos corrido tests reales aún.
+**How to apply:** Primera sesión de ejecución de tests, validar con jurrego1771.

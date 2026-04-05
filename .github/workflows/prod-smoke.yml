@@ -1,0 +1,96 @@
+name: Prod — Smoke Test (Post-Deploy)
+
+# ─── Cuándo corre ──────────────────────────────────────────────────────────
+#
+# SOLO manual o via repository_dispatch desde pipeline de deploy a producción.
+#
+# REGLAS PARA PROD:
+#   - Solo smoke tests (tests/smoke/) — nunca suite completa en prod
+#   - Solo Chromium (reducir tiempo y carga)
+#   - Nunca usar mock VAST — no levantar infraestructura extra
+#   - No streams que generen carga alta en CDN de prod
+#   - Si falla → potencial incidente activo, investigar inmediatamente
+#
+# Para trigger desde pipeline del player (deploy a prod):
+#   curl -X POST \
+#     -H "Authorization: token $GITHUB_TOKEN" \
+#     -H "Accept: application/vnd.github.v3+json" \
+#     https://api.github.com/repos/jurrego1771/lightning-player-qa/dispatches \
+#     -d '{"event_type":"prod-deploy","client_payload":{"version":"1.0.57"}}'
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Versión desplegada (ej: 1.0.57)'
+        required: false
+        default: 'unknown'
+
+  repository_dispatch:
+    types: [prod-deploy]
+
+env:
+  PLAYER_ENV: prod
+  CI: true
+
+jobs:
+  smoke-prod:
+    name: Smoke — Producción
+    runs-on: ubuntu-latest
+    # Timeout agresivo — si tarda mucho en prod, es señal de problema
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'npm' }
+
+      - run: npm ci
+
+      - run: npx playwright install chromium --with-deps
+
+      - name: Log ambiente
+        run: |
+          VERSION="${{ github.event.inputs.version || github.event.client_payload.version || 'unknown' }}"
+          echo "🚀 Ambiente: PRODUCCIÓN"
+          echo "📦 Script: https://player.cdn.mdstrm.com/lightning_player/api.js"
+          echo "🏷️  Versión: $VERSION"
+          echo "⚠️  ATENCIÓN: Estos tests corren contra PRODUCCIÓN real"
+
+      - name: Smoke tests — Producción
+        run: npx playwright test tests/smoke/ --project=chromium --retries=1
+        # retries=1 en prod: un retry antes de declarar fallo para evitar falsos positivos
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: prod-smoke-${{ github.run_number }}
+          path: playwright-report/
+          # Retener más tiempo en prod para postmortems
+          retention-days: 90
+
+      - name: Fallo en producción — alerta
+        if: failure()
+        run: |
+          echo ""
+          echo "════════════════════════════════════════════"
+          echo "  ❌ SMOKE TEST FALLÓ EN PRODUCCIÓN"
+          echo "════════════════════════════════════════════"
+          echo "  Versión: ${{ github.event.inputs.version }}"
+          echo "  Run: ${{ github.run_number }}"
+          echo "  Acción inmediata requerida"
+          echo "════════════════════════════════════════════"
+          # TODO: Agregar notificación urgente (PagerDuty, Slack #incidents, etc.)
+          exit 1
+
+      - name: Éxito en producción
+        if: success()
+        run: |
+          echo ""
+          echo "════════════════════════════════════════════"
+          echo "  ✅ PRODUCCIÓN OK"
+          echo "════════════════════════════════════════════"
+          echo "  Versión: ${{ github.event.inputs.version }}"
+          echo "  Todos los smoke tests pasaron"
+          echo "════════════════════════════════════════════"

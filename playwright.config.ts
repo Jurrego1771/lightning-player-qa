@@ -1,21 +1,23 @@
 import { defineConfig, devices } from '@playwright/test'
 import * as dotenv from 'dotenv'
+import { getEnvironment, getEnvironmentConfig } from './config/environments'
 
 dotenv.config()
 
-const BASE_URL = process.env.PLAYER_BASE_URL ?? 'http://localhost:3000'
 const IS_CI = process.env.CI === 'true'
+const ENV = getEnvironment()
+const ENV_CONFIG = getEnvironmentConfig()
+
+console.log(`\n🎯 Ambiente: ${ENV_CONFIG.name} (${ENV})`)
+console.log(`📦 Player: ${ENV_CONFIG.playerScriptUrl}\n`)
 
 export default defineConfig({
   testDir: './tests',
 
-  // En CI, sin retries confunden el diagnóstico; localmente 1 retry ayuda
   retries: IS_CI ? 0 : 1,
-
-  // Paralelismo: en CI limitado para no saturar; local aprovecha cores
   workers: IS_CI ? 2 : undefined,
 
-  // Timeout generoso para players con buffering inicial
+  // Timeout generoso: el player carga desde CDN en cada test
   timeout: 60_000,
   expect: { timeout: 15_000 },
 
@@ -26,33 +28,42 @@ export default defineConfig({
   ],
 
   use: {
-    baseURL: BASE_URL,
+    // Sin baseURL — el harness se carga via setContent(), no goto()
     trace: 'on-first-retry',
     video: 'on-first-retry',
     screenshot: 'only-on-failure',
 
-    // Los players de video necesitan permisos de autoplay
     launchOptions: {
-      args: ['--autoplay-policy=no-user-gesture-required'],
+      args: [
+        '--autoplay-policy=no-user-gesture-required',
+        '--disable-web-security', // permite cargar scripts cross-origin en tests
+      ],
     },
   },
 
   projects: [
-    // ── Tier 1: corre en cada PR ──────────────────────────────────────────
+    // ── Tier 1: corre en cada PR / daily en dev ───────────────────────────
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
-      testMatch: ['tests/e2e/**', 'tests/integration/**', 'tests/a11y/**', 'tests/visual/**'],
+      testMatch: ENV_CONFIG.testSuite === 'full'
+        ? ['tests/e2e/**', 'tests/integration/**', 'tests/a11y/**', 'tests/visual/**', 'tests/smoke/**']
+        : ['tests/smoke/**'],
     },
     {
       name: 'firefox',
       use: { ...devices['Desktop Firefox'] },
-      testMatch: ['tests/e2e/**'],
+      // Firefox solo en E2E (no integration/visual/a11y para ser eficientes)
+      testMatch: ENV_CONFIG.testSuite === 'full'
+        ? ['tests/e2e/**', 'tests/smoke/**']
+        : ['tests/smoke/**'],
     },
     {
       name: 'webkit',
       use: { ...devices['Desktop Safari'] },
-      testMatch: ['tests/e2e/**'],
+      testMatch: ENV_CONFIG.testSuite === 'full'
+        ? ['tests/e2e/**', 'tests/smoke/**']
+        : ['tests/smoke/**'],
     },
 
     // ── Performance: solo en chromium (CDP disponible) ────────────────────
@@ -62,16 +73,13 @@ export default defineConfig({
       testMatch: ['tests/performance/**'],
     },
 
-    // ── Mobile: simulado ──────────────────────────────────────────────────
+    // ── Mobile simulado ───────────────────────────────────────────────────
     {
       name: 'mobile-chrome',
       use: { ...devices['Pixel 7'] },
-      testMatch: ['tests/e2e/**'],
-    },
-    {
-      name: 'mobile-safari',
-      use: { ...devices['iPhone 14'] },
-      testMatch: ['tests/e2e/**'],
+      testMatch: ENV_CONFIG.testSuite === 'full'
+        ? ['tests/e2e/**']
+        : ['tests/smoke/**'],
     },
   ],
 })

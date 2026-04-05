@@ -49,6 +49,28 @@ proponer al equipo del player que lo expongan. Documentar en este archivo.
 
 ---
 
+## 2026-04-05 — Estrategia multi-ambiente: dev diario, staging/prod smoke
+
+**Decisión:** Tres ambientes con estrategias diferentes.
+
+**URLs reales:**
+- `prod`:    `https://player.cdn.mdstrm.com/lightning_player/api.js`
+- `dev`:     `https://player.cdn.mdstrm.com/lightning_player/develop/api.js`
+- `staging`: `https://player.cdn.mdstrm.com/lightning_player/staging/api.js`
+
+**Workflows creados:**
+- `dev-daily.yml` → cron `0 12 * * 1-5` (7 AM Colombia, Lunes-Viernes) + push a main
+- `staging-smoke.yml` → solo manual o `repository_dispatch: staging-deploy`
+- `prod-smoke.yml` → solo manual o `repository_dispatch: prod-deploy`
+
+**Why:** La mayoría de bugs se encuentran en dev. Staging es un double-check pre-prod.
+Prod solo necesita verificar que el deploy no rompió lo básico.
+
+**How to apply:** Seleccionar ambiente con `PLAYER_ENV=dev|staging|prod`. Ver `config/environments.ts`.
+La variable controla qué script URL se carga en el harness y qué suite de tests corre.
+
+---
+
 ## 2026-04-05 — Separación Tier 1 (PR) / Tier 2 (Nightly) / Tier 3 (Release)
 
 **Decisión:** No todos los tests corren en cada PR.

@@ -1,0 +1,75 @@
+name: Staging — Smoke Test (Post-Deploy)
+
+# ─── Cuándo corre ──────────────────────────────────────────────────────────
+#
+# SOLO manual (workflow_dispatch) o via repository_dispatch desde el pipeline
+# de deploy del player.
+#
+# No tiene cron — staging se usa raramente para un double-check antes de prod.
+#
+# Para trigger desde el pipeline del player (cuando haga deploy a staging):
+#   curl -X POST \
+#     -H "Authorization: token $GITHUB_TOKEN" \
+#     -H "Accept: application/vnd.github.v3+json" \
+#     https://api.github.com/repos/jurrego1771/lightning-player-qa/dispatches \
+#     -d '{"event_type":"staging-deploy"}'
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Motivo del smoke test en staging'
+        required: false
+        default: 'Manual check pre-prod'
+
+  repository_dispatch:
+    types: [staging-deploy]
+
+env:
+  PLAYER_ENV: staging
+  CI: true
+
+jobs:
+  smoke-staging:
+    name: Smoke — Staging (URL qa.*)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'npm' }
+
+      - run: npm ci
+
+      - run: npx playwright install chromium firefox --with-deps
+
+      - name: Log ambiente
+        run: |
+          echo "🎯 Ambiente: STAGING"
+          echo "📦 Script: https://player.cdn.mdstrm.com/lightning_player/staging/api.js"
+          echo "📝 Motivo: ${{ github.event.inputs.reason || 'Deploy trigger' }}"
+
+      - name: Smoke tests en Chromium
+        run: npx playwright test tests/smoke/ --project=chromium
+
+      - name: Smoke tests en Firefox
+        run: npx playwright test tests/smoke/ --project=firefox
+        continue-on-error: true   # No bloquear por Firefox en staging
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: staging-smoke-report-${{ github.run_number }}
+          path: playwright-report/
+          retention-days: 30
+
+      - name: Resultado final
+        if: always()
+        run: |
+          echo ""
+          echo "══════════════════════════════════════"
+          echo "  STAGING SMOKE TEST — RESULTADO"
+          echo "══════════════════════════════════════"
+          echo "  Ver reporte completo en los artifacts"
+          echo "══════════════════════════════════════"
