@@ -41,11 +41,8 @@ export const ContentIds = {
   /** Podcast — pendiente confirmar ID */
   podcast: 'TODO_PODCAST_ID',
 
-  /**
-   * VOD con subtítulos en múltiples idiomas.
-   * TODO: reemplazar con ID real cuando esté disponible en DEV.
-   */
-  vodWithSubtitles: 'TODO_VOD_SUBTITLES_ID',
+  /** VOD con subtítulos en múltiples idiomas. */
+  vodWithSubtitles: '69d3081d5493800312af8b6e',
 
   /** VOD con múltiples audio tracks — pendiente confirmar ID */
   vodMultiAudio: 'TODO_VOD_MULTI_AUDIO_ID',

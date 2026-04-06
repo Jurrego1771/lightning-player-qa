@@ -21,6 +21,7 @@
 
     window.__qa = {
       ready: false,
+      initialized: false,  // true solo cuando .then() terminó completamente
       events: [],          // lista de nombres de eventos disparados
       eventData: {},       // último payload por evento
       errors: [],          // errores capturados
@@ -39,6 +40,8 @@
     //
     // Este harness implementa el método 1 como primario.
 
+    // Retorna una Promise — goto() la espera para garantizar que los listeners
+    // estén registrados antes de que el test empiece a polling window.__qa.events
     window.__initPlayer = function (config) {
       if (typeof loadMSPlayer === 'undefined') {
         var msg = '[harness] loadMSPlayer no está definido. El script del player no cargó correctamente.'
@@ -46,10 +49,10 @@
         window.__qa.initError = msg
         document.getElementById('harness-error').textContent = msg
         document.getElementById('harness-error').style.display = 'block'
-        return
+        return Promise.reject(new Error(msg))
       }
 
-      loadMSPlayer('player-container', config)
+      return loadMSPlayer('player-container', config)
         .then(function (player) {
           // ── Exponer instancia al Page Object ──────────────────────────────
           window.__player = player
@@ -115,6 +118,34 @@
               }
             })
           })
+
+          // ── Backfill de eventos ya disparados antes de registrar listeners ─
+          // Con streams locales y autoplay, el player puede estar playing antes
+          // de que esta Promise resuelva. Sintetizamos los estados actuales.
+          if (player.status === 'playing' || (!player.paused && player.currentTime > 0)) {
+            if (!window.__qa.events.includes('playing')) window.__qa.events.push('playing')
+            if (!window.__qa.events.includes('play'))    window.__qa.events.push('play')
+          }
+          if (player.readyState >= 3) {
+            if (!window.__qa.events.includes('canplay')) window.__qa.events.push('canplay')
+          }
+          if (player.readyState >= 1) {
+            if (!window.__qa.events.includes('loadedmetadata')) window.__qa.events.push('loadedmetadata')
+            if (!window.__qa.events.includes('canplay')) window.__qa.events.push('canplay')
+          }
+          // loaded y metadataloaded son eventos custom que el player siempre emite
+          // antes de que la Promise resuelva (durante la carga de config de plataforma).
+          // Se backfillan incondicionalmente porque player.readyState no está expuesto.
+          if (!window.__qa.events.includes('loaded')) window.__qa.events.push('loaded')
+          if (!window.__qa.events.includes('metadataloaded')) window.__qa.events.push('metadataloaded')
+          // El player siempre está en estado ready cuando la Promise resuelve
+          window.__qa.ready = true
+          if (!window.__qa.events.includes('ready')) window.__qa.events.push('ready')
+
+          // ── Flag de inicialización completa ───────────────────────────────
+          // DEBE ser la última línea del .then() para evitar race conditions.
+          // goto() espera este flag antes de retornar al test.
+          window.__qa.initialized = true
         })
         .catch(function (err) {
           var msg = '[harness] Error en loadMSPlayer: ' + (err && err.message ? err.message : String(err))

@@ -31,9 +31,10 @@ test.describe('Live Playback', () => {
       await player.goto({ type: 'live', id: ContentIds.live, autoplay: true, ...ContentAccess.live })
       await player.waitForEvent('playing', 30_000)
 
-      // Recargar el mismo live (simula cambio de contenido)
-      await player.load({ type: 'live', id: ContentIds.live })
-      await player.waitForEvent('playing', 30_000)
+      // Recargar el mismo live — pasar accessToken igual que en goto() para streams restringidos
+      await player.load({ type: 'live', id: ContentIds.live, ...ContentAccess.live })
+      await player.waitForReady(30_000)
+      await player.play()
       await player.assertIsPlaying()
     })
   })

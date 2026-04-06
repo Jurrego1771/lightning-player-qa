@@ -9,8 +9,6 @@
  * Método de inicialización principal: loadMSPlayer(containerId, config) → Promise
  * Método de carga dinámica: player.load({ type, id }) — prioridad en tests
  */
-import * as fs from 'fs'
-import * as path from 'path'
 import { Page, expect } from '@playwright/test'
 import { getEnvironmentConfig } from '../config/environments'
 
@@ -52,10 +50,15 @@ export interface InitConfig {
 /**
  * Opciones para player.load() — carga dinámica de contenido.
  * Referencia: sección "load options" en lightning_player.md
+ *
+ * Para contenido restringido (live/dvr con accessToken), pasar los mismos
+ * campos que en InitConfig: accessToken, customer, etc.
  */
 export interface LoadOptions {
   type: ContentType
   id: string
+  accessToken?: string
+  [key: string]: unknown
 }
 
 export interface QoEMetrics {
@@ -88,30 +91,41 @@ export class LightningPlayerPage {
   // ── Inicialización ────────────────────────────────────────────────────────
 
   /**
-   * Carga el harness + script del player y lo inicializa con loadMSPlayer().
+   * Navega al harness local (localhost:3000) e inicializa el player con loadMSPlayer().
    *
-   * El script se inyecta desde la CDN del ambiente activo (PLAYER_ENV).
+   * El harness se sirve desde un servidor HTTP local para que el origin de la página
+   * sea http://localhost:3000 (no null). Esto es necesario para que los requests del
+   * player a develop.mdstrm.com funcionen correctamente con page.route() interceptors.
+   *
+   * El script del player se inyecta desde la CDN del ambiente activo (PLAYER_ENV).
    *   dev:     .../develop/api.js  (default)
    *   staging: .../staging/api.js
    *   prod:    .../api.js
    */
   async goto(config: InitConfig): Promise<void> {
     const envConfig = getEnvironmentConfig()
-    const harnessPath = path.join(__dirname, '..', 'harness', 'index.html')
-    const harnessHtml = fs.readFileSync(harnessPath, 'utf-8')
 
-    await this.page.setContent(harnessHtml, { waitUntil: 'domcontentloaded' })
+    // Navegar al harness (servido desde localhost:3000 por el webServer de Playwright)
+    await this.page.goto('http://localhost:3000/index.html', { waitUntil: 'domcontentloaded' })
 
     // Inyectar el script del player desde CDN según el ambiente
     await this.page.addScriptTag({ url: envConfig.playerScriptUrl })
 
-    // Dar tiempo al script para registrar loadMSPlayer en window
+    // Esperar a que el script registre loadMSPlayer en window
     await this.page.waitForFunction(() => typeof (window as any).loadMSPlayer === 'function', { timeout: 15_000 })
 
-    // Inicializar con loadMSPlayer() via el harness
+    // Disparar init (fire-and-forget para no bloquear si la plataforma tarda)
     await this.page.evaluate((cfg) => {
       (window as any).__initPlayer(cfg)
     }, config as Record<string, unknown>)
+
+    // Esperar a que el .then() del harness haya completado:
+    // listeners registrados, backfill de eventos hecho, ready=true.
+    // __qa.initialized se setea como ÚLTIMA línea del .then() en harness/index.html.
+    await this.page.waitForFunction(
+      () => (window as any).__qa?.initialized === true || (window as any).__qa?.initError != null,
+      { timeout: 30_000 }
+    )
   }
 
   /**
@@ -120,14 +134,15 @@ export class LightningPlayerPage {
    * Referencia: sección "load options" en lightning_player.md
    */
   async load(options: LoadOptions): Promise<void> {
+    // Resetear eventos ANTES de llamar a load() para no perder eventos del nuevo contenido
+    // (sourcechange, metadataloaded, etc. pueden dispararse durante la llamada)
+    await this.page.evaluate(() => {
+      ;(window as any).__qa.events = []
+      ;(window as any).__qa.ready = false
+    })
     await this.page.evaluate((opts) => {
       return (window as any).__player?.load(opts)
     }, options as unknown as Record<string, unknown>)
-    // Resetear eventos para el nuevo contenido
-    await this.page.evaluate(() => {
-      (window as any).__qa.events = []
-      ;(window as any).__qa.ready = false
-    })
   }
 
   // ── Estado del Player ─────────────────────────────────────────────────────
@@ -209,6 +224,50 @@ export class LightningPlayerPage {
     return this.page.evaluate(() => (window as any).__player?.ended ?? false)
   }
 
+  async isMuted(): Promise<boolean> {
+    return this.page.evaluate(() => (window as any).__player?.muted ?? false)
+  }
+
+  async setMuted(muted: boolean): Promise<void> {
+    await this.page.evaluate((m) => { (window as any).__player.muted = m }, muted)
+  }
+
+  async getPlaybackRate(): Promise<number> {
+    return this.page.evaluate(() => (window as any).__player?.playbackRate ?? 1)
+  }
+
+  async setPlaybackRate(rate: number): Promise<void> {
+    await this.page.evaluate((r) => { (window as any).__player.playbackRate = r }, rate)
+  }
+
+  async getReadyState(): Promise<number> {
+    // player.readyState no está expuesto — leer del elemento HTML5 directamente
+    return this.page.evaluate(() => {
+      const v = document.querySelector('video') ?? document.querySelector('audio')
+      return v?.readyState ?? 0
+    })
+  }
+
+  async getHandler(): Promise<string> {
+    return this.page.evaluate(() => (window as any).__player?.handler ?? '')
+  }
+
+  async getVersion(): Promise<string> {
+    return this.page.evaluate(() => (window as any).__player?.version ?? '')
+  }
+
+  async getType(): Promise<string> {
+    return this.page.evaluate(() => (window as any).__player?.type ?? '')
+  }
+
+  async getLoop(): Promise<boolean> {
+    return this.page.evaluate(() => (window as any).__player?.loop ?? false)
+  }
+
+  async setLoop(value: boolean): Promise<void> {
+    await this.page.evaluate((v) => { (window as any).__player.loop = v }, value)
+  }
+
   // ── Calidad / ABR ─────────────────────────────────────────────────────────
 
   /** Nivel de calidad actual (HLS.js only) */
@@ -250,6 +309,27 @@ export class LightningPlayerPage {
   }
 
   // ── Text Tracks (Subtítulos) ──────────────────────────────────────────────
+
+  /**
+   * Espera a que el player tenga exactamente `count` text tracks con sus metadatos
+   * completos (language no vacío en todos). Necesario porque los tracks pueden
+   * aparecer en la lista antes de que el parser popule sus propiedades.
+   */
+  async waitForTextTracks(count: number, timeout = 10_000): Promise<void> {
+    await this.page.waitForFunction(
+      (expectedCount) => {
+        const tracks = (window as any).__player?.textTracks
+        if (!tracks || tracks.length < expectedCount) return false
+        // Todos los tracks deben tener language populado
+        for (let i = 0; i < tracks.length; i++) {
+          if (!tracks[i].language) return false
+        }
+        return true
+      },
+      count,
+      { timeout }
+    )
+  }
 
   async getTextTracks(): Promise<Array<{ id: string; kind: string; label: string; language: string; mode: string }>> {
     return this.page.evaluate(() => {

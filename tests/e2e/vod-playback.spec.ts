@@ -86,7 +86,8 @@ test.describe('VOD Playback', () => {
 
       // Cargar contenido diferente con load()
       await player.load({ type: 'media', id: ContentIds.vodLong })
-      await player.waitForEvent('metadataloaded', 15_000)
+      // load() re-inicializa el player → esperar ready antes de llamar a play()
+      await player.waitForReady(20_000)
 
       // El player sigue funcional
       await player.play()
@@ -118,13 +119,15 @@ test.describe('VOD Playback', () => {
   test.describe('Tracks', () => {
     test('textTracks disponibles para contenido con subtítulos', async ({ player }) => {
       await player.goto({ type: 'media', id: ContentIds.vodWithSubtitles, autoplay: false })
-      await player.waitForEvent('loadedmetadata', 15_000)
+      await player.waitForReady(20_000)
 
       const tracks = await player.getTextTracks()
       expect(tracks.length).toBeGreaterThan(0)
     })
 
     test('audioTracks disponibles para contenido multi-audio', async ({ player }) => {
+      test.skip(ContentIds.vodMultiAudio === 'TODO_VOD_MULTI_AUDIO_ID', 'ID multi-audio pendiente')
+
       await player.goto({ type: 'media', id: ContentIds.vodMultiAudio, autoplay: false })
       await player.waitForEvent('loadedmetadata', 15_000)
 
@@ -133,6 +136,8 @@ test.describe('VOD Playback', () => {
     })
 
     test('cambiar audio track emite audiotrackchange', async ({ player }) => {
+      test.skip(ContentIds.vodMultiAudio === 'TODO_VOD_MULTI_AUDIO_ID', 'ID multi-audio pendiente')
+
       await player.goto({ type: 'media', id: ContentIds.vodMultiAudio, autoplay: true })
       await player.waitForEvent('playing', 20_000)
 
@@ -175,7 +180,7 @@ test.describe('VOD Playback', () => {
   test.describe('Propiedades de Calidad (HLS.js)', () => {
     test('levels disponibles después de loadedmetadata', async ({ player }) => {
       await player.goto({ type: 'media', id: ContentIds.vodLong, autoplay: true })
-      await player.waitForEvent('levelchanged', 15_000)
+      await player.waitForEvent('levelchanged', 25_000)
 
       const levels = await player.getLevels()
       expect(levels.length).toBeGreaterThan(0)

@@ -14,14 +14,23 @@ console.log(`📦 Player: ${ENV_CONFIG.playerScriptUrl}\n`)
 export default defineConfig({
   testDir: './tests',
 
-  // Servidor local para streams HLS fixture (usados por isolatedPlayer)
-  // Generarlos con: bash scripts/generate-fixtures.sh
-  webServer: {
-    command: 'npx serve fixtures/streams -p 9001 --cors -l',
-    url: 'http://localhost:9001',
-    reuseExistingServer: !process.env.CI,
-    timeout: 30_000,
-  },
+  // Dos servidores locales:
+  //   :3000 — harness HTML (evita el origin null de page.setContent())
+  //   :9001 — HLS streams fixture (generados con npm run fixtures:generate)
+  webServer: [
+    {
+      command: 'npx serve harness -p 3000 --cors',
+      url: 'http://localhost:3000',
+      reuseExistingServer: !process.env.CI,
+      timeout: 30_000,
+    },
+    {
+      command: 'npx serve fixtures/streams -p 9001 --cors',
+      url: 'http://localhost:9001',
+      reuseExistingServer: !process.env.CI,
+      timeout: 30_000,
+    },
+  ],
 
   retries: IS_CI ? 0 : 1,
   workers: IS_CI ? 2 : undefined,
@@ -37,7 +46,7 @@ export default defineConfig({
   ],
 
   use: {
-    // Sin baseURL — el harness se carga via setContent(), no goto()
+    baseURL: 'http://localhost:3000',
     trace: 'on-first-retry',
     video: 'on-first-retry',
     screenshot: 'only-on-failure',

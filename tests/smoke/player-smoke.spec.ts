@@ -13,7 +13,7 @@
  *
  * PENDIENTE: Reemplazar ContentIds.* con IDs reales del ambiente dev.
  */
-import { test, expect, ContentIds } from '../../fixtures'
+import { test, expect, ContentIds, ContentAccess } from '../../fixtures'
 import { getEnvironmentConfig } from '../../config/environments'
 
 const ENV = getEnvironmentConfig()
@@ -75,7 +75,7 @@ test.describe(`Smoke Tests — ${ENV.name}`, () => {
 
   // ── 6. Live stream carga ──────────────────────────────────────────────────
   test('Live: stream carga y reproduce (isLive=true)', async ({ player }) => {
-    await player.goto({ type: 'live', id: ContentIds.live, autoplay: true })
+    await player.goto({ type: 'live', id: ContentIds.live, autoplay: true, ...ContentAccess.live })
     await player.waitForEvent('playing', 30_000)
 
     const isLive = await player.isLive()
