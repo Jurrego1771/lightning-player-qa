@@ -10,54 +10,70 @@
  * La API oficial usa `id` (ID de la plataforma):
  *   loadMSPlayer('container', { type: 'media', id: '5f7f563e...' })
  *
- * `src` es un HTML5 attribute del player (get/set después de init).
- * Para tests de integración que validan ABR o comportamientos de stream
- * puros (sin plataforma), se puede usar src como fallback.
- *
- * TODO: Completar con IDs reales del ambiente DEV cuando estén disponibles.
- * Preguntar a jurrego1771 por contenidos de test representativos.
+ * Contenido que requiere access token (live/dvr): usar ContentAccess[id]
+ * para obtener el accessToken a pasar en goto().
  */
 
 // ── IDs de contenido en la plataforma Mediastream (DEV) ──────────────────
-//
-// PENDIENTE: Reemplazar los placeholders con IDs reales del ambiente dev.
-// Cada tipo de contenido necesita al menos un ID de test estable.
 
 export const ContentIds = {
   /** VOD de video — contenido corto (~2 min) para tests rápidos */
-  vodShort: 'TODO_VOD_SHORT_ID',
+  vodShort: '69d2f1e0461dd502cd921ad6',
 
   /** VOD de video — contenido largo (>10 min) para tests de ABR y buffer */
-  vodLong: 'TODO_VOD_LONG_ID',
+  vodLong: '6900ffde6ddf33fd39a523ee',
 
-  /** Stream en vivo activo */
-  live: 'TODO_LIVE_ID',
+  /** Stream en vivo activo — requiere accessToken (ver ContentAccess) */
+  live: '6971288e64b2477e2b935259',
 
-  /** Stream DVR activo */
-  dvr: 'TODO_DVR_ID',
+  /**
+   * Stream DVR activo — mismo ID que live, mismo accessToken.
+   * Pasarlo como type: 'dvr' en goto().
+   */
+  dvr: '6971288e64b2477e2b935259',
 
-  /** Audio / Radio */
-  audio: 'TODO_AUDIO_ID',
-  radio: 'TODO_RADIO_ID',
+  /** Audio */
+  audio: '698b4a88d9cc56fe7a404079',
 
-  /** Podcast con capítulos */
+  /** Radio — mismo ID que audio por ahora hasta confirmar ID dedicado */
+  radio: '698b4a88d9cc56fe7a404079',
+
+  /** Podcast — pendiente confirmar ID */
   podcast: 'TODO_PODCAST_ID',
 
-  /** VOD con subtítulos en múltiples idiomas */
+  /**
+   * VOD con subtítulos en múltiples idiomas.
+   * TODO: reemplazar con ID real cuando esté disponible en DEV.
+   */
   vodWithSubtitles: 'TODO_VOD_SUBTITLES_ID',
 
-  /** VOD con múltiples audio tracks */
+  /** VOD con múltiples audio tracks — pendiente confirmar ID */
   vodMultiAudio: 'TODO_VOD_MULTI_AUDIO_ID',
 
-  /** VOD con ads habilitados en la configuración de la plataforma */
-  vodWithAds: 'TODO_VOD_WITH_ADS_ID',
+  /**
+   * VOD con ads: pre-roll + mid-roll a los 10s + post-roll.
+   * Configurado en la plataforma con IMA.
+   */
+  vodWithAds: '6900fffb6ddf33fd39a5288e',
 } as const
 
-// ── Streams externos (fallback para tests de integración pura) ────────────
+// ── Access tokens para contenido restringido ─────────────────────────────
 //
-// Usados cuando el test valida comportamiento del stream (ABR, buffer, etc.)
-// sin necesidad de la plataforma Mediastream.
-// Pasados como `src` en InitConfig — puede requerir que el player los acepte.
+// Algunos contenidos DEV requieren access_token para ser reproducidos.
+// Usar como: player.goto({ type: 'live', id: ContentIds.live, ...ContentAccess.live })
+//
+// NUNCA commitear tokens de producción aquí. Estos son tokens de DEV.
+
+export const ContentAccess: Partial<Record<keyof typeof ContentIds, { accessToken: string }>> = {
+  live: {
+    accessToken: 'clLCZenCE5zwB7wDmKVNbruQBFtM7JR0rw1GBNcVBPpWB8bF47wPtN7cwX8w6UKWmSzSBpBhVbG',
+  },
+  dvr: {
+    accessToken: 'clLCZenCE5zwB7wDmKVNbruQBFtM7JR0rw1GBNcVBPpWB8bF47wPtN7cwX8w6UKWmSzSBpBhVbG',
+  },
+}
+
+// ── Streams externos (fallback para tests de integración pura) ────────────
 
 export const ExternalStreams = {
   hls: {
@@ -73,9 +89,34 @@ export const ExternalStreams = {
   },
 } as const
 
-// ── Alias para compatibilidad con tests existentes ────────────────────────
-// Mientras se obtienen los IDs reales, los tests de stream puro usan ExternalStreams.
 export const Streams = ExternalStreams
+
+// ── IDs mock para tests aislados con isolatedPlayer ──────────────────────
+//
+// Cuando se usa el fixture `isolatedPlayer`, la plataforma está mockeada y
+// el player recibe JSON local apuntando a streams en localhost:9001.
+// Estos IDs pueden ser cualquier string válido — no tienen que existir en la plataforma.
+
+export const MockContentIds = {
+  vod: 'mock-vod-1',
+  live: 'mock-live-1',
+  audio: 'mock-audio-1',
+  episode: 'mock-episode-1',
+} as const
+
+// ── URLs de streams HLS locales (servidos por webServer en playwright.config.ts) ──
+//
+// Generados por: bash scripts/generate-fixtures.sh
+// Servidos por: npx serve fixtures/streams -p 9001 --cors
+// Los mock JSON de platform-responses/content/*.json apuntan a estas URLs.
+
+export const LocalStreams = {
+  hls: {
+    vod: 'http://localhost:9001/vod/master.m3u8',
+    audio: 'http://localhost:9001/audio/index.m3u8',
+    withError: 'http://localhost:9001/vod-with-error/index.m3u8',
+  },
+} as const
 
 // ── Perfiles de red (para tests de ABR con CDP throttling) ───────────────
 

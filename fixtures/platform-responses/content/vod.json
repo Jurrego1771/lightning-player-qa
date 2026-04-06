@@ -1,0 +1,19 @@
+{
+  "src": {
+    "hls": "http://localhost:9001/vod/master.m3u8",
+    "mp4": "http://localhost:9001/vod/master.m3u8"
+  },
+  "drm": null,
+  "poster": "",
+  "title": "QA Test VOD",
+  "description": "Test video for QA automation",
+  "ads": {},
+  "account": "mock-account",
+  "dvr": null,
+  "subtitles": [],
+  "reactions": null,
+  "player": {
+    "type": "video"
+  },
+  "mediaId": "mock-vod-1"
+}

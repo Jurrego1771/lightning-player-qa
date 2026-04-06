@@ -19,6 +19,11 @@ Thumbs.db
 .vscode/
 .idea/
 
+# HLS fixtures generados por ffmpeg (binarios pesados — regenerar con npm run fixtures:generate)
+fixtures/streams/vod/
+fixtures/streams/audio/
+fixtures/streams/vod-with-error/
+
 # Temporales
 *.log
 *.tmp

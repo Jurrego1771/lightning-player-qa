@@ -71,6 +71,35 @@ La variable controla qué script URL se carga en el harness y qué suite de test
 
 ---
 
+## 2026-04-05 — Estrategia de mocking: isolatedPlayer para integration/visual/a11y
+
+**Decisión:** Tests de integración, visual y a11y usan `isolatedPlayer` fixture que intercepta
+la plataforma Mediastream con `page.route()` y apunta los streams a HLS fixtures locales.
+
+**Arquitectura:**
+- `page.route('**/develop.mdstrm.com/**')` intercepta todas las requests a la plataforma
+- `fixtures/platform-responses/content/vod.json` devuelve `src.hls = http://localhost:9001/vod/master.m3u8`
+- Los streams HLS se generan con ffmpeg (script `generate-fixtures.sh`) usando fuentes sintéticas (testsrc, sine)
+- `webServer` en `playwright.config.ts` levanta `npx serve fixtures/streams -p 9001`
+- `MockContentIds.vod = 'mock-vod-1'` — IDs ficticios para tests aislados
+
+**Why:** Basado en cómo Shaka Player (50+ carpetas fixtures), Netflix VMAF y dash.js
+usan streams locales deterministas. Los tests de CDN son frágiles: el CDN puede cambiar
+la bitrate, caerse, o devolver contenido diferente. Con streams locales:
+- No hay flakiness por latencia de red
+- Los screenshots de visual regression siempre muestran el mismo frame
+- ABR con throttling CDP es reproducible (el stream siempre tiene 2 calidades conocidas)
+- Los tests de a11y corren sin dependencia de plataforma
+
+**Tests que NO se aíslan:** E2E, smoke, performance — estos prueban la integración real
+con la plataforma y CDN, que es el propósito de esos test tiers.
+
+**How to apply:**
+- Integration/visual/a11y → usar `isolatedPlayer` + `MockContentIds`
+- E2E/smoke/performance → usar `player` + `ContentIds` (IDs reales de DEV)
+
+---
+
 ## 2026-04-05 — Separación Tier 1 (PR) / Tier 2 (Nightly) / Tier 3 (Release)
 
 **Decisión:** No todos los tests corren en cada PR.

@@ -10,9 +10,10 @@
  * Los screenshots se guardan en tests/visual/__snapshots__/
  * Commitear el baseline al repositorio para que CI pueda comparar.
  *
- * IMPORTANTE: Freeze el video antes de capturar para screenshots estables.
+ * Usa `isolatedPlayer` con plataforma mockeada + streams HLS locales para que
+ * los screenshots sean deterministas: mismo frame, mismo color, sin variaciones de CDN.
  */
-import { test, expect, Streams } from '../../fixtures'
+import { test, expect, MockContentIds } from '../../fixtures'
 
 // Deshabilitar animaciones CSS para screenshots estables
 const disableAnimations = async (page: import('@playwright/test').Page) => {
@@ -30,12 +31,11 @@ const disableAnimations = async (page: import('@playwright/test').Page) => {
 
 test.describe('Visual Regression — Player de Video', () => {
 
-  test('estado idle — solo poster', async ({ player, page }) => {
+  test('estado idle — sin poster', async ({ isolatedPlayer: player, page }) => {
     await player.goto({
       type: 'media',
-      src: Streams.hls.vodShort,
+      id: MockContentIds.vod,
       autoplay: false,
-      poster: 'https://via.placeholder.com/1280x720/000000/FFFFFF?text=QA+Test+Poster',
     })
     await player.waitForReady()
     await disableAnimations(page)
@@ -45,8 +45,8 @@ test.describe('Visual Regression — Player de Video', () => {
     })
   })
 
-  test('controles visibles — hover', async ({ player, page }) => {
-    await player.goto({ type: 'media', src: Streams.hls.vodShort, autoplay: true })
+  test('controles visibles — hover', async ({ isolatedPlayer: player, page }) => {
+    await player.goto({ type: 'media', id: MockContentIds.vod, autoplay: true })
     await player.waitForCanPlay()
     await disableAnimations(page)
 
@@ -59,12 +59,15 @@ test.describe('Visual Regression — Player de Video', () => {
     })
   })
 
-  test('estado de error', async ({ player, page }) => {
-    await player.goto({
-      type: 'media',
-      src: 'https://invalid.example.com/nonexistent.m3u8', // fuente inválida
-      autoplay: true,
-    })
+  test('estado de error — plataforma devuelve 403', async ({ page }) => {
+    // Para el test de error usamos mockContentError directamente
+    const { mockContentError } = await import('../../fixtures/platform-mock')
+    await mockContentError(page, 403)
+
+    const { LightningPlayerPage } = await import('../../fixtures/player')
+    const player = new LightningPlayerPage(page)
+
+    await player.goto({ type: 'media', id: 'mock-restricted', autoplay: true })
     await player.waitForEvent('error', 15_000)
     await disableAnimations(page)
 
@@ -73,9 +76,9 @@ test.describe('Visual Regression — Player de Video', () => {
     })
   })
 
-  test('player en mobile viewport (375px)', async ({ player, page }) => {
+  test('player en mobile viewport (375px)', async ({ isolatedPlayer: player, page }) => {
     await page.setViewportSize({ width: 375, height: 667 })
-    await player.goto({ type: 'media', src: Streams.hls.vodShort, autoplay: false })
+    await player.goto({ type: 'media', id: MockContentIds.vod, autoplay: false })
     await player.waitForReady()
     await disableAnimations(page)
 
@@ -86,8 +89,8 @@ test.describe('Visual Regression — Player de Video', () => {
 })
 
 test.describe('Visual Regression — Player de Audio', () => {
-  test('audio player — estado idle', async ({ player, page }) => {
-    await player.goto({ type: 'audio', src: Streams.audio.mp3, autoplay: false, view: 'audio' })
+  test('audio player — estado idle', async ({ isolatedPlayer: player, page }) => {
+    await player.goto({ type: 'media', id: MockContentIds.audio, autoplay: false, view: 'audio' })
     await player.waitForReady()
     await disableAnimations(page)
 

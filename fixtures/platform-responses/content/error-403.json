@@ -1,0 +1,8 @@
+{
+  "message": "Access denied. This content is restricted.",
+  "data": "ACCESS_DENIED",
+  "metadata": {
+    "title": "Contenido Restringido",
+    "description": "Este contenido no está disponible en tu región."
+  }
+}

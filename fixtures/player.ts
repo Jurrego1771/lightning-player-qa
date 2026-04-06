@@ -122,7 +122,7 @@ export class LightningPlayerPage {
   async load(options: LoadOptions): Promise<void> {
     await this.page.evaluate((opts) => {
       return (window as any).__player?.load(opts)
-    }, options as Record<string, unknown>)
+    }, options as unknown as Record<string, unknown>)
     // Resetear eventos para el nuevo contenido
     await this.page.evaluate(() => {
       (window as any).__qa.events = []
@@ -137,6 +137,10 @@ export class LightningPlayerPage {
       () => (window as any).__qa?.ready === true,
       { timeout }
     )
+  }
+
+  async waitForCanPlay(timeout = 15_000): Promise<void> {
+    await this.waitForEvent('canplay', timeout)
   }
 
   /**

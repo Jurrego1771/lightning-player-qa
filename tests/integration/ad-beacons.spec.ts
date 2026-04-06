@@ -9,19 +9,20 @@
  * Los beacons HTTP (método B) verifican que el SDK IMA efectivamente
  * dispara las requests de tracking.
  *
- * Config de ads: se pasa `adsMap` en loadMSPlayer() — equivalente a data-ads-map.
- * Para contenido con ads configurados en la plataforma, usar ContentIds.vodWithAds.
+ * Usa `isolatedPlayer` con plataforma mockeada + stream HLS local.
+ * El VAST se sirve desde el mock server local (mock-vast/server.ts).
+ * Config de ads: se pasa `adsMap` directamente en goto() — equivalente a data-ads-map.
  */
-import { test, expect, ContentIds } from '../../fixtures'
+import { test, expect, MockContentIds } from '../../fixtures'
 
 const MOCK_VAST_URL = process.env.MOCK_VAST_BASE_URL ?? 'http://localhost:9999'
 
 test.describe('Ad Lifecycle — Eventos del Player', () => {
 
-  test('pre-roll: secuencia de eventos de cuartiles via player.on()', async ({ player }) => {
+  test('pre-roll: secuencia de eventos de cuartiles via player.on()', async ({ isolatedPlayer: player }) => {
     await player.goto({
       type: 'media',
-      id: ContentIds.vodWithAds,
+      id: MockContentIds.vod,
       autoplay: true,
       adsMap: `${MOCK_VAST_URL}/vast/preroll`,
     })
@@ -38,10 +39,10 @@ test.describe('Ad Lifecycle — Eventos del Player', () => {
     expect(await player.page.evaluate(() => (window as any).__qa.events.includes('adsComplete'))).toBe(true)
   })
 
-  test('pre-roll: adsContentPauseRequested → adsContentResumeRequested', async ({ player }) => {
+  test('pre-roll: adsContentPauseRequested → adsContentResumeRequested', async ({ isolatedPlayer: player }) => {
     await player.goto({
       type: 'media',
-      id: ContentIds.vodWithAds,
+      id: MockContentIds.vod,
       autoplay: true,
       adsMap: `${MOCK_VAST_URL}/vast/preroll`,
     })
@@ -51,10 +52,10 @@ test.describe('Ad Lifecycle — Eventos del Player', () => {
     await player.assertIsPlaying()
   })
 
-  test('ad info disponible durante playback del ad', async ({ player }) => {
+  test('ad info disponible durante playback del ad', async ({ isolatedPlayer: player }) => {
     await player.goto({
       type: 'media',
-      id: ContentIds.vodWithAds,
+      id: MockContentIds.vod,
       autoplay: true,
       adsMap: `${MOCK_VAST_URL}/vast/preroll`,
     })
@@ -67,10 +68,10 @@ test.describe('Ad Lifecycle — Eventos del Player', () => {
     expect(adInfo?.isLinear).toBe(true)
   })
 
-  test('VAST vacío: player continúa sin ad, sin error', async ({ player }) => {
+  test('VAST vacío: player continúa sin ad, sin error', async ({ isolatedPlayer: player }) => {
     await player.goto({
       type: 'media',
-      id: ContentIds.vodWithAds,
+      id: MockContentIds.vod,
       autoplay: true,
       adsMap: `${MOCK_VAST_URL}/vast/empty`,
     })
@@ -83,10 +84,10 @@ test.describe('Ad Lifecycle — Eventos del Player', () => {
     expect(adErrors).toHaveLength(0)
   })
 
-  test('VAST error: adsError event se emite y el player continúa', async ({ player }) => {
+  test('VAST error: adsError event se emite y el player continúa', async ({ isolatedPlayer: player }) => {
     await player.goto({
       type: 'media',
-      id: ContentIds.vodWithAds,
+      id: MockContentIds.vod,
       autoplay: true,
       adsMap: `${MOCK_VAST_URL}/vast/error-303`,
     })
@@ -99,14 +100,14 @@ test.describe('Ad Lifecycle — Eventos del Player', () => {
 
 test.describe('Ad Lifecycle — Beacons HTTP', () => {
 
-  test('impression beacon se dispara al inicio del ad', async ({ player, adBeaconInterceptor, page }) => {
+  test('impression beacon se dispara al inicio del ad', async ({ isolatedPlayer: player, adBeaconInterceptor, page }) => {
     await page.route(`${MOCK_VAST_URL}/track/**`, async (route) => {
       await route.fulfill({ status: 200, body: '' })
     })
 
     await player.goto({
       type: 'media',
-      id: ContentIds.vodWithAds,
+      id: MockContentIds.vod,
       autoplay: true,
       adsMap: `${MOCK_VAST_URL}/vast/preroll`,
     })
@@ -122,10 +123,10 @@ test.describe('Ad Lifecycle — Beacons HTTP', () => {
 
 test.describe('Ad Skip', () => {
 
-  test('ad skippable: ad.skip() funciona después del skipoffset', async ({ player, page }) => {
+  test('ad skippable: ad.skip() funciona después del skipoffset', async ({ isolatedPlayer: player, page }) => {
     await player.goto({
       type: 'media',
-      id: ContentIds.vodWithAds,
+      id: MockContentIds.vod,
       autoplay: true,
       adsMap: `${MOCK_VAST_URL}/vast/preroll-skippable`,
     })
@@ -145,10 +146,10 @@ test.describe('Ad Skip', () => {
     }
   })
 
-  test('ad.cuePoints lista los puntos de corte del contenido', async ({ player }) => {
+  test('ad.cuePoints lista los puntos de corte del contenido', async ({ isolatedPlayer: player }) => {
     await player.goto({
       type: 'media',
-      id: ContentIds.vodWithAds,
+      id: MockContentIds.vod,
       autoplay: false,
       adsMap: `${MOCK_VAST_URL}/vmap/preroll-midroll`,
     })

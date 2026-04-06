@@ -1,13 +1,16 @@
 /**
  * live-playback.spec.ts — Tests E2E de streams Live y DVR
+ *
+ * El live stream requiere access token — se obtiene de ContentAccess.live.
+ * Uso: player.goto({ type: 'live', id: ContentIds.live, ...ContentAccess.live })
  */
-import { test, expect, ContentIds } from '../../fixtures'
+import { test, expect, ContentIds, ContentAccess } from '../../fixtures'
 
 test.describe('Live Playback', () => {
 
   test.describe('Stream en Vivo', () => {
     test('live: isLive=true y duration=Infinity', async ({ player }) => {
-      await player.goto({ type: 'live', id: ContentIds.live, autoplay: true })
+      await player.goto({ type: 'live', id: ContentIds.live, autoplay: true, ...ContentAccess.live })
       await player.waitForEvent('playing', 30_000)
 
       expect(await player.isLive()).toBe(true)
@@ -15,7 +18,7 @@ test.describe('Live Playback', () => {
     })
 
     test('live: currentTime avanza en tiempo real', async ({ player }) => {
-      await player.goto({ type: 'live', id: ContentIds.live, autoplay: true })
+      await player.goto({ type: 'live', id: ContentIds.live, autoplay: true, ...ContentAccess.live })
       await player.waitForEvent('playing', 30_000)
 
       const t1 = await player.getCurrentTime()
@@ -25,7 +28,7 @@ test.describe('Live Playback', () => {
     })
 
     test('live: load() cambia a otro stream en vivo', async ({ player }) => {
-      await player.goto({ type: 'live', id: ContentIds.live, autoplay: true })
+      await player.goto({ type: 'live', id: ContentIds.live, autoplay: true, ...ContentAccess.live })
       await player.waitForEvent('playing', 30_000)
 
       // Recargar el mismo live (simula cambio de contenido)
@@ -37,14 +40,14 @@ test.describe('Live Playback', () => {
 
   test.describe('DVR', () => {
     test('dvr: isDVR=true', async ({ player }) => {
-      await player.goto({ type: 'dvr', id: ContentIds.dvr, autoplay: true })
+      await player.goto({ type: 'dvr', id: ContentIds.dvr, autoplay: true, ...ContentAccess.dvr })
       await player.waitForEvent('playing', 30_000)
 
       expect(await player.isDVR()).toBe(true)
     })
 
     test('dvr: seekable.start permite rewind', async ({ player, page }) => {
-      await player.goto({ type: 'dvr', id: ContentIds.dvr, autoplay: true })
+      await player.goto({ type: 'dvr', id: ContentIds.dvr, autoplay: true, ...ContentAccess.dvr })
       await player.waitForEvent('playing', 30_000)
       await page.waitForTimeout(5000) // Acumular ventana DVR
 

@@ -4,15 +4,18 @@
  * Usa axe-core para detectar violaciones automáticas (~57% de issues WCAG).
  * Los checks manuales (screen reader, zoom) se documentan como TODO para revisión manual.
  *
+ * Usa `isolatedPlayer` con plataforma mockeada + streams HLS locales para que
+ * el estado del player sea predecible y los tests no dependan de CDN ni plataforma.
+ *
  * Target: WCAG 2.1 AA compliance en todos los tipos de player.
  */
-import { test, expect, Streams } from '../../fixtures'
+import { test, expect, MockContentIds } from '../../fixtures'
 import AxeBuilder from '@axe-core/playwright'
 
 test.describe('Accessibility — Player de Video', () => {
 
-  test('no hay violaciones WCAG en estado idle (poster)', async ({ player, page }) => {
-    await player.goto({ type: 'media', src: Streams.hls.vodShort, autoplay: false })
+  test('no hay violaciones WCAG en estado idle', async ({ isolatedPlayer: player, page }) => {
+    await player.goto({ type: 'media', id: MockContentIds.vod, autoplay: false })
     await player.waitForReady()
 
     const results = await new AxeBuilder({ page })
@@ -22,8 +25,8 @@ test.describe('Accessibility — Player de Video', () => {
     expect(results.violations).toEqual([])
   })
 
-  test('no hay violaciones WCAG durante la reproducción', async ({ player, page }) => {
-    await player.goto({ type: 'media', src: Streams.hls.vodShort, autoplay: true })
+  test('no hay violaciones WCAG durante la reproducción', async ({ isolatedPlayer: player, page }) => {
+    await player.goto({ type: 'media', id: MockContentIds.vod, autoplay: true })
     await player.waitForEvent('playing')
 
     const results = await new AxeBuilder({ page })
@@ -33,8 +36,8 @@ test.describe('Accessibility — Player de Video', () => {
     expect(results.violations).toEqual([])
   })
 
-  test('controles del player son navegables con Tab', async ({ player, page }) => {
-    await player.goto({ type: 'media', src: Streams.hls.vodShort, autoplay: false })
+  test('controles del player son navegables con Tab', async ({ isolatedPlayer: player, page }) => {
+    await player.goto({ type: 'media', id: MockContentIds.vod, autoplay: false })
     await player.waitForReady()
 
     // Tab debe moverse entre elementos interactivos sin quedar atrapado
@@ -47,8 +50,8 @@ test.describe('Accessibility — Player de Video', () => {
     expect(secondFocused).toBeTruthy()
   })
 
-  test('Space/Enter activan play en el botón de play', async ({ player, page }) => {
-    await player.goto({ type: 'media', src: Streams.hls.vodShort, autoplay: false })
+  test('Space/Enter activan play en el botón de play', async ({ isolatedPlayer: player, page }) => {
+    await player.goto({ type: 'media', id: MockContentIds.vod, autoplay: false })
     await player.waitForReady()
     await player.waitForCanPlay()
 
@@ -60,8 +63,8 @@ test.describe('Accessibility — Player de Video', () => {
     await player.assertIsPlaying()
   })
 
-  test('todos los botones de control tienen aria-label', async ({ player, page }) => {
-    await player.goto({ type: 'media', src: Streams.hls.vodShort, autoplay: false })
+  test('todos los botones de control tienen aria-label', async ({ isolatedPlayer: player, page }) => {
+    await player.goto({ type: 'media', id: MockContentIds.vod, autoplay: false })
     await player.waitForReady()
 
     // Buscar botones sin aria-label ni aria-labelledby
@@ -75,8 +78,8 @@ test.describe('Accessibility — Player de Video', () => {
     expect(buttonsWithoutLabel).toHaveLength(0)
   })
 
-  test('slider de volumen tiene role="slider" con aria-valuenow', async ({ player, page }) => {
-    await player.goto({ type: 'media', src: Streams.hls.vodShort, autoplay: false })
+  test('slider de volumen tiene role="slider" con aria-valuenow', async ({ isolatedPlayer: player, page }) => {
+    await player.goto({ type: 'media', id: MockContentIds.vod, autoplay: false })
     await player.waitForReady()
 
     const volumeSlider = page.locator('[role="slider"][aria-label*="volume" i], [role="slider"][aria-label*="volumen" i]')
@@ -89,8 +92,8 @@ test.describe('Accessibility — Player de Video', () => {
 })
 
 test.describe('Accessibility — Player de Audio', () => {
-  test('no hay violaciones WCAG en player de audio', async ({ player, page }) => {
-    await player.goto({ type: 'audio', src: Streams.audio.mp3, autoplay: false, view: 'audio' })
+  test('no hay violaciones WCAG en player de audio', async ({ isolatedPlayer: player, page }) => {
+    await player.goto({ type: 'media', id: MockContentIds.audio, autoplay: false, view: 'audio' })
     await player.waitForReady()
 
     const results = await new AxeBuilder({ page })

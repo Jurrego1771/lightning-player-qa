@@ -122,9 +122,15 @@ lightning-player-qa/
 │       ├── decisions.md
 │       └── sessions/            ← Aprendizajes por sesión (se crean dinámicamente)
 ├── fixtures/
-│   ├── index.ts                 ← Punto de entrada (exporta test + fixtures)
+│   ├── index.ts                 ← Punto de entrada (exporta test + fixtures — player e isolatedPlayer)
 │   ├── player.ts                ← Page Object del player (toda la interacción va aquí)
-│   └── streams.ts               ← Catálogo de streams de test + NetworkProfiles
+│   ├── streams.ts               ← ContentIds, MockContentIds, LocalStreams, NetworkProfiles
+│   ├── platform-mock.ts         ← setupPlatformMocks(), mockContentConfig(), mockContentError()
+│   └── platform-responses/      ← JSON mock de content config y player config
+│       ├── content/             ← vod.json, live.json, audio.json, error-403.json
+│       └── player/              ← default.json, radio.json, compact.json
+├── scripts/
+│   └── generate-fixtures.sh     ← Genera streams HLS locales con ffmpeg (correr una vez)
 ├── helpers/
 │   ├── qoe-metrics.ts           ← CDP, startup time, session metrics
 │   └── network-conditions.ts    ← withNetworkCondition(), blockHost(), addLatency()
@@ -146,7 +152,93 @@ lightning-player-qa/
 
 ---
 
-## 5. Comandos Clave
+## 5. Estrategia de Mocking (Decisión de Arquitectura)
+
+El Lightning Player hace **dos requests** al inicializarse:
+1. **Content config** → `GET develop.mdstrm.com/{type}/{id}.json?...` — devuelve src, DRM, ads, poster
+2. **Player config** → `GET develop.mdstrm.com/{type}/{id}/player/{playerId}` — devuelve UI config
+
+### Tabla de decisión: qué mockear y qué no
+
+| Tipo de test | Plataforma | CDN / Streams | Herramienta |
+|---|---|---|---|
+| **Integration** | Mockeado (`page.route`) | Local (`localhost:9001`) | `isolatedPlayer` fixture |
+| **Visual (screenshots)** | Mockeado | Local | `isolatedPlayer` fixture |
+| **A11y (axe-core)** | Mockeado | Local | `isolatedPlayer` fixture |
+| **E2E (flujos reales)** | Real (DEV) | Real CDN | `player` fixture + `ContentIds` |
+| **Smoke** | Real (STAGING/PROD) | Real CDN | `player` fixture + `ContentIds` |
+| **Performance (QoE)** | Real (DEV) | Real CDN | `player` fixture + `ContentIds` |
+
+**Regla clave:**  
+- `isolatedPlayer` → sin dependencias externas → determinista → CI rápido  
+- `player` → contra infra real → valida integración end-to-end
+
+### Fixtures HLS locales
+
+Generados por `bash scripts/generate-fixtures.sh` (requiere ffmpeg):
+
+```
+fixtures/streams/
+├── vod/
+│   ├── master.m3u8     ← 2 calidades: 360p (400Kbps) + 720p (1.5Mbps)
+│   ├── 360p/           ← segmentos .ts de 2s cada uno
+│   └── 720p/
+├── audio/
+│   └── index.m3u8      ← audio AAC puro
+└── vod-with-error/
+    └── index.m3u8      ← playlist con segmento faltante (para recovery tests)
+```
+
+Servidos en CI por `webServer` en `playwright.config.ts` vía `npx serve -p 9001`.
+
+### Mocks de plataforma
+
+Ubicados en `fixtures/platform-responses/`:
+- `content/vod.json` — config VOD, src.hls → localhost:9001/vod/master.m3u8
+- `content/live.json` — config live stream
+- `content/audio.json` — config audio
+- `content/error-403.json` — simula acceso denegado
+- `player/default.json` — UI config: view=video
+
+### Uso en tests
+
+```typescript
+// Tests aislados (integration, visual, a11y)
+import { test, expect, MockContentIds } from '../../fixtures'
+
+test('caso aislado', async ({ isolatedPlayer }) => {
+  // La plataforma está interceptada — no se habla con develop.mdstrm.com
+  // El stream viene de localhost:9001 — no depende de CDN
+  await isolatedPlayer.goto({ type: 'media', id: MockContentIds.vod, autoplay: true })
+  await isolatedPlayer.assertIsPlaying()
+})
+
+// Tests E2E / smoke / performance (contra infra real)
+import { test, expect, ContentIds } from '../../fixtures'
+
+test('caso real', async ({ player }) => {
+  await player.goto({ type: 'media', id: ContentIds.vodShort, autoplay: true })
+  await player.assertIsPlaying()
+})
+```
+
+### Override de mocks en un test específico
+
+```typescript
+import { mockContentConfig, mockContentError } from '../../fixtures'
+
+test('error handling', async ({ page, isolatedPlayer }) => {
+  // setupPlatformMocks ya corrió (fixture isolatedPlayer)
+  // Pero podemos agregar un override específico para este test:
+  await mockContentError(page, 403)
+  await isolatedPlayer.goto({ type: 'media', id: 'mock-restricted', autoplay: true })
+  await isolatedPlayer.waitForEvent('error', 15_000)
+})
+```
+
+---
+
+## 6. Comandos Clave
 
 ```bash
 # Instalar dependencias
@@ -176,6 +268,12 @@ npm run test:update-snapshots
 
 # Ver reporte HTML del último run
 npm run report
+
+# Generar HLS fixtures locales (requiere ffmpeg — solo si no existen)
+npm run fixtures:generate
+
+# Servir HLS fixtures localmente (el webServer en playwright.config.ts lo hace automáticamente)
+npm run fixtures:serve
 
 # Iniciar mock VAST server (necesario para tests de ads)
 npm run mock-vast:start

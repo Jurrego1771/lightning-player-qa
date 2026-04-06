@@ -68,7 +68,7 @@ test.describe('QoE — Buffer Health', () => {
 
     // Bajo 500 Kbps, el buffer puede ser menor, pero debe ser positivo
     const metrics = await player.getQoEMetrics()
-    expect(metrics.buffered).toBeGreaterThan(0)
+    expect(metrics.bufferedAhead).toBeGreaterThan(0)
 
     await cdp.detach()
   })

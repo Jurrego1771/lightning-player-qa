@@ -6,16 +6,26 @@
  */
 import { test as base, expect } from '@playwright/test'
 import { LightningPlayerPage } from './player'
+import { setupPlatformMocks } from './platform-mock'
 
 export { expect } from '@playwright/test'
-export { ContentIds, ExternalStreams, Streams, NetworkProfiles } from './streams'
+export { ContentIds, ContentAccess, ExternalStreams, Streams, NetworkProfiles, MockContentIds, LocalStreams } from './streams'
 export type { InitConfig, LoadOptions, PlayerStatus, QoEMetrics, AdInfo } from './player'
+export { setupPlatformMocks, mockContentConfig, mockPlayerConfig, mockContentError } from './platform-mock'
 
 // ── Custom Fixtures ───────────────────────────────────────────────────────
 
 type LightningFixtures = {
-  /** Instancia del Page Object del player, lista para usar en cada test */
+  /** Player contra plataforma real (E2E, smoke, performance) */
   player: LightningPlayerPage
+
+  /**
+   * Player con plataforma mockeada + streams HLS locales (integración, visual, a11y).
+   * La plataforma Mediastream está interceptada: no se hacen requests a develop.mdstrm.com.
+   * Los streams apuntan a localhost:9001 (servido por webServer en playwright.config.ts).
+   * Usar con MockContentIds: isolatedPlayer.goto({ type: 'media', id: MockContentIds.vod })
+   */
+  isolatedPlayer: LightningPlayerPage
 
   /** Interceptor de red para verificar beacons de ads sin disparar URLs reales */
   adBeaconInterceptor: AdBeaconInterceptor
@@ -25,6 +35,12 @@ export const test = base.extend<LightningFixtures>({
   player: async ({ page }, use) => {
     const player = new LightningPlayerPage(page)
     await use(player)
+  },
+
+  isolatedPlayer: async ({ page }, use) => {
+    await setupPlatformMocks(page)
+    const isolated = new LightningPlayerPage(page)
+    await use(isolated)
   },
 
   adBeaconInterceptor: async ({ page }, use) => {

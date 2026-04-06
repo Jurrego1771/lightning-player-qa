@@ -14,6 +14,15 @@ console.log(`📦 Player: ${ENV_CONFIG.playerScriptUrl}\n`)
 export default defineConfig({
   testDir: './tests',
 
+  // Servidor local para streams HLS fixture (usados por isolatedPlayer)
+  // Generarlos con: bash scripts/generate-fixtures.sh
+  webServer: {
+    command: 'npx serve fixtures/streams -p 9001 --cors -l',
+    url: 'http://localhost:9001',
+    reuseExistingServer: !process.env.CI,
+    timeout: 30_000,
+  },
+
   retries: IS_CI ? 0 : 1,
   workers: IS_CI ? 2 : undefined,
 
