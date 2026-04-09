@@ -34,13 +34,69 @@ package.json      → Tests: smoke (verificar que el player carga)     Riesgo: H
 
 ### Paso 1 — Obtener el diff
 
-Si el input es:
-- **Rama/commit:** `git -C D:\repos\mediastream\lightning-player diff main...<branch> --name-only` y `git diff main...<branch>`
-- **Solo "último cambio":** `git -C D:\repos\mediastream\lightning-player diff HEAD~1..HEAD`
-- **Este repo QA:** `git -C . diff HEAD~1..HEAD`
-- **PR number:** leer el contexto del usuario para extraer el diff
+**IMPORTANTE:** Siempre intentar GitHub primero. Es la fuente de verdad, siempre actualizada,
+y es estrictamente READ-ONLY (nunca modifica el repo del player).
 
-Obtén también el mensaje de commit: `git -C D:\repos\mediastream\lightning-player log -1 --pretty=format:"%s%n%b"`
+Lee `PLAYER_GITHUB_REPO` del entorno (ej: `mediastream/lightning-player`).
+
+#### Modo A — GitHub API (preferido)
+
+**Si el input es un número de PR:**
+```bash
+# Archivos cambiados con sus patches
+gh api repos/$PLAYER_GITHUB_REPO/pulls/{PR}/files \
+  --jq '.[] | {filename: .filename, status: .status, patch: .patch, additions: .additions, deletions: .deletions}'
+
+# Metadata del PR (título, descripción, labels — útil para detectar change_type)
+gh api repos/$PLAYER_GITHUB_REPO/pulls/{PR} \
+  --jq '{title: .title, body: .body, labels: [.labels[].name], base: .base.ref, head: .head.ref}'
+```
+
+**Si el input es una rama:**
+```bash
+# Comparar rama vs main (o base que indique el usuario)
+gh api repos/$PLAYER_GITHUB_REPO/compare/main...{branch} \
+  --jq '{commits: [.commits[].commit.message], files: [.files[] | {filename: .filename, status: .status, patch: .patch}]}'
+```
+
+**Si el input es un commit hash:**
+```bash
+gh api repos/$PLAYER_GITHUB_REPO/commits/{sha} \
+  --jq '{message: .commit.message, files: [.files[] | {filename: .filename, status: .status, patch: .patch}]}'
+```
+
+**Si el usuario no especifica nada (último cambio en main):**
+```bash
+# Último commit en el branch principal
+gh api repos/$PLAYER_GITHUB_REPO/commits \
+  --jq '.[0] | {sha: .sha, message: .commit.message}'
+# Luego obtener sus archivos con el sha obtenido
+gh api repos/$PLAYER_GITHUB_REPO/commits/{sha} \
+  --jq '{message: .commit.message, files: [.files[] | {filename: .filename, status: .status, patch: .patch}]}'
+```
+
+#### Modo B — Local (fallback)
+
+Solo usar si `PLAYER_GITHUB_REPO` no está configurado O si `gh` no tiene acceso al repo.
+
+```bash
+# Verificar si el repo local existe
+test -d "D:\repos\mediastream\lightning-player" && echo "existe" || echo "no existe"
+
+# Si existe, usar git local (SOLO LECTURA — nunca git pull, push, checkout, etc.)
+git -C "D:\repos\mediastream\lightning-player" diff main...{branch} --name-only
+git -C "D:\repos\mediastream\lightning-player" log -1 --pretty=format:"%s%n%b"
+```
+
+Si ninguno funciona, pedir al usuario que pegue el diff directamente.
+
+#### Qué extraer del diff
+
+Del resultado (GitHub o local), extraer:
+1. **Lista de archivos cambiados** con su path completo
+2. **Tipo de cambio por archivo**: added / modified / removed / renamed
+3. **Mensaje del commit/PR**: para detectar el tipo de cambio (bug-fix, feature, etc.)
+4. **Título y descripción del PR** (solo en modo GitHub): contexto adicional valioso
 
 ### Paso 2 — Clasificar el tipo de cambio
 

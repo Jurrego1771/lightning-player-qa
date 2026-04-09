@@ -11,12 +11,17 @@ Tu trabajo es coordinar los agentes especializados y tomar decisiones entre cada
 ## Cómo invocar este skill
 
 ```
-/review-diff                          → analiza el último commit del player
-/review-diff <branch>                 → analiza diff de una rama vs main
-/review-diff <commit-hash>            → analiza un commit específico
-/review-diff --qa                     → analiza cambios en este repo QA
+/review-diff 42                       → analiza PR #42 del player (GitHub)
+/review-diff feature/pip-mode         → analiza rama vs main (GitHub)
+/review-diff abc1234                  → analiza un commit específico (GitHub)
+/review-diff                          → analiza el último commit en main (GitHub)
+/review-diff --qa                     → analiza cambios en este repo QA (local)
 /review-diff --dry-run                → análisis sin ejecutar tests
 ```
+
+**Fuente de datos:** GitHub API (siempre preferida — read-only, siempre actualizada).
+Requiere `PLAYER_GITHUB_REPO` en `.env` (ej: `mediastream/lightning-player`).
+Fallback a repo local si GitHub no está disponible.
 
 ## Paso 0 — Preparar el entorno
 
