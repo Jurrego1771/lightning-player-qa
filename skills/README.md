@@ -1,47 +1,29 @@
 # Skills — Lightning Player QA
 
-Este directorio contiene skills de Claude Code personalizadas para el proyecto QA.
+> **Nota:** Los slash commands de Claude Code deben estar en `.claude/commands/`.
+> Los archivos `.md` de este directorio son la fuente de autoría — el contenido
+> activo está en `.claude/commands/`.
 
-## Propósito
+## Comandos disponibles
 
-Las skills proveen comandos rápidos que Claude puede ejecutar durante sesiones de trabajo,
-específicos al contexto de este proyecto de QA.
-
-## Skills Planeadas
-
-| Skill | Comando | Descripción |
+| Comando | Archivo | Descripción |
 |---|---|---|
-| `run-failing` | `/run-failing` | Corre solo los tests que fallaron en el último run |
-| `analyze-report` | `/analyze-report` | Analiza el reporte HTML de Playwright y resume los fallos |
-| `add-test` | `/add-test <flujo>` | Genera un spec nuevo para un flujo dado |
-| `update-snapshots` | `/update-snapshots` | Actualiza el baseline de visual regression |
-| `check-streams` | `/check-streams` | Verifica que todos los streams de test estén disponibles |
-| `session-review` | `/session-review` | Protocolo de fin de sesión — guarda learnings en memoria |
+| `/review-diff` | `.claude/commands/review-diff.md` | Pipeline completo: diff → riesgo → cobertura → tests → ejecución → Notion |
+| `/session-review` | `.claude/commands/session-review.md` | Protocolo de fin de sesión — guarda learnings en memoria |
+| `/sync-knowledge` | `.claude/commands/sync-knowledge.md` | Sincroniza conocimiento del player con los archivos de memoria |
 
-## Convención de Archivos
+## Uso
 
 ```
-skills/
-├── run-failing.md      ← Prompt del skill
-├── analyze-report.md
-├── add-test.md
-└── README.md
+/review-diff 42                   → analiza PR #42
+/review-diff feature/custom-ui-tv → analiza rama vs main
+/review-diff abc1234              → analiza un commit
+/review-diff                      → analiza el último commit en main
+/review-diff --dry-run            → análisis sin ejecutar tests
 ```
 
-## Creación de un nuevo Skill
+## Agregar un nuevo comando
 
-1. Crear un archivo `.md` en este directorio
-2. El archivo debe comenzar con frontmatter YAML:
-   ```yaml
-   ---
-   name: nombre-del-skill
-   description: Descripción breve
-   ---
-   ```
-3. El cuerpo del archivo es el prompt que Claude ejecutará
-4. Registrar en `.claude/settings.json` si requiere hooks
-
-## Referencia
-
-Ver documentación de Claude Code skills:
-`/help skills` en la CLI de Claude Code
+1. Crear `.claude/commands/<nombre>.md` — ese es el archivo que Claude Code lee
+2. Opcionalmente copiar aquí para autoría/documentación
+3. El nombre del archivo (sin `.md`) es el comando: `review-diff.md` → `/review-diff`
