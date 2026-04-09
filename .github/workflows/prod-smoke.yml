@@ -65,6 +65,12 @@ jobs:
         # retries=1 en prod: un retry antes de declarar fallo para evitar falsos positivos
         env:
           PLATFORM_API_TOKEN: ${{ secrets.PLATFORM_API_TOKEN }}
+          CONTENT_ID_VOD_SHORT: ${{ secrets.PROD_CONTENT_ID_VOD_SHORT }}
+          CONTENT_ID_VOD_LONG: ${{ secrets.PROD_CONTENT_ID_VOD_LONG }}
+          CONTENT_ID_LIVE: ${{ secrets.PROD_CONTENT_ID_LIVE }}
+          CONTENT_ID_DVR: ${{ secrets.PROD_CONTENT_ID_DVR }}
+          CONTENT_ID_AUDIO: ${{ secrets.PROD_CONTENT_ID_AUDIO }}
+          CONTENT_ID_VOD_WITH_ADS: ${{ secrets.PROD_CONTENT_ID_VOD_WITH_ADS }}
 
       - uses: actions/upload-artifact@v4
         if: always()
