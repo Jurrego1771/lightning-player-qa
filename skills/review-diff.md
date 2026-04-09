@@ -140,7 +140,27 @@ Delega al agente `results-analyzer`:
 
 **Espera el resultado.** El agente presenta el informe completo.
 
-## Paso 7 — Limpieza y cierre
+## Paso 7 — Sincronización con Notion (notion-sync)
+
+Si `NOTION_TOKEN` está configurado en el entorno, delega al agente `notion-sync`:
+
+> Lee tmp/pipeline/results-report.json, tmp/pipeline/coverage-report.json
+> y tmp/pipeline/risk-map.json.
+> Actualiza la tabla "Lightning - Risk Register (DB)" en Notion con los
+> resultados QA operacionales (cobertura, specs, resultado, veredicto).
+> Database ID: 9e40a96e-861c-4fb3-b745-02ab1e12290a
+> NO modificar las columnas del featureagent (Risk, Impact, Priority, etc.).
+
+Si `NOTION_TOKEN` no está configurado:
+```
+⚠️  NOTION_TOKEN no configurado — sync omitido.
+    Para habilitar: agregar NOTION_TOKEN en .env
+    Ver .env.example para instrucciones.
+```
+
+**Espera el resultado.** El agente reporta qué módulos se actualizaron.
+
+## Paso 8 — Limpieza y cierre
 
 Preguntar al usuario:
 ```
