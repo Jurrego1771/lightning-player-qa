@@ -7,8 +7,8 @@ type: project
 # Lightning Player QA — Contexto del Proyecto
 
 **Proyecto:** `lightning-player-qa`
-**Repositorio player (SUT):** `D:\Dev\Repos\mediastream\lightning-player`
-**Repositorio QA (este):** `D:\Dev\Repos\jurrego1771\lightning-player-qa`
+**Repositorio player (SUT):** `D:\repos\mediastream\lightning-player`
+**Repositorio QA (este):** `D:\repos\jurrego1771\lightning-player-qa`
 
 ## Qué es
 
@@ -45,10 +45,11 @@ No requiere servidor local. El script del player se inyecta desde CDN según el 
 
 ## Estado del Proyecto
 
-- Fase: **Setup completo con multi-ambiente** — 2026-04-05
+- Fase: **Análisis y corrección de supuestos** — 2026-04-08
 - Estructura de directorios: lista
 - Dependencias instaladas: Playwright 1.59.1, axe-core, TypeScript, Express (mock VAST)
-- Commits: db06b6d (setup inicial) + multi-ambiente
+- Commits: db06b6d (setup inicial) + multi-ambiente + mocking strategy
+- Player SUT versión: **1.0.58** (QA inicialmente documentaba 1.0.56)
 
 ## Relación con el Player
 

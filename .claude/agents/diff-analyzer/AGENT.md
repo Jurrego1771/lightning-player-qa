@@ -79,16 +79,71 @@ gh api repos/$PLAYER_GITHUB_REPO/commits/{sha} \
 
 Solo usar si `PLAYER_GITHUB_REPO` no está configurado O si `gh` no tiene acceso al repo.
 
-```bash
-# Verificar si el repo local existe
-test -d "D:\repos\mediastream\lightning-player" && echo "existe" || echo "no existe"
+Lee `PLAYER_LOCAL_REPO` del entorno para saber la ruta (default: `D:\repos\mediastream\lightning-player`).
 
-# Si existe, usar git local (SOLO LECTURA — nunca git pull, push, checkout, etc.)
-git -C "D:\repos\mediastream\lightning-player" diff main...{branch} --name-only
-git -C "D:\repos\mediastream\lightning-player" log -1 --pretty=format:"%s%n%b"
+**IMPORTANTE:** Solo lectura estricta. Nunca: `git push`, `git merge`, `git cherry-pick`, `git reset`.
+Permitidos: `git fetch`, `git pull` (solo en master/main), `git checkout -b`, `git diff`, `git log`.
+
+**Paso B.1 — Verificar que el repo existe**
+```bash
+test -d "$PLAYER_LOCAL_REPO" && echo "ok" || echo "no existe"
+```
+Si no existe → pedir al usuario que clone el repo o use el modo GitHub.
+
+**Paso B.2 — Detectar el branch principal (master o main)**
+```bash
+git -C "$PLAYER_LOCAL_REPO" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|origin/||;s|refs/remotes/||'
+```
+Guardar como `$BASE_BRANCH` (típicamente `master` o `main`).
+
+**Paso B.3 — Sincronizar remoto (sin modificar código)**
+```bash
+# Trae el estado real del remoto — no hace merge, no afecta branches locales
+git -C "$PLAYER_LOCAL_REPO" fetch origin --prune
 ```
 
-Si ninguno funciona, pedir al usuario que pegue el diff directamente.
+**Paso B.4 — Actualizar el branch principal**
+```bash
+git -C "$PLAYER_LOCAL_REPO" checkout $BASE_BRANCH
+git -C "$PLAYER_LOCAL_REPO" pull origin $BASE_BRANCH
+```
+Verificar: debe decir `Your branch is up to date with 'origin/$BASE_BRANCH'`.
+Si hay conflictos o estado inesperado → reportar al usuario y detenerse.
+
+**Paso B.5 — Preparar la rama a analizar**
+
+Si el input es una rama (no un commit hash):
+```bash
+# Verificar si ya existe localmente
+git -C "$PLAYER_LOCAL_REPO" branch --list {branch}
+
+# Si NO existe: crear desde el remoto (copia exacta, sin divergencias)
+git -C "$PLAYER_LOCAL_REPO" checkout -b {branch} origin/{branch}
+
+# Si YA existe: actualizarla desde el remoto
+git -C "$PLAYER_LOCAL_REPO" checkout {branch}
+git -C "$PLAYER_LOCAL_REPO" pull origin {branch}
+```
+Verificar: debe decir `Your branch is up to date with 'origin/{branch}'`.
+
+**Paso B.6 — Obtener el diff (tres puntos — correcto)**
+```bash
+# Tres puntos: diff desde el ancestro común → solo lo que cambió en la rama
+# Equivalente al rebase pero sin modificar nada
+git -C "$PLAYER_LOCAL_REPO" diff $BASE_BRANCH...{branch} --name-status
+
+# Patches completos para entender qué cambió dentro de cada archivo
+git -C "$PLAYER_LOCAL_REPO" diff $BASE_BRANCH...{branch}
+
+# Mensaje del commit más reciente de la rama
+git -C "$PLAYER_LOCAL_REPO" log $BASE_BRANCH...{branch} --pretty=format:"%s%n%b" | head -20
+```
+
+**Por qué tres puntos y no dos:**
+- `master..feature` → commits en feature O en master desde que divergieron (incluye ruido de master)
+- `master...feature` → solo commits que están en feature y no en master (lo que queremos)
+
+Si ninguno funciona → pedir al usuario que pegue el diff directamente.
 
 #### Qué extraer del diff
 

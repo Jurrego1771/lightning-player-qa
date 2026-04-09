@@ -6,6 +6,57 @@ type: project
 
 # Decisiones Técnicas — Lightning Player QA
 
+## 2026-04-08 — DASH no se testea con ABR (no hay dash.js en el player)
+
+**Decisión:** Los tests de ABR (quality switching, bandwidth, levels) aplican solo a HLS.
+Para DASH, solo testear que el contenido inicia y reproduce — no ABR.
+
+**Why:** El player no tiene dash.js. DASH usa playback HTML5 nativo del browser.
+Las propiedades `level`, `levels`, `bandwidth`, `bitrate`, `nextLevel` no funcionan para DASH.
+Verificado desde el código fuente el 2026-04-08.
+
+**How to apply:** Antes de cualquier test que use propiedades HLS-only, verificar
+`player.sourceType === 'hls'`. Los streams DASH en `Streams.dash.*` solo se usan
+para tests básicos de canplay/playing.
+
+---
+
+## 2026-04-08 — Sistema de memoria vivo + skill de sincronización
+
+**Decisión:** Usar tres capas de conocimiento que se actualizan activamente:
+1. `CLAUDE.md` — guía de sesión (nivel de usuario)
+2. `.claude/memory/*.md` — conocimiento técnico profundo (nivel de implementación)
+3. `/sync-knowledge` skill — mecanismo de actualización cuando el player cambia
+
+**Why:** El QA tiene que mantenerse sincronizado con un SUT (player) que evoluciona
+independientemente. Sin un mecanismo activo de sincronización, los tests pueden
+validar comportamientos que el player ya cambió, generando falsos positivos.
+
+El skill `/sync-knowledge` actúa como un "diff reader" — lee el código fuente del player,
+lo compara con lo documentado, y propone actualizaciones. No es un agente autónomo —
+requiere invocación manual — pero provee el scaffolding para escalar a agente con cron.
+
+**How to apply:**
+- Correr `/sync-knowledge` cuando el player publique una nueva versión
+- Correr `/session-review` al final de cada sesión de trabajo
+- Los archivos de memoria son la fuente de verdad — si hay conflicto entre `CLAUDE.md`
+  y `player_system.md`, confiar en `player_system.md` (verificado desde código fuente)
+
+---
+
+## 2026-04-08 — SGAI como prioridad de testing sobre features conocidas
+
+**Decisión:** La próxima área de cobertura a implementar es SGAI (Google Server-Guided Ad Insertion),
+no más tests de IMA o HLS que ya tienen cobertura base.
+
+**Why:** SGAI es una feature nueva en v1.0.58 con 4 bugs conocidos documentados en code review
+del player team. Tiene 0 tests en el QA suite. El riesgo de bugs en producción es alto.
+Las features con cobertura existente (IMA pre-roll, HLS ABR) son suficientes por ahora.
+
+**How to apply:** La próxima sesión de escritura de tests debe arrancar con
+`tests/integration/sgai.spec.ts`. Requiere crear un HLS fixture con `#EXT-X-DATERANGE`
+markers en `generate-fixtures.sh`.
+
 ## 2026-04-05 — Playwright como framework principal
 
 **Decisión:** Usar Playwright (no Cypress, no WebdriverIO, no Selenium).

@@ -6,7 +6,18 @@
         "hooks": [
           {
             "type": "command",
-            "command": "echo \"\n════════════════════════════════════════\n  SESSION PROTOCOL — LIGHTNING PLAYER QA\n════════════════════════════════════════\nAntes de terminar esta sesión, sigue el\nSESSION END PROTOCOL definido en CLAUDE.md:\n\n1. ¿Qué aprendiste del player o del proyecto que no estaba en la memoria?\n2. ¿Qué decisiones técnicas tomaste y por qué?\n3. ¿Qué falló y cómo lo resolviste?\n4. Guarda los learnings relevantes en .claude/memory/\n5. Actualiza MEMORY.md con los nuevos punteros\n════════════════════════════════════════\""
+            "command": "echo \"\n════════════════════════════════════════════════\n  SESSION REVIEW — LIGHTNING PLAYER QA\n════════════════════════════════════════════════\n\n  Antes de cerrar, ejecuta: /session-review\n\n  O responde manualmente:\n  1. ¿Algo del player contradice lo documentado?\n     → Actualizar player_system.md o player_architecture.md\n  2. ¿Descubriste un gap de testing nuevo?\n     → Agregar a testing_gaps.md\n  3. ¿Resolviste un gap pendiente?\n     → Marcar ✅ en testing_gaps.md + archivo del test\n  4. ¿Tomaste decisiones técnicas importantes?\n     → Agregar a decisions.md\n  5. ¿Quedó trabajo pendiente?\n     → Crear sessions/YYYY-MM-DD_tema.md\n  6. ¿Actualizar MEMORY.md con nuevos punteros?\n\n  Si el player hizo un release → ejecutar /sync-knowledge\n════════════════════════════════════════════════\""
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"const p=process.env.CLAUDE_TOOL_INPUT_FILE_PATH||''; const testFiles=['tests/','fixtures/player.ts','fixtures/platform-mock.ts']; const memFiles=['.claude/memory/']; const isTest=testFiles.some(f=>p.includes(f)); const isMem=memFiles.some(f=>p.includes(f)); if(isTest && !isMem){ console.log('\\n[QA] Archivo de test/fixture modificado: '+p+'\\n  → Considerar si hay gaps en testing_gaps.md que actualizar\\n  → Considerar si hay learnings para player_system.md\\n'); }\""
           }
         ]
       }
@@ -20,7 +31,8 @@
       "Bash(git *)",
       "Bash(ls *)",
       "Bash(mkdir *)",
-      "Bash(echo *)"
+      "Bash(echo *)",
+      "Bash(node -e *)"
     ]
   }
 }

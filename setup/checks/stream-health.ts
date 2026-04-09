@@ -12,8 +12,6 @@
  *   STREAM_DASH_VOD_OK       — Streams.dash.vod (akamai)
  *   PLAYER_SCRIPT_OK         — Player script CDN
  */
-import { ExternalStreams } from '../../fixtures/streams'
-
 const TIMEOUT_MS = 5_000
 
 export interface StreamCheckResult {
@@ -27,10 +25,6 @@ export interface StreamCheckResult {
 
 /** Env var names escritos por este módulo. Importar desde tests para evitar typos. */
 export const STREAM_ENV_KEYS = {
-  hlsVodShort:  'STREAM_HLS_VOD_SHORT_OK',
-  hlsVod:       'STREAM_HLS_VOD_OK',
-  hlsLive:      'STREAM_HLS_LIVE_OK',
-  dashVod:      'STREAM_DASH_VOD_OK',
   playerScript: 'PLAYER_SCRIPT_OK',
 } as const
 
@@ -57,12 +51,9 @@ async function fetchHead(
 }
 
 export async function checkExternalStreams(playerScriptUrl?: string): Promise<StreamCheckResult[]> {
-  const checks: Array<{ label: string; url: string; envKey: string }> = [
-    { label: 'Streams.hls.vodShort  (mux.dev)', url: ExternalStreams.hls.vodShort, envKey: STREAM_ENV_KEYS.hlsVodShort },
-    { label: 'Streams.hls.vod       (akamai)',  url: ExternalStreams.hls.vod,      envKey: STREAM_ENV_KEYS.hlsVod },
-    { label: 'Streams.hls.live      (mux.dev)', url: ExternalStreams.hls.live,     envKey: STREAM_ENV_KEYS.hlsLive },
-    { label: 'Streams.dash.vod      (akamai)',  url: ExternalStreams.dash.vod,     envKey: STREAM_ENV_KEYS.dashVod },
-  ]
+  // Solo chequeamos el player script CDN — los ExternalStreams de terceros (Mux, Akamai)
+  // no se usan en ningún test activo (los tests usan ContentIds o LocalStreams).
+  const checks: Array<{ label: string; url: string; envKey: string }> = []
 
   if (playerScriptUrl) {
     checks.push({
