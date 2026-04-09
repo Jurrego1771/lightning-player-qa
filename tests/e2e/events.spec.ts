@@ -20,7 +20,7 @@ import { test, expect, ContentIds } from '../../fixtures'
 
 // ── Eventos de carga — verificados via load() ────────────────────────────────
 
-test.describe('Eventos HTML5 — Ciclo de Carga (via load())', () => {
+test.describe('Eventos HTML5 — Ciclo de Carga (via load())', { tag: ['@regression'] }, () => {
 
   test('loadstart se emite al iniciar carga con load()', async ({ player, page }) => {
     await player.goto({ type: 'media', id: ContentIds.vodShort, autoplay: false })
@@ -59,7 +59,7 @@ test.describe('Eventos HTML5 — Ciclo de Carga (via load())', () => {
 
 // ── canplaythrough — vía autoplay ────────────────────────────────────────────
 
-test.describe('Eventos HTML5 — canplaythrough', () => {
+test.describe('Eventos HTML5 — canplaythrough', { tag: ['@regression'] }, () => {
 
   test('canplaythrough se emite durante reproducción de VOD', async ({ player }) => {
     await player.goto({ type: 'media', id: ContentIds.vodShort, autoplay: true })
@@ -69,7 +69,7 @@ test.describe('Eventos HTML5 — canplaythrough', () => {
 
 // ── Eventos de acción ────────────────────────────────────────────────────────
 
-test.describe('Eventos HTML5 — Seek', () => {
+test.describe('Eventos HTML5 — Seek', { tag: ['@regression'] }, () => {
 
   test('seeking se emite al iniciar un seek', async ({ player, page }) => {
     await player.goto({ type: 'media', id: ContentIds.vodShort, autoplay: true })
@@ -102,7 +102,7 @@ test.describe('Eventos HTML5 — Seek', () => {
   })
 })
 
-test.describe('Eventos HTML5 — Volumen', () => {
+test.describe('Eventos HTML5 — Volumen', { tag: ['@regression'] }, () => {
 
   test('volumechange se emite al cambiar volume', async ({ player, page }) => {
     await player.goto({ type: 'media', id: ContentIds.vodShort, autoplay: true })
@@ -133,7 +133,7 @@ test.describe('Eventos HTML5 — Volumen', () => {
   })
 })
 
-test.describe('Eventos HTML5 — Velocidad', () => {
+test.describe('Eventos HTML5 — Velocidad', { tag: ['@regression'] }, () => {
 
   test('ratechange se emite al cambiar playbackRate', async ({ player, page }) => {
     await player.goto({ type: 'media', id: ContentIds.vodShort, autoplay: true })

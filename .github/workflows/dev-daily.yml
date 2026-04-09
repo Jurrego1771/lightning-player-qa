@@ -32,6 +32,7 @@ env:
   PLAYER_ENV: dev
   MOCK_VAST_PORT: 9999
   MOCK_VAST_BASE_URL: http://localhost:9999
+  PLATFORM_API_URL: https://dev.platform.mediastre.am/api
   CI: true
 
 jobs:
@@ -45,9 +46,12 @@ jobs:
         with: { node-version: '20', cache: 'npm' }
       - run: npm ci
       - run: npx playwright install chromium --with-deps
+      - run: sudo apt-get install -y ffmpeg
 
       - name: Smoke tests
         run: npx playwright test tests/smoke/ --project=chromium
+        env:
+          PLATFORM_API_TOKEN: ${{ secrets.PLATFORM_API_TOKEN }}
 
       - uses: actions/upload-artifact@v4
         if: failure()
@@ -73,15 +77,12 @@ jobs:
         with: { node-version: '20', cache: 'npm' }
       - run: npm ci
       - run: npx playwright install ${{ matrix.project }} --with-deps
-
-      - name: Start mock VAST server
-        run: npx ts-node mock-vast/server.ts &
-
-      - name: Wait for VAST server
-        run: npx wait-on http://localhost:9999/health --timeout 15000
+      - run: sudo apt-get install -y ffmpeg
 
       - name: E2E tests
         run: npx playwright test tests/e2e/ --project=${{ matrix.project }}
+        env:
+          PLATFORM_API_TOKEN: ${{ secrets.PLATFORM_API_TOKEN }}
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -103,11 +104,7 @@ jobs:
         with: { node-version: '20', cache: 'npm' }
       - run: npm ci
       - run: npx playwright install chromium --with-deps
-
-      - name: Start mock VAST server
-        run: npx ts-node mock-vast/server.ts &
-      - name: Wait for VAST server
-        run: npx wait-on http://localhost:9999/health --timeout 15000
+      - run: sudo apt-get install -y ffmpeg
 
       - name: Integration tests
         run: npx playwright test tests/integration/ --project=chromium
@@ -132,6 +129,8 @@ jobs:
         with: { node-version: '20', cache: 'npm' }
       - run: npm ci
       - run: npx playwright install chromium --with-deps
+      - run: sudo apt-get install -y ffmpeg
+
       - run: npx playwright test tests/a11y/ --project=chromium
 
       - uses: actions/upload-artifact@v4
@@ -154,6 +153,8 @@ jobs:
         with: { node-version: '20', cache: 'npm' }
       - run: npm ci
       - run: npx playwright install chromium --with-deps
+      - run: sudo apt-get install -y ffmpeg
+
       - run: npx playwright test tests/visual/ --project=chromium
 
       - uses: actions/upload-artifact@v4
@@ -177,6 +178,7 @@ jobs:
         with: { node-version: '20', cache: 'npm' }
       - run: npm ci
       - run: npx playwright install chromium --with-deps
+      - run: sudo apt-get install -y ffmpeg
       - run: npx playwright test tests/performance/ --project=performance
 
       - uses: actions/upload-artifact@v4

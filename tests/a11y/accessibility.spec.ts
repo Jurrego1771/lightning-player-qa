@@ -12,7 +12,7 @@
 import { test, expect, MockContentIds } from '../../fixtures'
 import AxeBuilder from '@axe-core/playwright'
 
-test.describe('Accessibility — Player de Video', () => {
+test.describe('Accessibility — Player de Video', { tag: ['@a11y'] }, () => {
 
   test('no hay violaciones WCAG en estado idle', async ({ isolatedPlayer: player, page }) => {
     await player.goto({ type: 'media', id: MockContentIds.vod, autoplay: false })
@@ -91,7 +91,7 @@ test.describe('Accessibility — Player de Video', () => {
   })
 })
 
-test.describe('Accessibility — Player de Audio', () => {
+test.describe('Accessibility — Player de Audio', { tag: ['@a11y'] }, () => {
   test('no hay violaciones WCAG en player de audio', async ({ isolatedPlayer: player, page }) => {
     await player.goto({ type: 'media', id: MockContentIds.audio, autoplay: false, view: 'audio' })
     await player.waitForReady()

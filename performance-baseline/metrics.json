@@ -1,0 +1,9 @@
+{
+  "_info": "Baseline de performance del Lightning Player. Actualizar con: npm run perf:update-baseline",
+  "_howto": "1) Corre npm run test:performance en condiciones normales. 2) Si los resultados son buenos, corre npm run perf:update-baseline. 3) Commitea este archivo.",
+  "_updated": null,
+  "_playerVersion": null,
+  "_environment": "dev",
+  "_browser": "chromium",
+  "metrics": {}
+}

@@ -23,11 +23,8 @@
               <ClickTracking id="clicktracking"><![CDATA[http://localhost:9999/track/click]]></ClickTracking>
             </VideoClicks>
             <MediaFiles>
-              <MediaFile id="mf-1" delivery="progressive" type="video/mp4" width="1280" height="720" bitrate="2000">
-                <![CDATA[https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4]]>
-              </MediaFile>
-              <MediaFile id="mf-2" delivery="progressive" type="video/mp4" width="640" height="360" bitrate="800">
-                <![CDATA[https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4]]>
+              <MediaFile id="mf-1" delivery="progressive" type="video/mp4" width="640" height="360" bitrate="172">
+                <![CDATA[http://localhost:9001/ads/preroll.mp4]]>
               </MediaFile>
             </MediaFiles>
           </Linear>

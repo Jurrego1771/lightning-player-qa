@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- VMAP 1.0 - Pre-roll + Mid-roll a los 30s -->
+<!-- Usado para tests: ad.cuePoints -->
+<vmap:VMAP xmlns:vmap="http://www.iab.net/videosuite/vmap" version="1.0">
+
+  <!-- Pre-roll -->
+  <vmap:AdBreak timeOffset="start" breakType="linear" breakId="preroll">
+    <vmap:AdSource id="preroll-source" allowMultipleAds="false" followRedirects="true">
+      <vmap:AdTagURI templateType="vast3">
+        <![CDATA[http://localhost:9999/vast/preroll]]>
+      </vmap:AdTagURI>
+    </vmap:AdSource>
+  </vmap:AdBreak>
+
+  <!-- Mid-roll a los 30 segundos -->
+  <vmap:AdBreak timeOffset="00:00:30.000" breakType="linear" breakId="midroll-30s">
+    <vmap:AdSource id="midroll-source" allowMultipleAds="false" followRedirects="true">
+      <vmap:AdTagURI templateType="vast3">
+        <![CDATA[http://localhost:9999/vast/preroll]]>
+      </vmap:AdTagURI>
+    </vmap:AdSource>
+  </vmap:AdBreak>
+
+</vmap:VMAP>

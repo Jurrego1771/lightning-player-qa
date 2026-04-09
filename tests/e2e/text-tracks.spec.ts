@@ -51,7 +51,7 @@ async function activateTrackByLanguage(
 
 // ── Fixture: inicializar una vez por bloque describe ──────────────────────────
 
-test.describe('Text Tracks — Estructura e Inventario', () => {
+test.describe('Text Tracks — Estructura e Inventario', { tag: ['@regression', '@tracks'] }, () => {
 
   test('5 tracks disponibles en el contenido con subtítulos', async ({ player }) => {
     await player.goto({ type: 'media', id: ContentIds.vodWithSubtitles, autoplay: false })
@@ -126,7 +126,7 @@ test.describe('Text Tracks — Estructura e Inventario', () => {
 
 // ── Activación de tracks ──────────────────────────────────────────────────────
 
-test.describe('Text Tracks — Activación', () => {
+test.describe('Text Tracks — Activación', { tag: ['@regression', '@tracks'] }, () => {
 
   test('setTextTrackMode "showing" activa el track seleccionado', async ({ player }) => {
     await player.goto({ type: 'media', id: ContentIds.vodWithSubtitles, autoplay: false })
@@ -228,7 +228,7 @@ test.describe('Text Tracks — Activación', () => {
 
 // ── Eventos de tracks ─────────────────────────────────────────────────────────
 
-test.describe('Text Tracks — Eventos', () => {
+test.describe('Text Tracks — Eventos', { tag: ['@regression', '@tracks'] }, () => {
 
   test('texttrackchange se emite al activar un subtítulo', async ({ player, page }) => {
     await player.goto({ type: 'media', id: ContentIds.vodWithSubtitles, autoplay: false })
@@ -280,7 +280,7 @@ test.describe('Text Tracks — Eventos', () => {
 
 // ── Persistencia durante playback ─────────────────────────────────────────────
 
-test.describe('Text Tracks — Persistencia durante Playback', () => {
+test.describe('Text Tracks — Persistencia durante Playback', { tag: ['@regression', '@tracks'] }, () => {
 
   test('track activo persiste después de play() y pause()', async ({ player }) => {
     await player.goto({ type: 'media', id: ContentIds.vodWithSubtitles, autoplay: false })
@@ -330,7 +330,7 @@ test.describe('Text Tracks — Persistencia durante Playback', () => {
 
 // ── Acceso a tracks específicos ───────────────────────────────────────────────
 
-test.describe('Text Tracks — Acceso y Lectura', () => {
+test.describe('Text Tracks — Acceso y Lectura', { tag: ['@regression', '@tracks'] }, () => {
 
   test('getTextTracks() devuelve objetos con todas las propiedades requeridas', async ({ player }) => {
     await player.goto({ type: 'media', id: ContentIds.vodWithSubtitles, autoplay: false })

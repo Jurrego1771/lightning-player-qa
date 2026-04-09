@@ -1,0 +1,6 @@
+{
+  "_info": "Lista de tests en cuarentena. Actualizar con: npm run flaky:update-quarantine",
+  "_howto": "Tests aquí se marcan con test.fixme() automáticamente — no bloquean CI pero quedan visibles en el reporte. Para sacar un test de cuarentena: eliminar la entrada y hacer commit.",
+  "_updated": "2026-04-08T00:00:00.000Z",
+  "quarantined": []
+}

@@ -17,7 +17,7 @@
  */
 import { test, expect, ContentIds } from '../../fixtures'
 
-test.describe('View Types — audio', () => {
+test.describe('View Types — audio', { tag: ['@regression'] }, () => {
 
   test('view audio: inicializa sin error', async ({ player }) => {
     await player.goto({ type: 'media', id: ContentIds.audio, autoplay: false, view: 'audio' })
@@ -40,7 +40,7 @@ test.describe('View Types — audio', () => {
   })
 })
 
-test.describe('View Types — compact', () => {
+test.describe('View Types — compact', { tag: ['@regression'] }, () => {
 
   test('view compact: inicializa sin error', async ({ player }) => {
     await player.goto({ type: 'media', id: ContentIds.audio, autoplay: false, view: 'compact' })
@@ -57,7 +57,7 @@ test.describe('View Types — compact', () => {
   })
 })
 
-test.describe('View Types — radio', () => {
+test.describe('View Types — radio', { tag: ['@regression'] }, () => {
 
   test('view radio: inicializa sin error', async ({ player }) => {
     await player.goto({ type: 'media', id: ContentIds.radio, autoplay: false, view: 'radio' })

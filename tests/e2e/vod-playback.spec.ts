@@ -6,7 +6,7 @@
  */
 import { test, expect, ContentIds } from '../../fixtures'
 
-test.describe('VOD Playback', () => {
+test.describe('VOD Playback', { tag: ['@regression'] }, () => {
 
   test.describe('Inicialización', () => {
     test('loadMSPlayer() inicializa con autoplay=false en estado listo', async ({ player }) => {
@@ -54,9 +54,10 @@ test.describe('VOD Playback', () => {
       await player.play()
       await player.waitForEvent('timeupdate')
       const t1 = await player.getCurrentTime()
-      await player.page.waitForTimeout(2000)
-      const t2 = await player.getCurrentTime()
-      expect(t2).toBeGreaterThan(t1)
+      await expect.poll(
+        () => player.getCurrentTime(),
+        { timeout: 5_000 }
+      ).toBeGreaterThan(t1)
     })
 
     test('seek cambia posición y el player continúa reproduciendo', async ({ player }) => {
@@ -173,7 +174,7 @@ test.describe('VOD Playback', () => {
       await player.waitForReady()
       await player.destroy()
 
-      expect(await page.locator('video').count()).toBe(0)
+      await expect(page.locator('video')).toHaveCount(0)
     })
   })
 

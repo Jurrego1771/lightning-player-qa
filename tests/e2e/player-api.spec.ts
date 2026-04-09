@@ -24,7 +24,7 @@ import { test, expect, ContentIds } from '../../fixtures'
 
 // ── Config init ──────────────────────────────────────────────────────────────
 
-test.describe('Init Config — startPos', () => {
+test.describe('Init Config — startPos', { tag: ['@regression'] }, () => {
 
   test('startPos: el player inicia cerca de la posición indicada', async ({ player }) => {
     const TARGET = 20
@@ -45,7 +45,7 @@ test.describe('Init Config — startPos', () => {
   })
 })
 
-test.describe('Init Config — volume', () => {
+test.describe('Init Config — volume', { tag: ['@regression'] }, () => {
 
   test('setVolume(0.3) aplica y se puede leer', async ({ player }) => {
     // player.volume en config init no se refleja directamente en la propiedad;
@@ -69,7 +69,7 @@ test.describe('Init Config — volume', () => {
 
 // ── Propiedades de reproducción ──────────────────────────────────────────────
 
-test.describe('Propiedades — muted', () => {
+test.describe('Propiedades — muted', { tag: ['@regression'] }, () => {
 
   test('muted=true silencia el player', async ({ player }) => {
     await player.goto({ type: 'media', id: ContentIds.vodShort, autoplay: true })
@@ -89,7 +89,7 @@ test.describe('Propiedades — muted', () => {
   })
 })
 
-test.describe('Propiedades — playbackRate', () => {
+test.describe('Propiedades — playbackRate', { tag: ['@regression'] }, () => {
 
   test('playbackRate=2 duplica la velocidad', async ({ player }) => {
     await player.goto({ type: 'media', id: ContentIds.vodShort, autoplay: true })
@@ -117,7 +117,7 @@ test.describe('Propiedades — playbackRate', () => {
   })
 })
 
-test.describe('Propiedades — readyState', () => {
+test.describe('Propiedades — readyState', { tag: ['@regression'] }, () => {
 
   test('canplay se emite: indica HAVE_FUTURE_DATA (readyState ≥ 3)', async ({ player, page }) => {
     // La propiedad readyState no está expuesta directamente por el Lightning Player.
@@ -133,7 +133,7 @@ test.describe('Propiedades — readyState', () => {
 
 // ── Eventos de carga ─────────────────────────────────────────────────────────
 
-test.describe('Eventos — Secuencia de Init', () => {
+test.describe('Eventos — Secuencia de Init', { tag: ['@regression'] }, () => {
 
   test('loaded, metadataloaded y ready se emiten en la inicialización', async ({ player, page }) => {
     await player.goto({ type: 'media', id: ContentIds.vodShort, autoplay: false })
@@ -174,7 +174,7 @@ test.describe('Eventos — Secuencia de Init', () => {
   })
 })
 
-test.describe('Eventos — load() dinámico', () => {
+test.describe('Eventos — load() dinámico', { tag: ['@regression'] }, () => {
 
   test('load() emite sourcechange', async ({ player, page }) => {
     await player.goto({ type: 'media', id: ContentIds.vodShort, autoplay: false })
@@ -200,7 +200,7 @@ test.describe('Eventos — load() dinámico', () => {
 
 // ── Metadata ─────────────────────────────────────────────────────────────────
 
-test.describe('player.metadata', () => {
+test.describe('player.metadata', { tag: ['@regression'] }, () => {
 
   test('metadataloaded event se emite en la inicialización', async ({ player, page }) => {
     // player.metadata puede estar vacío dependiendo de la versión del player;
@@ -216,7 +216,7 @@ test.describe('player.metadata', () => {
 
 // ── Controles UI ─────────────────────────────────────────────────────────────
 
-test.describe('Controles UI', () => {
+test.describe('Controles UI', { tag: ['@regression'] }, () => {
 
   test('showControls/hideControls no lanzan error', async ({ player }) => {
     await player.goto({ type: 'media', id: ContentIds.vodShort, autoplay: false })
@@ -229,7 +229,7 @@ test.describe('Controles UI', () => {
 
 // ── Error handling ───────────────────────────────────────────────────────────
 
-test.describe('Error Handling', () => {
+test.describe('Error Handling', { tag: ['@regression'] }, () => {
 
   test('ID inexistente: player emite error o initError', async ({ player }) => {
     await player.goto({ type: 'media', id: 'invalid-content-id-00000000', autoplay: false })
@@ -245,14 +245,15 @@ test.describe('Error Handling', () => {
 
 // ── Propiedades de identificación ────────────────────────────────────────────
 
-test.describe('Propiedades — handler, version, type', () => {
+test.describe('Propiedades — handler, version, type', { tag: ['@regression'] }, () => {
 
   test('handler es "hls" para contenido VOD HLS', async ({ player }) => {
     await player.goto({ type: 'media', id: ContentIds.vodShort, autoplay: false })
     await player.waitForReady()
 
     const handler = await player.getHandler()
-    expect(handler, 'handler debe ser "hls" para contenido HLS').toBe('hls')
+    // player.handler devuelve 'html5/mse+hls' para HLS via hls.js
+    expect(handler, 'handler debe contener "hls" para contenido HLS').toContain('hls')
   })
 
   test('version es un string no vacío con formato semver', async ({ player }) => {
@@ -283,7 +284,7 @@ test.describe('Propiedades — handler, version, type', () => {
 
 // ── Propiedad loop ────────────────────────────────────────────────────────────
 
-test.describe('Propiedades — loop', () => {
+test.describe('Propiedades — loop', { tag: ['@regression'] }, () => {
 
   test('loop es false por defecto', async ({ player }) => {
     await player.goto({ type: 'media', id: ContentIds.vodShort, autoplay: false })
@@ -312,7 +313,7 @@ test.describe('Propiedades — loop', () => {
 
 // ── API de Event Listeners ────────────────────────────────────────────────────
 
-test.describe('Event API — once()', () => {
+test.describe('Event API — once()', { tag: ['@regression'] }, () => {
 
   test('once() registra un listener que se dispara exactamente una vez', async ({ player, page }) => {
     await player.goto({ type: 'media', id: ContentIds.vodShort, autoplay: true })
@@ -326,7 +327,9 @@ test.describe('Event API — once()', () => {
       })
     })
 
-    // Esperar que timeupdate se dispare varias veces (al menos 2s de reproducción)
+    // Esperar que timeupdate se dispare varias veces y verificar que once_count
+    // llegó a 1 y se mantiene — waitForTimeout intencional: es una aserción
+    // negativa ("no debe incrementar más"). No hay evento para "evento no emitido".
     await player.waitForEvent('timeupdate')
     await page.waitForTimeout(2_000)
 
@@ -335,7 +338,7 @@ test.describe('Event API — once()', () => {
   })
 })
 
-test.describe('Event API — off()', () => {
+test.describe('Event API — off()', { tag: ['@regression'] }, () => {
 
   test('off() deregistra el listener y deja de recibir eventos', async ({ player, page }) => {
     await player.goto({ type: 'media', id: ContentIds.vodShort, autoplay: true })
@@ -348,8 +351,11 @@ test.describe('Event API — off()', () => {
       ;(window as any).__player.on('timeupdate', (window as any).__off_handler)
     })
 
-    // Dejar que timeupdate se dispare al menos una vez
-    await page.waitForTimeout(1_000)
+    // Esperar a que el handler se haya disparado al menos una vez antes de removerlo
+    await expect.poll(
+      () => page.evaluate(() => (window as any).__off_count),
+      { timeout: 5_000 }
+    ).toBeGreaterThan(0)
 
     // Remover el listener y guardar el contador en ese momento
     await page.evaluate(() => {
@@ -357,7 +363,8 @@ test.describe('Event API — off()', () => {
       ;(window as any).__off_count_at_remove = (window as any).__off_count
     })
 
-    // Esperar más tiempo para que timeupdate siga disparando (sin el listener)
+    // waitForTimeout intencional — aserción negativa: verificar que off() detuvo
+    // el listener. No hay evento para "listener dejó de dispararse".
     await page.waitForTimeout(1_500)
 
     const countAtRemove = await page.evaluate(() => (window as any).__off_count_at_remove)

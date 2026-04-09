@@ -56,18 +56,20 @@ export const ContentIds = {
 
 // ── Access tokens para contenido restringido ─────────────────────────────
 //
-// Algunos contenidos DEV requieren access_token para ser reproducidos.
-// Usar como: player.goto({ type: 'live', id: ContentIds.live, ...ContentAccess.live })
+// @deprecated No usar ContentAccess con token hardcodeado — expira y no escala.
 //
-// NUNCA commitear tokens de producción aquí. Estos son tokens de DEV.
+// En su lugar: usar el fixture `contentAccess` en tests que necesiten
+// contenido restringido. Genera un token fresco por test via la API.
+//
+//   test('live', async ({ player, contentAccess }) => {
+//     await player.goto({ type: 'live', id: ContentIds.live, ...contentAccess.live })
+//   })
+//
+// Requiere PLATFORM_API_TOKEN en .env. Ver .env.example para instrucciones.
 
 export const ContentAccess: Partial<Record<keyof typeof ContentIds, { accessToken: string }>> = {
-  live: {
-    accessToken: 'clLCZenCE5zwB7wDmKVNbruQBFtM7JR0rw1GBNcVBPpWB8bF47wPtN7cwX8w6UKWmSzSBpBhVbG',
-  },
-  dvr: {
-    accessToken: 'clLCZenCE5zwB7wDmKVNbruQBFtM7JR0rw1GBNcVBPpWB8bF47wPtN7cwX8w6UKWmSzSBpBhVbG',
-  },
+  live: { accessToken: '' },  // vacío intencionalmente — usar fixture contentAccess
+  dvr:  { accessToken: '' },  // vacío intencionalmente — usar fixture contentAccess
 }
 
 // ── Streams externos (fallback para tests de integración pura) ────────────

@@ -2,21 +2,30 @@
  * platform-mock.ts — Interceptación de la plataforma Mediastream para tests aislados
  *
  * El Lightning Player hace dos requests al inicializarse:
- *   1. Player config → GET develop.mdstrm.com/{type}/{id}/player/{playerId}?...
+ *   1. Player config → GET {platformDomain}/{type}/{id}/player/{playerId}?...
  *      Determina el view type (video/audio/radio) y la UI del player.
- *   2. Content config → GET develop.mdstrm.com/{renderAs}/{id}.json?...
+ *   2. Content config → GET {platformDomain}/{renderAs}/{id}.json?...
  *      Donde renderAs es 'video' o 'audio' según el view type del player config.
  *      Para type='media' sin renderAs, la URL es /audio/{id}.json por defecto.
  *
- * Usamos un ÚNICO route catch-all en develop.mdstrm.com para evitar problemas
- * de glob pattern matching (URLs con query strings, trailing slashes, etc.)
+ * El dominio ({platformDomain}) varía según el ambiente (PLAYER_ENV):
+ *   dev     → develop.mdstrm.com
+ *   staging → staging.mdstrm.com  (TODO: verificar con player team)
+ *   prod    → embed.mdstrm.com
+ *
+ * Usamos un ÚNICO route catch-all para evitar problemas con globs y query strings.
  */
 
 import { Page } from '@playwright/test'
 import * as path from 'path'
 import * as fs from 'fs'
+import { getEnvironmentConfig } from '../config/environments'
 
 const RESPONSES_DIR = path.join(__dirname, 'platform-responses')
+
+// IMA SDK cacheado localmente por globalSetup para evitar la race condition
+// entre el autoplay del contenido y la carga de IMA SDK desde CDN de Google.
+const IMA_SDK_CACHED = path.resolve(process.cwd(), 'fixtures/ima-sdk/ima3.js')
 
 function readFixture(relativePath: string): string {
   return fs.readFileSync(path.join(RESPONSES_DIR, relativePath), 'utf-8')
@@ -41,8 +50,11 @@ const FIXTURES = {
 // Un único route catch-all para toda la plataforma Mediastream.
 // Despacha según el path de la URL para evitar problemas con globs y query strings.
 // Llamar antes de player.goto() — el fixture isolatedPlayer lo hace automáticamente.
+// El dominio interceptado se toma del ambiente activo (PLAYER_ENV) para que el mock
+// funcione correctamente sin importar si se corre en dev, staging o prod.
 export async function setupPlatformMocks(page: Page): Promise<void> {
-  await page.route('**/develop.mdstrm.com/**', async (route) => {
+  const { platformDomain } = getEnvironmentConfig()
+  await page.route(`**/${platformDomain}/**`, async (route) => {
     const url = route.request().url()
     const parsedPath = new URL(url).pathname
 
@@ -66,14 +78,12 @@ export async function setupPlatformMocks(page: Page): Promise<void> {
       return
     }
 
-    // Audio-only content config: /audio/{id}.json (también usado por type=media sin renderAs)
-    // Retornamos vod.json con player.type=video para que el player inicie correctamente.
-    // Para tests que genuinamente necesiten audio, pasar view:'audio' en goto().
+    // Audio-only content config: /audio/{id}.json
     if (parsedPath.includes('/audio/') && parsedPath.endsWith('.json')) {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: FIXTURES.content.vod,
+        body: FIXTURES.content.audio,
       })
       return
     }
@@ -98,7 +108,7 @@ export async function setupPlatformMocks(page: Page): Promise<void> {
       return
     }
 
-    // Cualquier otra request a develop.mdstrm.com: continuar (no bloquear)
+    // Cualquier otra request al dominio de la plataforma: continuar (no bloquear)
     await route.continue()
   })
 }
@@ -111,8 +121,9 @@ export async function mockContentConfig(
 ): Promise<void> {
   const base = JSON.parse(FIXTURES.content.vod)
   const merged = { ...base, ...overrides }
+  const { platformDomain } = getEnvironmentConfig()
 
-  await page.route('**/develop.mdstrm.com/**', async (route) => {
+  await page.route(`**/${platformDomain}/**`, async (route) => {
     const parsedPath = new URL(route.request().url()).pathname
     if (parsedPath.includes('/player')) {
       await route.continue()
@@ -132,8 +143,9 @@ export async function mockPlayerConfig(
 ): Promise<void> {
   const base = JSON.parse(FIXTURES.player.default)
   const merged = { ...base, ...overrides }
+  const { platformDomain } = getEnvironmentConfig()
 
-  await page.route('**/develop.mdstrm.com/**', async (route) => {
+  await page.route(`**/${platformDomain}/**`, async (route) => {
     const parsedPath = new URL(route.request().url()).pathname
     if (!parsedPath.includes('/player')) {
       await route.continue()
@@ -151,7 +163,8 @@ export async function mockContentError(
   page: Page,
   status: number = 403
 ): Promise<void> {
-  await page.route('**/develop.mdstrm.com/**', async (route) => {
+  const { platformDomain } = getEnvironmentConfig()
+  await page.route(`**/${platformDomain}/**`, async (route) => {
     const parsedPath = new URL(route.request().url()).pathname
     if (parsedPath.includes('/player')) {
       await route.continue()

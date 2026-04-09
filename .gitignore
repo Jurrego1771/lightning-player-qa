@@ -24,6 +24,13 @@ fixtures/streams/vod/
 fixtures/streams/audio/
 fixtures/streams/vod-with-error/
 
+# Performance — resultados del run actual (gitignored, solo el baseline se commitea)
+# El baseline commiteado vive en performance-baseline/metrics.json
+perf-results/
+
+# Flaky detection — raw run data (gitignored; quarantine.json sí se commitea)
+flaky-results/runs/*.json
+
 # Temporales
 *.log
 *.tmp

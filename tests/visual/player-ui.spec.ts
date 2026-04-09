@@ -14,6 +14,7 @@
  * los screenshots sean deterministas: mismo frame, mismo color, sin variaciones de CDN.
  */
 import { test, expect, MockContentIds } from '../../fixtures'
+import { mockContentError } from '../../fixtures/platform-mock'
 
 // Deshabilitar animaciones CSS para screenshots estables
 const disableAnimations = async (page: import('@playwright/test').Page) => {
@@ -29,7 +30,7 @@ const disableAnimations = async (page: import('@playwright/test').Page) => {
   })
 }
 
-test.describe('Visual Regression — Player de Video', () => {
+test.describe('Visual Regression — Player de Video', { tag: ['@visual'] }, () => {
 
   test('estado idle — sin poster', async ({ isolatedPlayer: player, page }) => {
     await player.goto({
@@ -50,24 +51,23 @@ test.describe('Visual Regression — Player de Video', () => {
     await player.waitForCanPlay()
     await disableAnimations(page)
 
-    // Mover mouse sobre el player para mostrar controles
-    const playerEl = page.locator('[data-testid="player"], .msp-player, #player').first()
-    await playerEl.hover()
+    // Mover mouse sobre el player para mostrar controles.
+    // El harness usa id="player-container" — no hay data-testid ni clase .msp-player.
+    await page.locator('#player-container').hover()
 
     await expect(page).toHaveScreenshot('video-controls-visible.png', {
       maxDiffPixelRatio: 0.02,
     })
   })
 
-  test('estado de error — plataforma devuelve 403', async ({ page }) => {
-    // Para el test de error usamos mockContentError directamente
-    const { mockContentError } = await import('../../fixtures/platform-mock')
+  test('estado de error — plataforma devuelve 403', async ({ isolatedPlayer: player, page }) => {
+    // setupPlatformMocks ya corrió (vía isolatedPlayer fixture).
+    // mockContentError registra un handler adicional que Playwright evalúa primero (LIFO).
+    // Para contenido: devuelve 403. Para player config: route.continue() → siguiente
+    // handler (setupPlatformMocks) → devuelve player config correctamente.
     await mockContentError(page, 403)
 
-    const { LightningPlayerPage } = await import('../../fixtures/player')
-    const player = new LightningPlayerPage(page)
-
-    await player.goto({ type: 'media', id: 'mock-restricted', autoplay: true })
+    await player.goto({ type: 'media', id: MockContentIds.vod, autoplay: true })
     await player.waitForEvent('error', 15_000)
     await disableAnimations(page)
 
@@ -88,7 +88,7 @@ test.describe('Visual Regression — Player de Video', () => {
   })
 })
 
-test.describe('Visual Regression — Player de Audio', () => {
+test.describe('Visual Regression — Player de Audio', { tag: ['@visual'] }, () => {
   test('audio player — estado idle', async ({ isolatedPlayer: player, page }) => {
     await player.goto({ type: 'media', id: MockContentIds.audio, autoplay: false, view: 'audio' })
     await player.waitForReady()

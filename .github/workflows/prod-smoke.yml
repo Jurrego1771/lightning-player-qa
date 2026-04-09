@@ -31,6 +31,7 @@ on:
 
 env:
   PLAYER_ENV: prod
+  PLATFORM_API_URL: https://platform.mediastre.am/api
   CI: true
 
 jobs:
@@ -49,6 +50,7 @@ jobs:
       - run: npm ci
 
       - run: npx playwright install chromium --with-deps
+      - run: sudo apt-get install -y ffmpeg
 
       - name: Log ambiente
         run: |
@@ -61,6 +63,8 @@ jobs:
       - name: Smoke tests — Producción
         run: npx playwright test tests/smoke/ --project=chromium --retries=1
         # retries=1 en prod: un retry antes de declarar fallo para evitar falsos positivos
+        env:
+          PLATFORM_API_TOKEN: ${{ secrets.PLATFORM_API_TOKEN }}
 
       - uses: actions/upload-artifact@v4
         if: always()

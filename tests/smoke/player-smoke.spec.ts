@@ -13,12 +13,12 @@
  *
  * PENDIENTE: Reemplazar ContentIds.* con IDs reales del ambiente dev.
  */
-import { test, expect, ContentIds, ContentAccess } from '../../fixtures'
+import { test, expect, ContentIds } from '../../fixtures'
 import { getEnvironmentConfig } from '../../config/environments'
 
 const ENV = getEnvironmentConfig()
 
-test.describe(`Smoke Tests — ${ENV.name}`, () => {
+test.describe(`Smoke Tests — ${ENV.name}`, { tag: ['@smoke'] }, () => {
 
   // ── 1. El script del player carga y loadMSPlayer está disponible ──────────
   test('script del player carga correctamente (loadMSPlayer disponible)', async ({ player, page }) => {
@@ -40,9 +40,10 @@ test.describe(`Smoke Tests — ${ENV.name}`, () => {
     await player.assertIsPlaying()
 
     const t1 = await player.getCurrentTime()
-    await player.page.waitForTimeout(2000)
-    const t2 = await player.getCurrentTime()
-    expect(t2).toBeGreaterThan(t1)
+    await expect.poll(
+      () => player.getCurrentTime(),
+      { timeout: 5_000 }
+    ).toBeGreaterThan(t1)
 
     await player.pause()
     await player.assertIsPaused()
@@ -74,8 +75,8 @@ test.describe(`Smoke Tests — ${ENV.name}`, () => {
   })
 
   // ── 6. Live stream carga ──────────────────────────────────────────────────
-  test('Live: stream carga y reproduce (isLive=true)', async ({ player }) => {
-    await player.goto({ type: 'live', id: ContentIds.live, autoplay: true, ...ContentAccess.live })
+  test('Live: stream carga y reproduce (isLive=true)', async ({ player, contentAccess }) => {
+    await player.goto({ type: 'live', id: ContentIds.live, autoplay: true, ...contentAccess.live })
     await player.waitForEvent('playing', 30_000)
 
     const isLive = await player.isLive()
@@ -91,7 +92,7 @@ test.describe(`Smoke Tests — ${ENV.name}`, () => {
     await player.waitForReady()
     await player.destroy()
 
-    const videoCount = await page.locator('video').count()
-    expect(videoCount).toBe(0)
+    const videoCount = page.locator('video')
+    await expect(videoCount).toHaveCount(0)
   })
 })

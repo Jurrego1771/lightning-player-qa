@@ -17,7 +17,7 @@ import { test, expect, MockContentIds } from '../../fixtures'
 
 const MOCK_VAST_URL = process.env.MOCK_VAST_BASE_URL ?? 'http://localhost:9999'
 
-test.describe('Ad Lifecycle — Eventos del Player', () => {
+test.describe('Ad Lifecycle — Eventos del Player', { tag: ['@integration', '@ads'] }, () => {
 
   test('pre-roll: secuencia de eventos de cuartiles via player.on()', async ({ isolatedPlayer: player }) => {
     await player.goto({
@@ -98,7 +98,7 @@ test.describe('Ad Lifecycle — Eventos del Player', () => {
   })
 })
 
-test.describe('Ad Lifecycle — Beacons HTTP', () => {
+test.describe('Ad Lifecycle — Beacons HTTP', { tag: ['@integration', '@ads'] }, () => {
 
   test('impression beacon se dispara al inicio del ad', async ({ isolatedPlayer: player, adBeaconInterceptor, page }) => {
     await page.route(`${MOCK_VAST_URL}/track/**`, async (route) => {
@@ -121,7 +121,7 @@ test.describe('Ad Lifecycle — Beacons HTTP', () => {
   })
 })
 
-test.describe('Ad Skip', () => {
+test.describe('Ad Skip', { tag: ['@integration', '@ads'] }, () => {
 
   test('ad skippable: ad.skip() funciona después del skipoffset', async ({ isolatedPlayer: player, page }) => {
     await player.goto({
@@ -133,8 +133,9 @@ test.describe('Ad Skip', () => {
 
     await player.waitForAdStart(20_000)
 
-    // Esperar el skipoffset (5s definido en preroll-skippable.xml)
-    await page.waitForTimeout(6000)
+    // Esperar a que IMA emita adsSkippableStateChanged — se dispara cuando el
+    // skipoffset (5s en preroll-skippable.xml) se alcanza durante el playback del ad.
+    await player.waitForEvent('adsSkippableStateChanged', 15_000)
 
     // Verificar que el ad es skippable
     const skippable = await player.isAdSkippable()
@@ -150,15 +151,16 @@ test.describe('Ad Skip', () => {
     await player.goto({
       type: 'media',
       id: MockContentIds.vod,
-      autoplay: false,
+      autoplay: true,
       adsMap: `${MOCK_VAST_URL}/vmap/preroll-midroll`,
     })
 
-    await player.waitForEvent('adsAdMetadata', 15_000)
-
-    const cuePoints = await player.getAdCuePoints()
-    expect(Array.isArray(cuePoints)).toBe(true)
-    // VMAP con pre-roll + mid-roll debe tener al menos 2 cue points
-    expect(cuePoints.length).toBeGreaterThanOrEqual(1)
+    // Con autoplay=true, IMA inicializa AdsManager al arrancar y getCuePoints()
+    // se llena después de AdsManagerLoadedEvent.
+    // Con autoplay=false, AdsManager nunca se inicializa hasta que el usuario hace play().
+    await expect.poll(
+      async () => (await player.getAdCuePoints()).length,
+      { timeout: 30_000, intervals: [500] }
+    ).toBeGreaterThanOrEqual(1)
   })
 })

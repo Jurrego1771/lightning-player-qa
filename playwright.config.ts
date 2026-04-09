@@ -13,10 +13,13 @@ console.log(`📦 Player: ${ENV_CONFIG.playerScriptUrl}\n`)
 
 export default defineConfig({
   testDir: './tests',
+  globalSetup: './setup/global-setup.ts',
+  globalTeardown: './setup/global-teardown.ts',
 
-  // Dos servidores locales:
+  // Tres servidores locales:
   //   :3000 — harness HTML (evita el origin null de page.setContent())
   //   :9001 — HLS streams fixture (generados con npm run fixtures:generate)
+  //   :9999 — mock VAST server (respuestas VAST/VMAP controladas para tests de ads)
   webServer: [
     {
       command: 'npx serve harness -p 3000 --cors',
@@ -25,14 +28,24 @@ export default defineConfig({
       timeout: 30_000,
     },
     {
-      command: 'npx serve fixtures/streams -p 9001 --cors',
+      // fixtures/streams/ se genera con `npm run fixtures:generate` (requiere ffmpeg).
+      // scripts/serve-streams.js crea el directorio si no existe (cross-platform)
+      // para que el servidor arranque aunque los fixtures no existan aún.
+      // checkHlsFixtures() en globalSetup los genera automáticamente si ffmpeg está disponible.
+      command: 'node scripts/serve-streams.js',
       url: 'http://localhost:9001',
+      reuseExistingServer: !process.env.CI,
+      timeout: 30_000,
+    },
+    {
+      command: 'ts-node mock-vast/server.ts',
+      url: 'http://localhost:9999/health',
       reuseExistingServer: !process.env.CI,
       timeout: 30_000,
     },
   ],
 
-  retries: IS_CI ? 0 : 1,
+  retries: IS_CI ? 2 : 1,
   workers: IS_CI ? 2 : undefined,
 
   // Timeout generoso: el player carga desde CDN en cada test
@@ -42,6 +55,8 @@ export default defineConfig({
   reporter: [
     ['list'],
     ['html', { outputFolder: 'playwright-report', open: 'never' }],
+    ['json', { outputFile: 'playwright-report/report.json' }],
+    ['./reporters/flakiness-reporter.ts'],
     ...(IS_CI ? [['github'] as ['github']] : []),
   ],
 
@@ -60,6 +75,13 @@ export default defineConfig({
   },
 
   projects: [
+    // ── Contract: corre primero en CI — falla rápido si el player rompió su API ─
+    {
+      name: 'contract',
+      use: { ...devices['Desktop Chrome'] },
+      testMatch: ['tests/contract/**'],
+    },
+
     // ── Tier 1: corre en cada PR / daily en dev ───────────────────────────
     {
       name: 'chromium',

@@ -27,6 +27,7 @@ on:
 
 env:
   PLAYER_ENV: staging
+  PLATFORM_API_URL: https://platform.mediastre.am/api
   CI: true
 
 jobs:
@@ -43,6 +44,7 @@ jobs:
       - run: npm ci
 
       - run: npx playwright install chromium firefox --with-deps
+      - run: sudo apt-get install -y ffmpeg
 
       - name: Log ambiente
         run: |
@@ -52,10 +54,14 @@ jobs:
 
       - name: Smoke tests en Chromium
         run: npx playwright test tests/smoke/ --project=chromium
+        env:
+          PLATFORM_API_TOKEN: ${{ secrets.PLATFORM_API_TOKEN }}
 
       - name: Smoke tests en Firefox
         run: npx playwright test tests/smoke/ --project=firefox
         continue-on-error: true   # No bloquear por Firefox en staging
+        env:
+          PLATFORM_API_TOKEN: ${{ secrets.PLATFORM_API_TOKEN }}
 
       - uses: actions/upload-artifact@v4
         if: always()

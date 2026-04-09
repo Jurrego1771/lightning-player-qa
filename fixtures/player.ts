@@ -9,8 +9,13 @@
  * Método de inicialización principal: loadMSPlayer(containerId, config) → Promise
  * Método de carga dinámica: player.load({ type, id }) — prioridad en tests
  */
+import * as fs from 'fs'
+import * as path from 'path'
 import { Page, expect } from '@playwright/test'
 import { getEnvironmentConfig } from '../config/environments'
+
+const IMA_SDK_URL    = 'https://imasdk.googleapis.com/js/sdkloader/ima3.js'
+const IMA_SDK_CACHED = path.resolve(process.cwd(), 'fixtures/ima-sdk/ima3.js')
 
 // ── Tipos de la API pública ───────────────────────────────────────────────
 
@@ -95,7 +100,7 @@ export class LightningPlayerPage {
    *
    * El harness se sirve desde un servidor HTTP local para que el origin de la página
    * sea http://localhost:3000 (no null). Esto es necesario para que los requests del
-   * player a develop.mdstrm.com funcionen correctamente con page.route() interceptors.
+   * player al dominio de la plataforma funcionen correctamente con page.route() interceptors.
    *
    * El script del player se inyecta desde la CDN del ambiente activo (PLAYER_ENV).
    *   dev:     .../develop/api.js  (default)
@@ -104,6 +109,21 @@ export class LightningPlayerPage {
    */
   async goto(config: InitConfig): Promise<void> {
     const envConfig = getEnvironmentConfig()
+
+    // Registrar IMA SDK local ANTES de cualquier navegación.
+    // Garantiza que la ruta esté activa desde el primer request, sin importar
+    // cuándo el player decide cargar el SDK (puede ser inmediatamente al init).
+    // adBeaconInterceptor ya no usa page.route('**/*'), así que no hay conflicto LIFO.
+    if (config.adsMap && fs.existsSync(IMA_SDK_CACHED)) {
+      const imaBody = fs.readFileSync(IMA_SDK_CACHED)
+      await this.page.route(IMA_SDK_URL, async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'text/javascript; charset=utf-8',
+          body: imaBody,
+        })
+      })
+    }
 
     // Navegar al harness (servido desde localhost:3000 por el webServer de Playwright)
     await this.page.goto('http://localhost:3000/index.html', { waitUntil: 'domcontentloaded' })
