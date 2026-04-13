@@ -24,7 +24,7 @@ export default defineConfig({
     {
       command: 'npx serve harness -p 3000 --cors',
       url: 'http://localhost:3000',
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: !IS_CI,
       timeout: 30_000,
     },
     {
@@ -34,13 +34,13 @@ export default defineConfig({
       // checkHlsFixtures() en globalSetup los genera automáticamente si ffmpeg está disponible.
       command: 'node scripts/serve-streams.js',
       url: 'http://localhost:9001',
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: !IS_CI,
       timeout: 30_000,
     },
     {
       command: 'ts-node mock-vast/server.ts',
       url: 'http://localhost:9999/health',
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: !IS_CI,
       timeout: 30_000,
     },
   ],
@@ -69,7 +69,9 @@ export default defineConfig({
     launchOptions: {
       args: [
         '--autoplay-policy=no-user-gesture-required',
-        '--disable-web-security', // permite cargar scripts cross-origin en tests
+        '--disable-web-security',          // permite cargar scripts cross-origin
+        '--allow-running-insecure-content', // IMA SDK en http:// sin bloqueo
+        '--disable-features=CrossSiteDocumentBlockingIfIsolating,IsolateOrigins,SitePerProcess', // permite iframes del IMA SDK en headless
       ],
     },
   },

@@ -21,7 +21,6 @@ export const REQUIRED_METHODS = [
   'play',
   'pause',
   'destroy',
-  'isPlayingAd',
   'showControls',
   'hideControls',
   'load',
@@ -46,7 +45,7 @@ export const REQUIRED_PROPERTIES: Record<string, PropertySpec> = {
   volume:      { type: 'number',  nullable: false, writable: true,  description: 'Volumen 0–1' },
   paused:      { type: 'boolean', nullable: false, writable: false, description: 'True si está pausado' },
   ended:       { type: 'boolean', nullable: false, writable: false, description: 'True si terminó' },
-  muted:       { type: 'boolean', nullable: false, writable: true,  description: 'True si está muteado' },
+  muted:       { type: 'boolean', nullable: true,  writable: true,  description: 'True si está muteado (puede ser null antes de que el media esté listo)' },
   playbackRate:{ type: 'number',  nullable: false, writable: true,  description: 'Velocidad de reproducción' },
   loop:        { type: 'boolean', nullable: false, writable: true,  description: 'True si loop está activo' },
 
@@ -59,6 +58,9 @@ export const REQUIRED_PROPERTIES: Record<string, PropertySpec> = {
   // Content type flags
   isLive: { type: 'boolean', nullable: false, writable: false, description: 'True si es stream live' },
   isDVR:  { type: 'boolean', nullable: false, writable: false, description: 'True si es DVR' },
+
+  // Ad state (getter — no es función, se accede como player.isPlayingAd sin paréntesis)
+  isPlayingAd: { type: 'boolean', nullable: false, writable: false, description: 'True si hay un ad lineal reproduciéndose' },
 
   // HLS-only (nullable para DASH/MP4)
   level:     { type: 'number', nullable: true, writable: true,  description: 'Nivel HLS activo (-1=auto)' },
@@ -106,6 +108,15 @@ export const AD_EVENTS = [
   'adsSkippableStateChanged',
 ] as const
 
+// ── Eventos de UI ─────────────────────────────────────────────────────────────
+// Eventos emitidos por componentes de la UI del player.
+// dismissButton: se emite cuando el usuario presiona la flecha de volver en el
+// TV skin header. Permite al integrador interceptar la navegación de vuelta.
+
+export const UI_EVENTS = [
+  'dismissButton',
+] as const
+
 export const CONTENT_EVENTS = [
   'contentFirstPlay',
   'sourcechange',
@@ -120,4 +131,4 @@ export const ISPLAYINGAD_TYPE = 'boolean' as const
 // loadMSPlayer() retorna una instancia que debe tener REQUIRED_METHODS como funciones
 // y REQUIRED_PROPERTIES accesibles. El test de contrato verifica esto.
 
-export const CONTRACT_VERSION = '1.0.58'
+export const CONTRACT_VERSION = '1.0.59'

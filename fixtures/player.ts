@@ -14,7 +14,8 @@ import * as path from 'path'
 import { Page, expect } from '@playwright/test'
 import { getEnvironmentConfig } from '../config/environments'
 
-const IMA_SDK_URL    = 'https://imasdk.googleapis.com/js/sdkloader/ima3.js'
+// Glob matches both http:// and https:// — player may use protocol-relative URL
+const IMA_SDK_URL    = '**/imasdk.googleapis.com/js/sdkloader/ima3.js'
 const IMA_SDK_CACHED = path.resolve(process.cwd(), 'fixtures/ima-sdk/ima3.js')
 
 // ── Tipos de la API pública ───────────────────────────────────────────────
@@ -213,7 +214,12 @@ export class LightningPlayerPage {
   }
 
   async pause(): Promise<void> {
-    await this.page.evaluate(() => (window as any).__player?.pause())
+    // Retry hasta que el player esté listo internamente.
+    // En v1.0.57+ el player puede lanzar "Player is not ready" si pause() se llama
+    // antes de que su evento 'ready' interno se dispare (puede ser async post-Promise).
+    await expect(async () => {
+      await this.page.evaluate(() => (window as any).__player?.pause())
+    }).toPass({ timeout: 5_000 })
   }
 
   async getCurrentTime(): Promise<number> {

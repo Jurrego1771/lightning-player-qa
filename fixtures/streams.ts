@@ -1,66 +1,48 @@
 /**
- * streams.ts — Catálogo de contenido de test
+ * streams.ts — Catálogo de contenido de test (ambiente DEV)
  *
- * El Lightning Player carga contenido principalmente por ID de la plataforma
- * Mediastream. Los IDs de test son contenidos reales del ambiente DEV.
+ * IDs de contenido reales del ambiente DEV de la plataforma Mediastream.
+ * Este repo corre únicamente contra DEV — los IDs están hardcodeados aquí.
  *
- * REGLA: Nunca usar IDs ni streams de producción en tests automatizados.
+ * Para actualizar un ID: editar directamente este archivo.
  *
- * ── Sobre IDs vs src ──────────────────────────────────────────────────────
- * La API oficial usa `id` (ID de la plataforma):
- *   loadMSPlayer('container', { type: 'media', id: '5f7f563e...' })
- *
- * Contenido que requiere access token (live/dvr): usar ContentAccess[id]
- * para obtener el accessToken a pasar en goto().
+ * Contenido que requiere access token (live/dvr): usar el fixture `contentAccess`
+ * en lugar de pasar el token manualmente.
  */
-
-// ── IDs de contenido en la plataforma Mediastream ────────────────────────
-//
-// Los valores por defecto son IDs del ambiente DEV.
-// En CI (staging/prod) se sobreescriben via variables de entorno:
-//
-//   CONTENT_ID_VOD_SHORT=<id>   CONTENT_ID_LIVE=<id>  ...
-//
-// Ver .env.example para el listado completo de variables.
-
-const e = process.env
 
 export const ContentIds = {
   /** VOD de video — contenido corto (~2 min) para tests rápidos */
-  vodShort: e.CONTENT_ID_VOD_SHORT ?? '69d2f1e0461dd502cd921ad6',
+  vodShort: '69d2f1e0461dd502cd921ad6',
 
   /** VOD de video — contenido largo (>10 min) para tests de ABR y buffer */
-  vodLong: e.CONTENT_ID_VOD_LONG ?? '6900ffde6ddf33fd39a523ee',
+  vodLong: '6900ffde6ddf33fd39a523ee',
 
-  /** Stream en vivo activo — requiere accessToken (ver ContentAccess) */
-  live: e.CONTENT_ID_LIVE ?? '6971288e64b2477e2b935259',
+  /** Stream en vivo activo — requiere accessToken (ver fixture contentAccess) */
+  live: '664fb7b7e0e386591c300106',
 
   /**
    * Stream DVR activo — mismo ID que live, mismo accessToken.
    * Pasarlo como type: 'dvr' en goto().
    */
-  dvr: e.CONTENT_ID_DVR ?? '6971288e64b2477e2b935259',
+  dvr: '664fb7b7e0e386591c300106',
 
   /** Audio */
-  audio: e.CONTENT_ID_AUDIO ?? '698b4a88d9cc56fe7a404079',
+  audio: '698b4a88d9cc56fe7a404079',
 
   /** Radio — mismo ID que audio por ahora hasta confirmar ID dedicado */
-  radio: e.CONTENT_ID_RADIO ?? '698b4a88d9cc56fe7a404079',
+  radio: '698b4a88d9cc56fe7a404079',
 
   /** Podcast — pendiente confirmar ID */
-  podcast: e.CONTENT_ID_PODCAST ?? 'TODO_PODCAST_ID',
+  podcast: 'TODO_PODCAST_ID',
 
   /** VOD con subtítulos en múltiples idiomas */
-  vodWithSubtitles: e.CONTENT_ID_VOD_WITH_SUBTITLES ?? '69d3081d5493800312af8b6e',
+  vodWithSubtitles: '69d3081d5493800312af8b6e',
 
   /** VOD con múltiples audio tracks — pendiente confirmar ID */
-  vodMultiAudio: e.CONTENT_ID_VOD_MULTI_AUDIO ?? 'TODO_VOD_MULTI_AUDIO_ID',
+  vodMultiAudio: 'TODO_VOD_MULTI_AUDIO_ID',
 
-  /**
-   * VOD con ads: pre-roll + mid-roll a los 10s + post-roll.
-   * Configurado en la plataforma con IMA.
-   */
-  vodWithAds: e.CONTENT_ID_VOD_WITH_ADS ?? '6900fffb6ddf33fd39a5288e',
+  /** VOD con ads: pre-roll + mid-roll a los 10s + post-roll */
+  vodWithAds: '6900fffb6ddf33fd39a5288e',
 }
 
 // ── Access tokens para contenido restringido ─────────────────────────────

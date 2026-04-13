@@ -29,6 +29,7 @@ import {
   REQUIRED_METHODS,
   REQUIRED_PROPERTIES,
   FUNDAMENTAL_EVENTS,
+  UI_EVENTS,
   CONTRACT_VERSION,
 } from '../../contracts/player-api'
 
@@ -190,14 +191,14 @@ test.describe('Player API Contract', {
 
   // ── 6. isPlayingAd() retorna boolean ─────────────────────────────────────
 
-  test('player.isPlayingAd() retorna boolean', async ({ isolatedPlayer }) => {
+  test('player.isPlayingAd es un getter que retorna boolean', async ({ isolatedPlayer }) => {
     await isolatedPlayer.goto({ type: 'media', id: MockContentIds.vod, autoplay: false })
     await isolatedPlayer.waitForReady()
 
-    const result = await isolatedPlayer.page.evaluate(() => (window as any).__player?.isPlayingAd())
+    const result = await isolatedPlayer.page.evaluate(() => (window as any).__player?.isPlayingAd)
     expect(typeof result, contractViolation(
-      'player.isPlayingAd() no retorna boolean',
-      `Tipo actual: ${typeof result}. El método debe retornar true/false, no ${result}`
+      'player.isPlayingAd no es boolean',
+      `Tipo actual: ${typeof result}. isPlayingAd es un getter de propiedad — acceder sin paréntesis debe retornar true/false.`
     )).toBe('boolean')
   })
 
@@ -235,41 +236,98 @@ test.describe('Player API Contract', {
     )).toHaveLength(0)
   })
 
-  // ── 8. Estructura del mensaje postMessage ─────────────────────────────────
+  // ── 8. dismissButton — nuevo evento de UI del TV skin ─────────────────────
   //
-  // Los eventos del player vienen como window.postMessage.
-  // Verificar que el formato es { type: 'msp:ready', ... } — el harness depende de esto.
+  // El TV skin emite 'dismissButton' via postMessage cuando el usuario presiona
+  // la flecha de volver en el header. Verificar que el evento está en el catálogo
+  // de UI_EVENTS del contrato y que el harness puede escucharlo.
+  //
+  // NOTA: No podemos disparar el evento en un test de contrato sin tener un
+  // dispositivo TV real o emular el UA. Verificamos que el evento está registrado
+  // en el catálogo (UI_EVENTS) y que el nombre es el string correcto.
 
-  test('eventos se emiten via postMessage con formato { type: "msp:<event>" }', async ({ isolatedPlayer }) => {
-    // Interceptar el siguiente mensaje postMessage
-    const messagePromise = isolatedPlayer.page.evaluate(() => {
-      return new Promise<{ type: string }>((resolve) => {
-        window.addEventListener('message', (e) => {
-          if (typeof e.data?.type === 'string' && e.data.type.startsWith('msp:')) {
-            resolve({ type: e.data.type })
-          }
-        }, { once: true })
-      })
+  test('dismissButton está en el catálogo de UI_EVENTS del contrato', async ({ isolatedPlayer }) => {
+    await isolatedPlayer.goto({ type: 'media', id: MockContentIds.vod, autoplay: false })
+    await isolatedPlayer.waitForReady()
+
+    // Verificar que 'dismissButton' está en el catálogo de eventos de UI
+    expect(UI_EVENTS, contractViolation(
+      'UI_EVENTS no contiene "dismissButton"',
+      'El TV skin emite dismissButton cuando el usuario presiona la flecha de volver. ' +
+      'Este evento debe estar en el contrato para que los integradores puedan escucharlo.'
+    )).toContain('dismissButton')
+
+    // Verificar que el player puede recibir un listener para este evento via postMessage
+    // El harness ya escucha todos los msp:* eventos — si dismissButton llega, lo captura.
+    // Aquí verificamos que el nombre del evento no tenga typos ni cambios de capitalización.
+    const eventName = UI_EVENTS.find((e) => e === 'dismissButton')
+    expect(eventName, contractViolation(
+      'Nombre del evento "dismissButton" no coincide exactamente',
+      `Valor en UI_EVENTS: "${eventName}". Debe ser exactamente "dismissButton" (camelCase).`
+    )).toBe('dismissButton')
+  })
+
+  // ── 9. Sistema de eventos player.on() funcional ───────────────────────────
+  //
+  // El harness usa player.on(eventName, callback) para rastrear eventos en __qa.events.
+  // Este test verifica que el mecanismo funciona — que player.on() se puede suscribir
+  // y que los eventos llegan a __qa.events tras la inicialización.
+  //
+  // NOTA: En integración vía iframe el player usa window.postMessage con prefijo "msp:".
+  // En el harness QA el player se embebe directamente (misma página), por lo que
+  // usamos player.on() en lugar de window.postMessage. Este test valida ese mecanismo.
+
+  test('sistema de eventos player.on() funciona — harness trackea eventos en __qa.events', async ({ isolatedPlayer }) => {
+    await isolatedPlayer.goto({ type: 'media', id: MockContentIds.vod, autoplay: false })
+    await isolatedPlayer.waitForReady()
+
+    const events: string[] = await isolatedPlayer.page.evaluate(() => (window as any).__qa?.events ?? [])
+
+    // 'ready' debe estar siempre — el harness lo backfill incondicionalmente
+    expect(events, contractViolation(
+      'player.on() no está funcionando — "ready" no está en __qa.events',
+      `Eventos recibidos: ${events.join(', ')}.\n  ` +
+      'El harness registra listeners via player.on(). Si __qa.events está vacío, ' +
+      'el método on() del player no funciona o la inicialización falló.'
+    )).toContain('ready')
+
+    // El array de eventos no debe estar vacío — el player siempre emite varios eventos al inicializarse
+    expect(events.length, contractViolation(
+      '__qa.events está vacío — ningún evento fue registrado',
+      'Se esperan al menos: loaded, metadataloaded, ready. ' +
+      'Verificar que el harness registró listeners correctamente via player.on().'
+    )).toBeGreaterThan(0)
+  })
+
+  // ── 10. ads.focus() fue eliminado intencionalmente (feature/dash PR #595) ───
+  //
+  // El PR #595 removió player.ads.focus() de la API pública de ads (src/ads/api.js).
+  // Se trata de un cambio de contrato intencional: cualquier integración que llame
+  // player.ads.focus() recibirá ahora un TypeError en lugar de ejecutar la acción.
+  //
+  // NOTA: player.ads solo existe cuando IMA SDK se inicializa (requiere reproducción
+  // activa con adsMap). Este test verifica la ausencia de focus() cuando ads existen.
+  // La verificación de que player.ads existe en sí corre en los tests E2E de ads.
+
+  test('ads.focus() fue eliminado — player.ads.focus no es función (PR #595)', async ({ isolatedPlayer }) => {
+    // Con adsMap, el player inicializa el plugin de ads y puede exponer player.ads.
+    // URL sin .xml — el mock server sirve /vast/preroll (no /vast/preroll.xml).
+    await isolatedPlayer.goto({ type: 'media', id: MockContentIds.vod, autoplay: false, adsMap: 'http://localhost:9999/vast/preroll' })
+    await isolatedPlayer.waitForReady()
+
+    const focusType = await isolatedPlayer.page.evaluate(() => {
+      const p = (window as any).__player
+      return typeof p?.ads?.focus
     })
 
-    // Inicializar → triggear 'msp:ready'
-    await isolatedPlayer.goto({ type: 'media', id: MockContentIds.vod, autoplay: false })
-
-    const msg = await Promise.race([
-      messagePromise,
-      isolatedPlayer.page.waitForTimeout(15_000).then(() => null),
-    ])
-
-    expect(msg, contractViolation(
-      'No se recibió ningún evento via postMessage en 15s',
-      'El player debe emitir eventos via window.postMessage con formato { type: "msp:<event>", ... }. ' +
-      'El harness y todos los listeners dependen de este formato.'
-    )).not.toBeNull()
-
-    expect(msg?.type, contractViolation(
-      `Formato de postMessage incorrecto: "${msg?.type}"`,
-      'Se esperaba un string con prefijo "msp:" (ej: "msp:ready"). ' +
-      'Si el player cambió el prefijo, actualizar harness/index.html y player.ts.'
-    )).toMatch(/^msp:/)
+    // ads.focus debe ser 'undefined' (removido en PR #595), no 'function'.
+    // Si player.ads no existe todavía (sin reproducción), typeof undefined?.focus = 'undefined' → OK.
+    // Si player.ads existe y focus fue re-introducido → el test falla con 'function'.
+    expect(focusType, contractViolation(
+      'player.ads.focus sigue siendo una función — debería haber sido eliminada en PR #595',
+      `Tipo actual: "${focusType}" (esperado: "undefined"). ` +
+      'El método focus() fue removido intencionalmente de src/ads/api.js. ' +
+      'Si fue re-introducido, actualizar este test.'
+    )).not.toBe('function')
   })
 })

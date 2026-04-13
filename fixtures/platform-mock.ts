@@ -40,6 +40,7 @@ const FIXTURES = {
   },
   player: {
     default: readFixture('player/default.json'),
+    audio: readFixture('player/audio.json'),
     radio: readFixture('player/radio.json'),
     compact: readFixture('player/compact.json'),
   },
@@ -54,6 +55,19 @@ const FIXTURES = {
 // funcione correctamente sin importar si se corre en dev, staging o prod.
 export async function setupPlatformMocks(page: Page): Promise<void> {
   const { platformDomain } = getEnvironmentConfig()
+
+  // El audio view player solicita datos de waveform a platform-devel.s-mdstrm.com
+  // para renderizar la visualización de ondas de audio. Con mock content IDs
+  // este endpoint puede colgar (el servidor no responde para IDs inexistentes).
+  // Interceptamos con un array vacío — el player lo maneja gracefully.
+  await page.route('**/platform-devel.s-mdstrm.com/waveform/**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([]),
+    })
+  })
+
   await page.route(`**/${platformDomain}/**`, async (route) => {
     const url = route.request().url()
     const parsedPath = new URL(url).pathname
@@ -126,7 +140,7 @@ export async function mockContentConfig(
   await page.route(`**/${platformDomain}/**`, async (route) => {
     const parsedPath = new URL(route.request().url()).pathname
     if (parsedPath.includes('/player')) {
-      await route.continue()
+      await route.fallback()
       return
     }
     await route.fulfill({
@@ -148,7 +162,7 @@ export async function mockPlayerConfig(
   await page.route(`**/${platformDomain}/**`, async (route) => {
     const parsedPath = new URL(route.request().url()).pathname
     if (!parsedPath.includes('/player')) {
-      await route.continue()
+      await route.fallback()
       return
     }
     await route.fulfill({
@@ -156,6 +170,28 @@ export async function mockPlayerConfig(
       contentType: 'application/json',
       body: JSON.stringify(merged),
     })
+  })
+}
+
+/**
+ * Sobrescribe el player config para usar view: audio.
+ * Llamar DENTRO del test body (después de que isolatedPlayer se inicialice) para
+ * que esta ruta tenga precedencia LIFO sobre la de setupPlatformMocks.
+ * Usa route.fallback() para que las requests de contenido sigan yendo a setupPlatformMocks.
+ */
+export async function mockAudioPlayerConfig(page: Page): Promise<void> {
+  const { platformDomain } = getEnvironmentConfig()
+  await page.route(`**/${platformDomain}/**`, async (route) => {
+    const parsedPath = new URL(route.request().url()).pathname
+    if (parsedPath.includes('/player')) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: FIXTURES.player.audio,
+      })
+      return
+    }
+    await route.fallback()
   })
 }
 
@@ -167,7 +203,7 @@ export async function mockContentError(
   await page.route(`**/${platformDomain}/**`, async (route) => {
     const parsedPath = new URL(route.request().url()).pathname
     if (parsedPath.includes('/player')) {
-      await route.continue()
+      await route.fallback()
       return
     }
     await route.fulfill({

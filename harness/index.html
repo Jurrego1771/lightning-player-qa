@@ -63,6 +63,7 @@
             'programdatetime', 'adblockerDetected', 'share',
             'levelchange', 'levelchanged',
             'metadataloading', 'metadataloaded', 'metadatachanged',
+            'dismissButton',
           ]
 
           var HTML5_EVENTS = [
@@ -122,7 +123,10 @@
           // ── Backfill de eventos ya disparados antes de registrar listeners ─
           // Con streams locales y autoplay, el player puede estar playing antes
           // de que esta Promise resuelva. Sintetizamos los estados actuales.
-          if (player.status === 'playing' || (!player.paused && player.currentTime > 0)) {
+          // Backfill play/playing si el player ya está corriendo cuando resuelve la Promise.
+          // Condición extendida: incluye !player.paused para capturar autoplay donde
+          // currentTime puede ser 0 aún pero play ya se disparó.
+          if (player.status === 'playing' || player.status === 'buffering' || !player.paused) {
             if (!window.__qa.events.includes('playing')) window.__qa.events.push('playing')
             if (!window.__qa.events.includes('play'))    window.__qa.events.push('play')
           }
@@ -138,6 +142,13 @@
           // Se backfillan incondicionalmente porque player.readyState no está expuesto.
           if (!window.__qa.events.includes('loaded')) window.__qa.events.push('loaded')
           if (!window.__qa.events.includes('metadataloaded')) window.__qa.events.push('metadataloaded')
+          // Backfill error si el player inicializó en estado de error
+          // (el evento 'error' puede dispararse durante la carga de config, antes de que
+          // esta Promise resuelva, por lo que el listener no lo captura a tiempo)
+          if (player.status === 'error' || window.__qa.errors.length > 0) {
+            if (!window.__qa.events.includes('error')) window.__qa.events.push('error')
+          }
+
           // El player siempre está en estado ready cuando la Promise resuelve
           window.__qa.ready = true
           if (!window.__qa.events.includes('ready')) window.__qa.events.push('ready')
@@ -151,6 +162,8 @@
           var msg = '[harness] Error en loadMSPlayer: ' + (err && err.message ? err.message : String(err))
           console.error(msg, err)
           window.__qa.initError = msg
+          window.__qa.errors.push({ message: msg })
+          if (!window.__qa.events.includes('error')) window.__qa.events.push('error')
           document.getElementById('harness-error').textContent = msg
           document.getElementById('harness-error').style.display = 'block'
         })
