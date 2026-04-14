@@ -1,0 +1,12 @@
+{
+  "id": "com.mediastream.lightningqa",
+  "version": "1.0.0",
+  "vendor": "Mediastream",
+  "type": "web",
+  "main": "index.html",
+  "title": "Lightning QA",
+  "icon": "icon.png",
+  "largeIcon": "largeIcon.png",
+  "inspectable": true,
+  "resolution": "1920x1080"
+}

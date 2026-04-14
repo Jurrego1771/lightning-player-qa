@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lightning QA — webOS TV</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; width: 1920px; height: 1080px; overflow: hidden; }
+    #player-container { width: 1920px; height: 1080px; }
+  </style>
+
+  <!--
+    qa-harness.js debe cargarse PRIMERO — define window.__qa y window.__initPlayer
+    antes de que el script del player esté disponible.
+  -->
+  <script src="qa-harness.js"></script>
+  <script src="debug-overlay.js"></script>
+</head>
+<body>
+  <div id="player-container"></div>
+
+  <script>
+    // ── Leer parámetros de lanzamiento ────────────────────────────────────────
+    //
+    // La app recibe parámetros via el evento webOSLaunch (ares-launch --params '{}')
+    // o via query string (para desarrollo con hosted mode).
+    //
+    // Parámetros soportados:
+    //   type       — 'media' | 'live' | 'dvr' | 'episode' (default: 'media')
+    //   id         — content ID de la plataforma Mediastream (default: vodShort)
+    //   autoplay   — boolean (default: true)
+    //   env        — 'dev' | 'staging' | 'prod' (default: 'dev')
+
+    var PLAYER_SCRIPTS = {
+      dev:     'https://player.cdn.mdstrm.com/lightning_player/develop/api.js',
+      staging: 'https://player.cdn.mdstrm.com/lightning_player/staging/api.js',
+      prod:    'https://player.cdn.mdstrm.com/lightning_player/api.js',
+    }
+
+    // Default config — vodShort del ambiente DEV
+    var DEFAULT_CONFIG = {
+      type:     'media',
+      id:       '69d2f1e0461dd502cd921ad6',
+      autoplay: true,
+    }
+
+    function getQueryParams() {
+      var params = {}
+      var search = window.location.search.slice(1)
+      if (!search) return params
+      search.split('&').forEach(function(pair) {
+        var kv = pair.split('=')
+        if (kv[0]) params[decodeURIComponent(kv[0])] = decodeURIComponent(kv[1] || '')
+      })
+      return params
+    }
+
+    function buildConfig(launchParams) {
+      var qp = getQueryParams()
+      return {
+        type:     launchParams.type     || qp.type     || DEFAULT_CONFIG.type,
+        id:       launchParams.id       || qp.id       || DEFAULT_CONFIG.id,
+        autoplay: launchParams.autoplay !== undefined
+          ? launchParams.autoplay
+          : (qp.autoplay === 'false' ? false : DEFAULT_CONFIG.autoplay),
+      }
+    }
+
+    function loadPlayerScript(env, callback) {
+      var url = PLAYER_SCRIPTS[env] || PLAYER_SCRIPTS['dev']
+      var script = document.createElement('script')
+      script.src = url
+      script.onload = callback
+      script.onerror = function() {
+        window.__qa.initError = 'Error cargando player script desde: ' + url
+        window.__qa.errors.push({ message: window.__qa.initError })
+      }
+      document.head.appendChild(script)
+    }
+
+    function initWithConfig(launchParams) {
+      var env = launchParams.env || getQueryParams().env || 'dev'
+      var config = buildConfig(launchParams)
+
+      loadPlayerScript(env, function() {
+        window.__initPlayer(config)
+      })
+    }
+
+    // ── Escuchar evento de lanzamiento de webOS ───────────────────────────────
+    document.addEventListener('webOSLaunch', function(e) {
+      var params = e.detail || {}
+      initWithConfig(params)
+    })
+
+    // ── Re-lanzamiento (app ya abierta, se lanza con nuevos params) ───────────
+    document.addEventListener('webOSRelaunch', function(e) {
+      var params = e.detail || {}
+      // Si ya hay player, hacer load() en lugar de reinicializar
+      if (window.__player && params.id) {
+        window.__qa.events = []
+        window.__qa.ready = false
+        window.__player.load({ type: params.type || 'media', id: params.id })
+      } else {
+        initWithConfig(params)
+      }
+    })
+
+    // ── Fallback para desarrollo / hosted mode ────────────────────────────────
+    // Si webOSLaunch no se dispara (hosted mode, browser desktop), inicializar
+    // con los parámetros de la query string o los defaults.
+    window.addEventListener('load', function() {
+      // Dar 500ms para que webOSLaunch pueda dispararse primero
+      setTimeout(function() {
+        if (!window.__qa.initialized && !window.__qa.initError) {
+          initWithConfig({})
+        }
+      }, 500)
+    })
+  </script>
+</body>
+</html>

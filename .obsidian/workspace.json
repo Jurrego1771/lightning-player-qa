@@ -1,0 +1,228 @@
+{
+  "main": {
+    "id": "6cc5157bb65d38dd",
+    "type": "split",
+    "children": [
+      {
+        "id": "361a16719bc86e4e",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "25e5ddc74e5914c5",
+            "type": "leaf",
+            "state": {
+              "type": "graph",
+              "state": {},
+              "icon": "lucide-git-fork",
+              "title": "Vista gráfica"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "8a7febf06ecd34dc",
+    "type": "split",
+    "children": [
+      {
+        "id": "92bb7dc6a9918a79",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "2c005823077b6cff",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Explorador de archivos"
+            }
+          },
+          {
+            "id": "bba863f95004beb2",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Buscar"
+            }
+          },
+          {
+            "id": "32ca54b917c32d7f",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Marcadores"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "a6990d28bc5b5f6d",
+    "type": "split",
+    "children": [
+      {
+        "id": "62eb72fe81090f6d",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "fc0c96318dcda466",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Enlaces entrantes"
+            }
+          },
+          {
+            "id": "9c28a8bdbb42df5f",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Enlaces salientes"
+            }
+          },
+          {
+            "id": "0a7cbbd5d520f938",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Etiquetas"
+            }
+          },
+          {
+            "id": "4d60d243dd41b1b0",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "Todas las propiedades"
+            }
+          },
+          {
+            "id": "d08d2f04d92f0790",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Esquema"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Abrir selector rápido": false,
+      "graph:Abrir vista gráfica": false,
+      "canvas:Crear nuevo lienzo": false,
+      "daily-notes:Abrir la nota de hoy": false,
+      "templates:Insertar plantilla": false,
+      "command-palette:Abrir paleta de comandos": false,
+      "bases:Crear nueva base": false
+    }
+  },
+  "active": "25e5ddc74e5914c5",
+  "lastOpenFiles": [
+    "flaky-results/runs/2026-04-13T23-29-22-581Z.json",
+    "playwright-report/data/85699d36edae89783f41ca0edbbe3cc6c8316708.zip",
+    "playwright-report/data/0a16a6dfa5c293e6203e70a5c6626ee047ba9467.zip",
+    "playwright-report/data/d4cb6521deb0ad18b801942d1e0f6eb43bb1d022.zip",
+    "playwright-report/data/4a7724e13d64ff7d67267fe8559b68d010a63ef1.zip",
+    "playwright-report/data/2b3f36f43ac83d75356ebc9e080e0394714c51b1.md",
+    "playwright-report/data/cf86e2631ace790fd697692c09ddc69843887368.zip",
+    "playwright-report/data/c242759b1747245fe83f907023c03b62745e2258.md",
+    "playwright-report/data/8ec7d9be60a207ce9e0eaf2e74ec0077d4ffaba5.png",
+    "playwright-report/data/8d7d4f23e87157149b5d87e53e126a4f49d66b64.zip",
+    "playwright-report/data/b5197761a8e07b128a0e4d4074eb6ede53cb2ea4.zip",
+    "playwright-report/data/514555ab196c5f65531044c84b98dc668f9772e7.md",
+    "playwright-report/data/595806278ba86e62f59253553fe108e085bf8de0.zip",
+    "playwright-report/data/a3cb408cfb96ac69df8ea396122847a09499c2e4.zip",
+    "playwright-report/data/c1bcdd1cbc60d4c014f4288c6c58110c432d3648.md",
+    "playwright-report/data/cbdbc261e72a1b52a616ab8d2c8fe47a7d07f881.zip",
+    "playwright-report/data/469c75b1c46b8093edad04083b4fc2511a40f434.md",
+    "playwright-report/data/4bab0cf8cdda3a22e45f52f24e2b22b6e8df0e52.md",
+    "playwright-report/data/f89d1b29ac012c3d61334a03a5bc303b67d00b90.md",
+    "playwright-report/data/2448d85aa07967b0d3a12d486b70fcd84b560259.png",
+    "test-results/e2e-tv-ui-TV-UI-—-Back-Arr-c23e4-op-solo-TV-skin-lo-incluye--webkit/error-context.md",
+    "test-results/e2e-tv-ui-TV-UI-—-Back-Arr-c23e4-op-solo-TV-skin-lo-incluye--webkit/test-failed-1.png",
+    "test-results/e2e-tv-ui-TV-UI-—-Back-Arr-c9175-también-emite-dismissButton-webkit/error-context.md",
+    "test-results/e2e-tv-ui-TV-UI-—-Back-Arr-c9175-también-emite-dismissButton-webkit/test-failed-1.png",
+    "test-results/e2e-tv-ui-TV-UI-—-Back-Arr-28001-en-el-harness-QA-qa-events--webkit/error-context.md",
+    "test-results/e2e-tv-ui-TV-UI-—-Back-Arr-28001-en-el-harness-QA-qa-events--webkit/test-failed-1.png",
+    "test-results/e2e-tv-ui-TV-UI-—-Back-Arr-8b8f0-ite-el-evento-dismissButton-webkit/error-context.md",
+    "test-results/e2e-tv-ui-TV-UI-—-Back-Arr-8b8f0-ite-el-evento-dismissButton-webkit/test-failed-1.png",
+    "test-results/e2e-tv-ui-TV-UI-—-Back-Arr-28001-en-el-harness-QA-qa-events--mobile-chrome/error-context.md",
+    "test-results/e2e-tv-ui-TV-UI-—-Back-Arr-28001-en-el-harness-QA-qa-events--mobile-chrome/test-failed-1.png",
+    "test-results/e2e-tv-ui-TV-UI-—-Back-Arr-8b8f0-ite-el-evento-dismissButton-mobile-chrome/error-context.md",
+    "test-results/e2e-tv-ui-TV-UI-—-Back-Arr-8b8f0-ite-el-evento-dismissButton-mobile-chrome/test-failed-1.png",
+    "test-results/e2e-tv-ui-TV-UI-—-Back-Arr-3c0e0-kin-durante-la-reproducción-webkit/error-context.md",
+    "test-results/e2e-tv-ui-TV-UI-—-Back-Arr-3c0e0-kin-durante-la-reproducción-webkit/test-failed-1.png",
+    "test-results/e2e-tv-tizen-back-key-TV-B-002af-justes-sin-cerrar-el-player-firefox/error-context.md",
+    "test-results/e2e-tv-tizen-back-key-TV-B-002af-justes-sin-cerrar-el-player-firefox/test-failed-1.png",
+    "test-results/e2e-tv-back-key-codes-TV-S-81e07--seeks-rápidos-consecutivos-webkit-retry1/error-context.md",
+    "test-results/e2e-tv-tizen-back-key-TV-B-582cb-ertos-no-destruye-el-player-webkit-retry1/error-context.md",
+    "test-results/e2e-tv-back-key-codes-TV-S-81e07--seeks-rápidos-consecutivos-webkit/error-context.md",
+    "test-results/e2e-tv-back-key-codes-TV-S-49583-ote-Bug-1-—-lógica-del-fix--webkit-retry1/error-context.md",
+    "test-results/e2e-tv-tizen-back-key-TV-B-582cb-ertos-no-destruye-el-player-webkit/error-context.md",
+    "test-results/e2e-tv-tizen-back-key-TV-B-4d6d5-ítulos-sin-cerrar-el-player-webkit-retry1/error-context.md",
+    "test-results/e2e-tv-back-key-codes-TV-S-49583-ote-Bug-1-—-lógica-del-fix--webkit/error-context.md",
+    "test-results/e2e-tv-tizen-back-key-TV-B-4d6d5-ítulos-sin-cerrar-el-player-webkit/error-context.md",
+    "test-results/e2e-tv-back-key-codes-TV-B-e03c5-o-se-presionan-en-secuencia-webkit-retry1/error-context.md",
+    "test-results/e2e-tv-tizen-back-key-TV-B-002af-justes-sin-cerrar-el-player-webkit-retry1/error-context.md"
+  ]
+}

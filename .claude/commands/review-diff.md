@@ -38,12 +38,43 @@ Confirma al usuario qué se va a analizar:
    Modo: [completo | dry-run]
 ```
 
+## Paso 0.5 — Pre-procesar el diff (script)
+
+**SIEMPRE ejecutar antes del agente diff-analyzer.** El script hace todo el fetching
+y pre-procesamiento — el agente solo recibe datos ya estructurados.
+
+```bash
+bash scripts/prepare-diff.sh [input]
+```
+
+Donde `[input]` es exactamente lo que el usuario especificó:
+- PR #42 → `bash scripts/prepare-diff.sh 42`
+- Rama → `bash scripts/prepare-diff.sh feature/pip-mode`
+- Commit → `bash scripts/prepare-diff.sh abc1234`
+- Sin input → `bash scripts/prepare-diff.sh` (último commit en main)
+- `--qa` → saltar este paso (es para cambios en el repo QA, no en el player)
+
+**Si el script falla** (gh no autenticado, repo no encontrado):
+```
+⚠️  El script prepare-diff.sh falló.
+    Opciones:
+    a) Pegar el diff directamente — el agente lo analizará desde texto
+    b) Verificar gh auth status y reintentar
+```
+En caso (a), continuar al Paso 1 pasando el diff al agente directamente.
+
+**Si el script termina bien**, muestra brevemente:
+```
+✅ Diff pre-procesado: N archivos (M filtrados como ruido)
+   Módulos: [lista]
+```
+
 ## Paso 1 — Análisis de riesgo (diff-analyzer)
 
 Delega al agente `diff-analyzer`:
 
-> Analiza el siguiente cambio y produce tmp/pipeline/risk-map.json:
-> [input del usuario — rama, commit, o "último commit de D:\repos\mediastream\lightning-player"]
+> Lee tmp/pipeline/diff-input.json (ya generado por prepare-diff.sh) y produce
+> tmp/pipeline/risk-map.json con el análisis de riesgo completo.
 
 **Espera el resultado.** Muestra el risk map al usuario.
 

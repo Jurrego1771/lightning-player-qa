@@ -1,0 +1,6 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]: Inspectable WebContents
+  - paragraph [ref=e4]:
+    - link "Lightning QA — webOS TV" [ref=e5] [cursor=pointer]:
+      - /url: /devtools/inspector.html?ws=localhost:9222/devtools/page/35153846547DBD3D4384B5D59810B4A9
+      - generic [ref=e6]: Lightning QA — webOS TV
