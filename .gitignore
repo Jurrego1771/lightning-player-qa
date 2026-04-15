@@ -40,3 +40,4 @@ pipeline-history/
 # Temporales
 *.log
 *.tmp
+.claude/settings.local.json

@@ -1,40 +1,35 @@
 /**
  * reels-metadata-dedup.spec.ts — Deduplicación de eventos metadata en Reels
  *
- * Cubre: fix/issue-627 — ReelsControls agrega mapMetadata()/getMetadataKey() y
- * lastMetadataKeyRef para suprimir emisiones duplicadas de metadatachanged cuando el
- * mismo item de Reels se re-renderiza internamente.
+ * Cubre: fix/issue-627 — prevención de emisiones duplicadas de metadatachanged
+ * cuando el mismo item de Reels se re-renderiza internamente.
  *
- * Cómo funciona el fix:
- *   - Al montar ReelsControls, se suscribe a currentItemApi.on('metadatachanged')
- *   - Calcula una key: `id|src` para cada metadata recibida (getMetadataKey)
- *   - Si la key es la misma que la anterior (lastMetadataKeyRef), suprime la emisión
- *   - Solo propaga metadatachanged cuando el item cambia realmente
- *   - Metadata sin content id (ej: ads) se suprime siempre
+ * Cómo funciona la deduplicación (src/metadata/exposeMetadata.js):
+ *   - useExposeMetadata() mantiene una ref (metadataRef) con el último valor emitido
+ *   - En cada render compara currentMetadata vs metadataRef.current con Lodash isEqual()
+ *   - Solo emite metadatachanged si el objeto completo difiere del anterior
+ *   - Debounce de 100ms para absorber flushes síncronos de React
  *
  * ── Alcance de estos tests de integración ──────────────────────────────────────
  *
- * Con isolatedPlayer + mock content (vod.json), el player NO emite metadatachanged.
- * Motivo: getMetadataKey() requiere metadata.id en el payload del evento, que el
- * player solo popula cuando el content tiene un id real de la plataforma.
- * Con mock content, el player trata la metadata como "ads metadata" y la suprime.
+ * Con isolatedPlayer + mock content (vod.json), el player puede emitir 0 o 1 vez
+ * metadatachanged dependiendo de si el mock tiene un id reconocible.
+ * El invariante que validamos: el conteo NO sube durante la ventana de estabilización,
+ * sea 0 (mock) o 1 (content real). Cualquier subida es un bug de dedup.
  *
- * Por eso estos tests de integración validan AUSENCIA DE DUPLICADOS, no que el
- * evento se emita. Ambas cosas son verdad:
- *   - 0 eventos = mock content sin id real → no hay duplicados (pasa con 0)
- *   - 1 evento  = content real con id     → no hay duplicados (pasa con 1)
- *   - 2+ eventos = bug de duplicación     → FALLA correctamente
+ *   - 0 eventos = mock content sin id de plataforma → no hay duplicados (pasa con 0)
+ *   - 1 evento  = content con id real               → no hay duplicados (pasa con 1)
+ *   - 2+ eventos = bug de duplicación               → FALLA correctamente
  *
  * ── Dónde están los tests de regla de negocio ──────────────────────────────────
  *
  * Las siguientes validaciones requieren content real (plataforma DEV):
- *   - metadatachanged SE EMITE al menos una vez
- *   - el payload incluye title, mediaId, etc.
- *   - metadatachanged se re-emite post-ad (flujo 5 reels → ad → reel 6)
+ *   - player.metadata.id cambia al hacer swipe
+ *   - metadatachanged se re-emite post-ad (flujo reels → ad card → reel siguiente)
  *
  * Ver: tests/e2e/reels-playback.spec.ts
- *   · "Reels — Playback básico": validación positiva + payload
- *   · "Reels — Regresión post-ad": flujo 5 reels → ad → reel 6 → metadata
+ *   · "Reels — Playback básico": validación positiva + payload via player.metadata
+ *   · "Reels — Regresión post-ad": flujo reel → ad card → reel, validado via player.metadata
  *
  * Fixture: isolatedPlayer (plataforma mockeada + stream HLS local)
  * Tag: @integration
@@ -66,7 +61,7 @@ test.describe('Reels — Deduplicación de metadata (fix/issue-627)', { tag: ['@
     )
 
     // Ventana de 3s: tiempo suficiente para que re-renders internos emitan duplicados
-    // si el fix de lastMetadataKeyRef no funcionara
+    // si la deduplicación por isEqual() dejara de funcionar
     await page.waitForTimeout(3_000)
 
     const countAfterWait = await page.evaluate(() =>
@@ -75,7 +70,7 @@ test.describe('Reels — Deduplicación de metadata (fix/issue-627)', { tag: ['@
 
     expect(
       countAfterWait,
-      `metadatachanged no debe emitirse más veces durante la estabilización (fix/issue-627). ` +
+      `metadatachanged no debe emitirse más veces durante la estabilización (dedup por isEqual). ` +
       `Inicio: ${countAfterInit}, después: ${countAfterWait}`
     ).toBe(countAfterInit)
   })
@@ -98,7 +93,7 @@ test.describe('Reels — Deduplicación de metadata (fix/issue-627)', { tag: ['@
 
     expect(
       metadataCount,
-      'un solo item de Reels NO debe generar más de 1 metadatachanged (fix/issue-627)'
+      'un solo item de Reels NO debe generar más de 1 metadatachanged (dedup por isEqual)'
     ).toBeLessThanOrEqual(1)
   })
 
