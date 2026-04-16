@@ -70,7 +70,13 @@ function reelsConfig(autoplay: boolean): InitConfig {
 async function goUntilAdCard(
   page: import('@playwright/test').Page,
   maxSteps = 10
-): Promise<number> {
+): Promise<{ step: number; lastReelId: string }> {
+  // lastReelId: id del último reel real antes del ad card.
+  // Se usa para detectar falsos positivos post-ad: si player.metadata revierte
+  // al reel previo (type:'media', id !== adId) la aserción post-ad fallaría
+  // sin esta referencia. Con ella verificamos que el id es genuinamente nuevo.
+  let lastReelId = ''
+
   for (let step = 1; step <= maxSteps; step++) {
     const idBefore = await page.evaluate(() => (window as any).__player?.metadata?.id)
 
@@ -98,15 +104,21 @@ async function goUntilAdCard(
     const isAdCard = !metadata?.type
 
     if (isAdCard) {
-      return step
+      return { step, lastReelId }
     }
+
+    // Reel real — registrar su id para referencia post-ad
+    if (metadata?.id) lastReelId = metadata.id as string
   }
   throw new Error(`No se encontró ad card en los primeros ${maxSteps} reels (ads.interval puede ser > ${maxSteps})`)
 }
 
 test.describe('Reels — Playback básico (E2E)', { tag: ['@e2e'] }, () => {
 
-  test('Reels se inicializa correctamente y alcanza estado playing', async ({ player }) => {
+  test('Reels se inicializa correctamente y alcanza estado playing', async ({ player, browserName }) => {
+    // webkit: Playwright WebKit no soporta reproducción HLS/MSE en Reels — validado en chromium/firefox
+    test.skip(browserName === 'webkit', 'webkit: no soporta reproducción Reels (HLS/MSE) — validado en chromium/firefox/mobile-chrome')
+
     // Arrange
     await player.goto(reelsConfig(true))
 
@@ -117,29 +129,44 @@ test.describe('Reels — Playback básico (E2E)', { tag: ['@e2e'] }, () => {
   })
 
   test('metadata se emite exactamente una vez al cargar el primer item de Reels', async ({ player, page }) => {
-    // Arrange
+    // Valida dos cosas independientes:
+    //   1. Emisión inicial: metadatachanged se emitió al menos 1 vez durante la carga
+    //   2. Estabilización: no se vuelve a emitir por re-renders internos post-load
+    //
+    // Sin verificar (1), el test pasaría aunque el evento nunca disparara:
+    //   queue limpiada → 0 eventos → <= 1 → false positive.
+    // Sin verificar (2), el test pasaría aunque metadatachanged se emitiera 10 veces.
     await player.goto(reelsConfig(true))
     await player.waitForEvent('playing', 25_000)
 
-    // Act — limpiar la cola de eventos y esperar un periodo de estabilización.
-    // exposeMetadata.js usa isEqual() para deduplicar: si el item no cambia,
-    // no debe emitirse metadatachanged adicional por re-renders internos.
-    await page.evaluate(() => { (window as any).__qa.events = [] })
+    // ── Verificación 1: la emisión inicial ocurrió ─────────────────────────
+    // Se lee ANTES de limpiar la cola para capturar lo que se emitió durante la carga.
+    const countAtLoad = await page.evaluate(() =>
+      (window as any).__qa.events.filter((e: string) => e === 'metadatachanged').length
+    )
+    expect(
+      countAtLoad,
+      'metadatachanged debe emitirse al menos una vez durante la carga del primer item'
+    ).toBeGreaterThanOrEqual(1)
 
-    // Ventana de 2s para que cualquier emisión duplicada tenga tiempo de ocurrir
+    // ── Verificación 2: no hay re-emisiones en la ventana de estabilización ─
+    // exposeMetadata.js usa isEqual() para deduplicar re-renders internos.
+    await page.evaluate(() => { (window as any).__qa.events = [] })
     await page.waitForTimeout(2_000)
 
-    // Assert — el conteo no debe superar 1 para el item ya estabilizado
-    const events: string[] = await page.evaluate(() => (window as any).__qa.events)
-    const metadataCount = events.filter((e) => e === 'metadatachanged').length
-
+    const countDuringStabilization = await page.evaluate(() =>
+      (window as any).__qa.events.filter((e: string) => e === 'metadatachanged').length
+    )
     expect(
-      metadataCount,
-      'metadata no debe emitirse más de una vez para el mismo item estabilizado (isEqual dedup)'
-    ).toBeLessThanOrEqual(1)
+      countDuringStabilization,
+      'metadatachanged no debe re-emitirse durante la ventana de estabilización post-load (isEqual dedup)'
+    ).toBe(0)
   })
 
-  test('currentTime avanza durante reproducción del item de Reels', async ({ player }) => {
+  test('currentTime avanza durante reproducción del item de Reels', async ({ player, browserName }) => {
+    // webkit: Playwright WebKit no soporta reproducción HLS/MSE en Reels — validado en chromium/firefox
+    test.skip(browserName === 'webkit', 'webkit: no soporta reproducción Reels (HLS/MSE) — validado en chromium/firefox/mobile-chrome')
+
     // Arrange
     await player.goto(reelsConfig(true))
     await player.waitForEvent('playing', 25_000)
@@ -190,21 +217,40 @@ test.describe('Reels — Metadata por swipe de navegación', { tag: ['@e2e', '@r
     expect(typeof title0).toBe('string')
 
     // ── Swipe → reel 2 ────────────────────────────────────────────────────
+    // Borrar el payload previo del evento antes de navegar.
+    // Sin delete, el poll podría leer el eventData del reel inicial y resolver
+    // inmediatamente — el delete fuerza a esperar la nueva emisión.
+    await page.evaluate(() => { delete (window as any).__qa.eventData['metadatachanged'] })
     await page.evaluate(() => { (window as any).__qa.events = [] })
     await page.evaluate(() => (window as any).__player?.goNext?.())
 
-    // Esperar a que player.metadata.id cambie — item activo cambió
+    // Aserción combinada — evento + payload:
+    //   Leer eventData prueba (a) que el evento disparó y (b) qué id envió.
+    //   Solo resuelve cuando metadatachanged se emitió con un id diferente al inicial.
     await expect.poll(
-      () => page.evaluate(() => (window as any).__player?.metadata?.id),
-      { timeout: 8_000, message: 'player.metadata.id debe cambiar al hacer swipe al reel 2' }
+      async () => {
+        const payload = await page.evaluate(() => (window as any).__qa.eventData['metadatachanged'])
+        if (!payload?.id) return null   // evento aún no disparó — seguir esperando
+        return payload.id
+      },
+      { timeout: 8_000, message: 'metadatachanged debe emitirse con nuevo id al navegar al reel 2' }
     ).not.toBe(id0)
 
-    const id1 = await page.evaluate(() => (window as any).__player?.metadata?.id as string)
-    const title1 = await page.evaluate(() => (window as any).__player?.metadata?.title as string)
-    expect(id1, 'reel 2 debe tener id diferente al reel 1').not.toBe(id0)
-    expect(title1, 'reel 2 debe tener title diferente al reel 1').not.toBe(title0)
+    // id y title se leen del PAYLOAD DEL EVENTO (no del estado) — fuente de verdad
+    const eventPayload1 = await page.evaluate(() => (window as any).__qa.eventData['metadatachanged'])
+    const id1 = eventPayload1.id as string
+    const title1 = eventPayload1.title as string
 
-    // Ventana de estabilización: metadatachanged no debe dispararse de nuevo
+    expect(id1, 'reel 2: id del evento diferente al reel inicial').not.toBe(id0)
+    expect(title1, 'reel 2: title del evento diferente al inicial').not.toBe(title0)
+
+    // Consistencia estado ↔ evento: player.metadata.id debe coincidir con el payload.
+    // Una discrepancia indica que el evento se emitió con datos obsoletos o que
+    // el estado y la notificación quedaron desincronizados.
+    const stateId1 = await page.evaluate(() => (window as any).__player?.metadata?.id as string)
+    expect(stateId1, 'player.metadata.id debe coincidir con el payload de metadatachanged (reel 2)').toBe(id1)
+
+    // Estabilización: el evento no debe re-emitirse por re-renders internos de React
     const countAfterSwipe1 = await page.evaluate(() =>
       (window as any).__qa.events.filter((e: string) => e === 'metadatachanged').length
     )
@@ -218,18 +264,28 @@ test.describe('Reels — Metadata por swipe de navegación', { tag: ['@e2e', '@r
     ).toBe(countAfterSwipe1)
 
     // ── Swipe → reel 3 ────────────────────────────────────────────────────
+    await page.evaluate(() => { delete (window as any).__qa.eventData['metadatachanged'] })
     await page.evaluate(() => { (window as any).__qa.events = [] })
     await page.evaluate(() => (window as any).__player?.goNext?.())
 
     await expect.poll(
-      () => page.evaluate(() => (window as any).__player?.metadata?.id),
-      { timeout: 8_000, message: 'player.metadata.id debe cambiar al hacer swipe al reel 3' }
+      async () => {
+        const payload = await page.evaluate(() => (window as any).__qa.eventData['metadatachanged'])
+        if (!payload?.id) return null
+        return payload.id
+      },
+      { timeout: 8_000, message: 'metadatachanged debe emitirse con nuevo id al navegar al reel 3' }
     ).not.toBe(id1)
 
-    const id2 = await page.evaluate(() => (window as any).__player?.metadata?.id as string)
-    const title2 = await page.evaluate(() => (window as any).__player?.metadata?.title as string)
-    expect(id2, 'reel 3 debe tener id diferente al reel 2').not.toBe(id1)
-    expect(title2, 'reel 3 debe tener title diferente al reel 2').not.toBe(title1)
+    const eventPayload2 = await page.evaluate(() => (window as any).__qa.eventData['metadatachanged'])
+    const id2 = eventPayload2.id as string
+    const title2 = eventPayload2.title as string
+
+    expect(id2, 'reel 3: id del evento diferente al reel 2').not.toBe(id1)
+    expect(title2, 'reel 3: title del evento diferente al reel 2').not.toBe(title1)
+
+    const stateId2 = await page.evaluate(() => (window as any).__player?.metadata?.id as string)
+    expect(stateId2, 'player.metadata.id debe coincidir con el payload de metadatachanged (reel 3)').toBe(id2)
 
     const countAfterSwipe2 = await page.evaluate(() =>
       (window as any).__qa.events.filter((e: string) => e === 'metadatachanged').length
@@ -275,35 +331,44 @@ test.describe('Reels — Regresión post-ad card (fix/issue-627)', { tag: ['@e2e
     await player.assertNoInitError()
 
     // Navegar uno a uno hasta encontrar el ad card.
-    // goUntilAdCard deja el player posicionado EN el ad card.
-    const adCardStep = await goUntilAdCard(page)
+    // goUntilAdCard deja el player posicionado EN el ad card y retorna el id
+    // del último reel real antes del ad (lastReelId) para evitar falsos positivos.
+    const { step: adCardStep, lastReelId } = await goUntilAdCard(page)
     expect(adCardStep, `ad card encontrado en step ${adCardStep}`).toBeGreaterThan(0)
 
     // ── Swipe al reel post-ad card ─────────────────────────────────────────
     const adId = await page.evaluate(() => (window as any).__player?.metadata?.id)
 
+    // Borrar el payload previo (era el del ad card) para detectar la nueva emisión
+    await page.evaluate(() => { delete (window as any).__qa.eventData['metadatachanged'] })
     await page.evaluate(() => (window as any).__player?.goNext?.())
 
-    // Esperar a que player.metadata.id cambie (item cambió del ad card al reel)
+    // Aserción combinada — evento + payload:
+    //   · eventData existe (evento disparó post-delete)
+    //   · type === 'media' — reel real, no otro ad card
+    //   · id !== adId y id !== lastReelId — payload genuinamente nuevo (no stale)
     await expect.poll(
-      () => page.evaluate(() => (window as any).__player?.metadata?.id),
-      { timeout: 10_000, message: `player.metadata.id debe cambiar al pasar del ad card (step ${adCardStep}) al reel siguiente` }
-    ).not.toBe(adId)
+      async () => {
+        const payload = await page.evaluate(() => (window as any).__qa.eventData['metadatachanged'])
+        if (!payload?.id) return false
+        return payload.type === 'media' && payload.id !== adId && payload.id !== lastReelId
+      },
+      { timeout: 10_000, message: `metadatachanged debe emitirse con payload del nuevo reel post-ad card (step ${adCardStep})` }
+    ).toBe(true)
 
-    // El reel post-ad debe tener payload completo
-    const metadata = await page.evaluate(() => (window as any).__player?.metadata)
+    // Payload del evento (fuente primaria) y estado del player (consistencia)
+    const eventPayload = await page.evaluate(() => (window as any).__qa.eventData['metadatachanged'])
+    const stateMetadata = await page.evaluate(() => (window as any).__player?.metadata)
 
-    expect(metadata, 'player.metadata no debe ser nulo post-ad card').toBeTruthy()
-    // type:'media' — confirma que es un reel real, no otro ad
-    expect(metadata?.type, 'payload.type debe ser "media" — los ad cards no tienen type').toBe('media')
-    // id — de plataforma, no sintético (no empieza con 'ad-')
-    expect(typeof metadata?.id, 'payload.id debe ser string').toBe('string')
-    expect(metadata?.id, 'payload.id no debe ser id sintético de ad card').not.toMatch(/^ad-/)
-    // title — campo de UI que el bug dejaba vacío en pantalla
-    expect(typeof metadata?.title, 'payload.title debe ser string post-ad card').toBe('string')
-    expect((metadata?.title as string).length, 'payload.title no debe estar vacío').toBeGreaterThan(0)
-    // playerType — confirma contexto Reels
-    expect(metadata?.playerType, 'payload.playerType debe ser "reels"').toBe('reels')
+    // Verificar payload completo del evento
+    expect(typeof eventPayload.id, 'payload.id debe ser string').toBe('string')
+    expect(eventPayload.id, 'payload.id no debe ser id sintético de ad card').not.toMatch(/^ad-/)
+    expect(typeof eventPayload.title, 'payload.title debe ser string post-ad card').toBe('string')
+    expect((eventPayload.title as string).length, 'payload.title no debe estar vacío').toBeGreaterThan(0)
+    expect(eventPayload.playerType, 'payload.playerType debe ser "reels"').toBe('reels')
+
+    // Consistencia: estado interno debe coincidir con lo que el evento notificó
+    expect(stateMetadata?.id, 'player.metadata.id debe coincidir con el payload del evento post-ad').toBe(eventPayload.id)
 
     await player.assertNoInitError()
   })
@@ -320,7 +385,7 @@ test.describe('Reels — Regresión post-ad card (fix/issue-627)', { tag: ['@e2e
     await player.assertNoInitError()
 
     // Navegar hasta el ad card y verificar que su metadata no tiene 'type'
-    const adCardStep = await goUntilAdCard(page)
+    const { step: adCardStep, lastReelId } = await goUntilAdCard(page)
     expect(adCardStep, 'debe encontrarse un ad card en el feed').toBeGreaterThan(0)
 
     const adMetadata = await page.evaluate(() => (window as any).__player?.metadata)
@@ -331,30 +396,45 @@ test.describe('Reels — Regresión post-ad card (fix/issue-627)', { tag: ['@e2e
 
     // ── Fase 2: reel post-ad card ─────────────────────────────────────────
     const adId = await page.evaluate(() => (window as any).__player?.metadata?.id)
+    await page.evaluate(() => { delete (window as any).__qa.eventData['metadatachanged'] })
     await page.evaluate(() => { (window as any).__qa.events = [] })
     await page.evaluate(() => (window as any).__player?.goNext?.())
 
-    // Esperar a que el reel siguiente cargue su metadata
+    // Aserción combinada — evento + payload (igual que el test anterior):
+    //   · eventData existe (evento disparó post-delete)
+    //   · type === 'media' — reel real
+    //   · id !== adId y id !== lastReelId — payload genuinamente nuevo
     await expect.poll(
-      () => page.evaluate(() => (window as any).__player?.metadata?.type),
-      { timeout: 10_000, message: 'Fase 2: player.metadata.type debe ser "media" en el reel post-ad card' }
-    ).toBe('media')
+      async () => {
+        const payload = await page.evaluate(() => (window as any).__qa.eventData['metadatachanged'])
+        if (!payload?.id) return false
+        return payload.type === 'media' && payload.id !== adId && payload.id !== lastReelId
+      },
+      { timeout: 10_000, message: 'Fase 2: metadatachanged debe emitirse con payload del nuevo reel post-ad card' }
+    ).toBe(true)
 
-    // Verificar que player.metadata.id también cambió (diferente al ad)
-    const postAdMetadata = await page.evaluate(() => (window as any).__player?.metadata)
-    expect(postAdMetadata?.id, 'el id del reel post-ad debe ser diferente al id del ad card').not.toBe(adId)
-    expect(postAdMetadata?.id, 'el id no debe ser sintético de ad card').not.toMatch(/^ad-/)
-    expect(typeof postAdMetadata?.title).toBe('string')
-    expect((postAdMetadata?.title as string).length).toBeGreaterThan(0)
-    expect(postAdMetadata?.playerType).toBe('reels')
+    // Payload del evento y estado del player
+    const eventPayload = await page.evaluate(() => (window as any).__qa.eventData['metadatachanged'])
+    const postAdState = await page.evaluate(() => (window as any).__player?.metadata)
 
-    // El evento metadatachanged también debe haber disparado (no solo el API)
-    // Validamos que no se duplicó: ≤ 1 emisión durante la carga del reel post-ad
-    await page.waitForTimeout(2_000)
-    const eventCount = await page.evaluate(() =>
+    expect(eventPayload.id, 'el id del evento no debe ser sintético de ad card').not.toMatch(/^ad-/)
+    expect(eventPayload.id, 'el id del evento debe ser diferente al del ad card').not.toBe(adId)
+    expect(typeof eventPayload.title).toBe('string')
+    expect((eventPayload.title as string).length).toBeGreaterThan(0)
+    expect(eventPayload.playerType).toBe('reels')
+
+    // Consistencia: estado interno debe coincidir con lo que el evento notificó
+    expect(postAdState?.id, 'player.metadata.id debe coincidir con el payload del evento').toBe(eventPayload.id)
+
+    // Estabilización: el evento no debe re-emitirse
+    const countAfterLoad = await page.evaluate(() =>
       (window as any).__qa.events.filter((e: string) => e === 'metadatachanged').length
     )
-    expect(eventCount, 'metadatachanged no debe duplicarse post-ad card').toBeLessThanOrEqual(1)
+    await page.waitForTimeout(2_000)
+    const countAfterStabilization = await page.evaluate(() =>
+      (window as any).__qa.events.filter((e: string) => e === 'metadatachanged').length
+    )
+    expect(countAfterStabilization, 'metadatachanged no debe duplicarse post-ad card').toBe(countAfterLoad)
   })
 
   test('metadata es válida en 3 ciclos consecutivos de navegación por ad cards', async ({ player, page, browserName }) => {
@@ -377,11 +457,25 @@ test.describe('Reels — Regresión post-ad card (fix/issue-627)', { tag: ['@e2e
     await player.waitForEvent('playing', 25_000)
     await player.assertNoInitError()
 
-    // Helper: avanza un reel y valida player.metadata.
-    //   - Si metadata.type está ausente → es ad card → retorna null
-    //   - Si metadata.type:'media' → reel real → valida payload completo y retorna metadata
+    // Helper: avanza un reel y valida player.metadata + metadatachanged.
+    //   - Si metadata.type está ausente → es ad card → retorna null (sin validar evento)
+    //   - Si metadata.type:'media' → reel real → valida payload completo VÍA ESTADO y VÍA EVENTO
+    //
+    // IMPORTANTE: limpia eventData['metadatachanged'] ANTES del goNext() para que la
+    // presencia del payload post-navigate pruebe que el evento se emitió en ESTE swipe
+    // específico, no en uno anterior.
+    //
+    // BUG que detecta (confirmado exploración 2026-04-15, v1.0.59):
+    //   Swiper preloads slides adyacentes al reel activo. forwardMetadata() se ejecuta
+    //   para el preloaded slide, actualizando lastMetadataKeyRef con su key. Cuando
+    //   el usuario navega a ese reel (goNext()), isEqual(reelN, lastRef=reelN) → true
+    //   → metadatachanged suprimido. Ocurre desde ciclo 1 · reel 2 (primer preloaded).
+    //   player.metadata (estado del child) SÍ cambia, por eso el bug era invisible.
     const stepAndValidate = async (label: string): Promise<Record<string, unknown> | null> => {
       const idBefore = await page.evaluate(() => (window as any).__player?.metadata?.id)
+
+      // Limpiar evento ANTES de navegar — cualquier eventData post-navigate será de este swipe
+      await page.evaluate(() => { delete (window as any).__qa.eventData['metadatachanged'] })
       await page.evaluate(() => (window as any).__player?.goNext?.())
 
       // Esperar a que metadata.id cambie — ítem activo cambió
@@ -400,10 +494,10 @@ test.describe('Reels — Regresión post-ad card (fix/issue-627)', { tag: ['@e2e
 
       const metadata = await page.evaluate(() => (window as any).__player?.metadata)
 
-      // Ad card: sin campo 'type' en payload
+      // Ad card: sin campo 'type' en payload — no se espera metadatachanged para ad cards
       if (!metadata?.type) return null
 
-      // Reel real: validar payload completo
+      // ── Verificación 1: payload vía estado ───────────────────────────────────
       expect(metadata, `${label}: player.metadata no debe ser nulo`).toBeTruthy()
       expect(typeof metadata?.id, `${label}: metadata.id debe ser string`).toBe('string')
       expect((metadata?.id as string).length, `${label}: metadata.id no debe estar vacío`).toBeGreaterThan(0)
@@ -412,6 +506,35 @@ test.describe('Reels — Regresión post-ad card (fix/issue-627)', { tag: ['@e2e
       expect((metadata?.title as string).length, `${label}: metadata.title no debe estar vacío`).toBeGreaterThan(0)
       expect(metadata?.type, `${label}: metadata.type debe ser "media"`).toBe('media')
       expect(metadata?.playerType, `${label}: metadata.playerType debe ser "reels"`).toBe('reels')
+
+      // ── Verificación 2: el evento también se emitió ──────────────────────────
+      // Si metadatachanged no se emite, los consumidores externos (analytics, UI) no se
+      // enteran del cambio aunque player.metadata sí esté actualizado.
+      //
+      // BUG confirmado (exploración 2026-04-15):
+      //   Swiper preloads slides adyacentes durante la reproducción del reel activo.
+      //   forwardMetadata() se ejecuta para el slide preloaded → actualiza lastMetadataKeyRef
+      //   con el key del reel siguiente. Cuando el usuario navega a ese reel (goNext()),
+      //   isEqual(reelN, lastRef=reelN) → true → metadatachanged suprimido.
+      //   Ocurre desde ciclo 1 · reel 2 (primer slide preloaded), no solo en ciclo 2+.
+      //   player.metadata (estado) sí cambia; solo el evento queda silenciado.
+      //
+      // Poll en lugar de lectura directa: absorbe latencia IPC entre waitForFunction
+      // (CDP polling que detecta metadata.id) y la llegada del evento. Si el evento
+      // genuinamente no se emite, el poll agota su timeout y el test falla correctamente.
+      await expect.poll(
+        () => page.evaluate(() => (window as any).__qa.eventData['metadatachanged']),
+        {
+          timeout: 3_000,
+          message: `${label}: metadatachanged debe emitirse al navegar a este reel — BUG: Swiper preloads el slide adyacente y forwardMetadata() actualiza lastMetadataKeyRef antes de la navegación real; isEqual() suprime el evento al llegar al reel`,
+        }
+      ).toBeTruthy()
+      const eventPayload = await page.evaluate(() => (window as any).__qa.eventData['metadatachanged'])
+      expect(
+        eventPayload?.id,
+        `${label}: id del evento debe coincidir con player.metadata.id (estado ↔ evento)`
+      ).toBe(metadata?.id)
+
       return metadata as Record<string, unknown>
     }
 
@@ -422,6 +545,7 @@ test.describe('Reels — Regresión post-ad card (fix/issue-627)', { tag: ['@e2e
       // MAX_REELS_PER_CYCLE=6: cubre ads.interval hasta 6 con margen.
       let reelStep = 0
       let adCardFound = false
+      let lastReelId = ''
       const MAX_REELS_PER_CYCLE = 6
 
       while (reelStep < MAX_REELS_PER_CYCLE) {
@@ -431,29 +555,44 @@ test.describe('Reels — Regresión post-ad card (fix/issue-627)', { tag: ['@e2e
           adCardFound = true
           break
         }
+        // Registrar id del último reel real antes del próximo ad card
+        if (payload?.id) lastReelId = payload.id as string
       }
 
       expect(adCardFound, `ciclo ${cycle}: debe encontrarse un ad card en ≤${MAX_REELS_PER_CYCLE} pasos`).toBe(true)
 
       // ── Validar el reel post-ad card ───────────────────────────────────────
       const adId = await page.evaluate(() => (window as any).__player?.metadata?.id)
+      await page.evaluate(() => { delete (window as any).__qa.eventData['metadatachanged'] })
       await page.evaluate(() => (window as any).__player?.goNext?.())
 
+      // Aserción combinada — evento + payload:
+      //   · eventData existe (evento disparó post-delete)
+      //   · type === 'media' — reel real
+      //   · id !== adId y id !== lastReelId — payload genuinamente nuevo (no stale)
       await expect.poll(
-        () => page.evaluate(() => (window as any).__player?.metadata?.type),
-        { timeout: 20_000, message: `ciclo ${cycle}: metadata.type debe ser "media" en el reel post-ad card` }
-      ).toBe('media')
+        async () => {
+          const payload = await page.evaluate(() => (window as any).__qa.eventData['metadatachanged'])
+          if (!payload?.id) return false
+          return payload.type === 'media' && payload.id !== adId && payload.id !== lastReelId
+        },
+        { timeout: 20_000, message: `ciclo ${cycle}: metadatachanged debe emitirse con payload del nuevo reel post-ad card` }
+      ).toBe(true)
 
-      const postAdMetadata = await page.evaluate(() => (window as any).__player?.metadata)
-      expect(postAdMetadata, `ciclo ${cycle}: post-ad metadata no debe ser nulo`).toBeTruthy()
-      expect(typeof postAdMetadata?.id, `ciclo ${cycle}: post-ad id debe ser string`).toBe('string')
-      expect((postAdMetadata?.id as string).length, `ciclo ${cycle}: post-ad id no debe estar vacío`).toBeGreaterThan(0)
-      expect(postAdMetadata?.id, `ciclo ${cycle}: post-ad id no debe ser sintético`).not.toMatch(/^ad-/)
-      expect(postAdMetadata?.id, `ciclo ${cycle}: post-ad id debe ser diferente al del ad card`).not.toBe(adId)
-      expect(typeof postAdMetadata?.title, `ciclo ${cycle}: post-ad title debe ser string`).toBe('string')
-      expect((postAdMetadata?.title as string).length, `ciclo ${cycle}: post-ad title no debe estar vacío`).toBeGreaterThan(0)
-      expect(postAdMetadata?.type, `ciclo ${cycle}: post-ad type debe ser "media"`).toBe('media')
-      expect(postAdMetadata?.playerType, `ciclo ${cycle}: post-ad playerType debe ser "reels"`).toBe('reels')
+      const eventPayload = await page.evaluate(() => (window as any).__qa.eventData['metadatachanged'])
+      const postAdState = await page.evaluate(() => (window as any).__player?.metadata)
+
+      expect(typeof eventPayload.id, `ciclo ${cycle}: post-ad id debe ser string`).toBe('string')
+      expect((eventPayload.id as string).length, `ciclo ${cycle}: post-ad id no debe estar vacío`).toBeGreaterThan(0)
+      expect(eventPayload.id, `ciclo ${cycle}: post-ad id no debe ser sintético`).not.toMatch(/^ad-/)
+      expect(eventPayload.id, `ciclo ${cycle}: post-ad id debe ser diferente al del ad card`).not.toBe(adId)
+      expect(typeof eventPayload.title, `ciclo ${cycle}: post-ad title debe ser string`).toBe('string')
+      expect((eventPayload.title as string).length, `ciclo ${cycle}: post-ad title no debe estar vacío`).toBeGreaterThan(0)
+      expect(eventPayload.type, `ciclo ${cycle}: post-ad type debe ser "media"`).toBe('media')
+      expect(eventPayload.playerType, `ciclo ${cycle}: post-ad playerType debe ser "reels"`).toBe('reels')
+
+      // Consistencia: estado interno debe coincidir con lo que el evento notificó
+      expect(postAdState?.id, `ciclo ${cycle}: player.metadata.id debe coincidir con el payload del evento`).toBe(eventPayload.id)
     }
 
     await player.assertNoInitError()
@@ -483,7 +622,8 @@ test.describe('Reels — Navegación hacia atrás (goPrevious)', { tag: ['@e2e',
     // metadatachanged no se emite y player.metadata no se actualiza.
     // Comportamiento esperado: al cambiar a un item con id diferente, isEqual() detecta
     // el cambio y debería emitir. Pendiente de fix en el player.
-    test.fail(true, 'BUG: goPrevious() no actualiza player.metadata — el player no notifica cambio de item al navegar hacia atrás')
+    // Este test FALLA (rojo) hasta que el player corrija este comportamiento.
+    // No usar test.fail() aquí — ese flag oculta el bug haciendo que el test se vea verde.
 
     await player.goto(reelsConfig(true))
     await player.waitForEvent('playing', 25_000)

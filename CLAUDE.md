@@ -1,7 +1,23 @@
 # CLAUDE.md — Lightning Player QA
 
-Guía de contexto para Claude Code en este proyecto.
-**Lee esto completo al inicio de cada sesión antes de hacer cualquier cosa.**
+Guía corta de entrada para Claude Code en este proyecto.
+
+## Estado actual
+
+Este archivo ya no debe ser la fuente principal de verdad. El conocimiento versionado vive en `docs/`.
+
+Leer primero:
+- [docs/00-index/README.md](D:\Dev\Repos\jurrego1771\lightning-player-qa\docs\00-index\README.md:1)
+- [docs/01-sut/overview.md](D:\Dev\Repos\jurrego1771\lightning-player-qa\docs\01-sut\overview.md:1)
+- [docs/01-sut/observability-model.md](D:\Dev\Repos\jurrego1771\lightning-player-qa\docs\01-sut\observability-model.md:1)
+- [docs/03-testing/philosophy.md](D:\Dev\Repos\jurrego1771\lightning-player-qa\docs\03-testing\philosophy.md:1)
+- [docs/03-testing/assertion-rules.md](D:\Dev\Repos\jurrego1771\lightning-player-qa\docs\03-testing\assertion-rules.md:1)
+- [docs/05-pipeline/ai-test-generation/contract.md](D:\Dev\Repos\jurrego1771\lightning-player-qa\docs\05-pipeline\ai-test-generation\contract.md:1)
+
+Regla dura:
+- No generar tests nuevos sin `feature-spec`, `business-rules`, `observability`, `edge-cases`, `test-strategy` y `test brief`.
+
+Para una feature concreta, usar primero su carpeta en `docs/02-features/`.
 
 ---
 

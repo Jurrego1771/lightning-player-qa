@@ -1,43 +1,27 @@
-# Agents — Lightning Player QA
+# Agents — Deprecated Directory
 
-Este directorio contiene agentes de IA especializados para tareas de QA automatizadas.
+Esta carpeta ya no es la fuente operativa de agentes del proyecto.
 
-## Propósito
+## Estado actual
 
-Los agentes permiten ejecutar tareas complejas de QA de forma autónoma,
-más allá de lo que un test estático puede hacer:
-- Analizar reportes de Playwright y clasificar fallos
-- Generar nuevos casos de test basados en cambios en el player
-- Investigar flaky tests y proponer fixes
-- Comparar métricas QoE entre versiones del player
-- Monitorear streams y reportar anomalías
+El proyecto usa un modelo `Claude-first`:
+- agentes reales: `.claude/agents/`
+- comandos reales: `.claude/commands/`
+- memoria operativa: `.claude/memory/`
+- documentación del proceso: `docs/05-pipeline/`
 
-## Agentes Planeados
+## Decisión
 
-| Agente | Descripción | Estado |
-|---|---|---|
-| `flaky-analyzer` | Analiza runs de CI e identifica tests intermitentes | Pendiente |
-| `test-generator` | Genera specs nuevos basados en cambios en el API del player | Pendiente |
-| `qoe-reporter` | Compara métricas QoE entre dos versiones del player | Pendiente |
-| `stream-monitor` | Monitorea streams de test y alerta si dejan de funcionar | Pendiente |
-| `ad-beacon-verifier` | Verifica que los beacons de ads se disparen correctamente en producción | Pendiente |
+`agents/` queda deprecada como carpeta operativa para evitar duplicidad semántica con `.claude/agents/`.
 
-## Convención de Archivos
+## Qué hacer si necesitas agregar un agente
 
-```
-agents/
-├── flaky-analyzer/
-│   ├── agent.ts          ← Lógica del agente
-│   ├── prompts/          ← Prompts del sistema
-│   └── README.md
-└── README.md
-```
+1. Crear el agente en `.claude/agents/<nombre>/AGENT.md`
+2. Documentar su propósito en `docs/05-pipeline/`
+3. Si el agente se expone mediante comando, referenciarlo desde `.claude/commands/`
 
-## Integración con Claude Code
+## Qué no hacer
 
-Los agentes se invocan via el `Agent` tool de Claude Code o via CLI:
-
-```bash
-# Futuro: ejecutar un agente
-npx ts-node agents/flaky-analyzer/agent.ts --report playwright-report/
-```
+- No definir agentes nuevos aquí
+- No usar esta carpeta como segunda fuente de verdad
+- No duplicar prompts o definiciones entre aquí y `.claude/agents/`
