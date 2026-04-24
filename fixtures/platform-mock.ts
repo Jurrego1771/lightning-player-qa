@@ -151,6 +151,48 @@ export async function mockContentConfig(
   })
 }
 
+/**
+ * Mock per-id content configs. Intercepts /{video|episode|audio|live-stream}/{id}.json
+ * and responds with the base VOD fixture merged with the overrides provided for that id.
+ * IDs not present in the map fall back to setupPlatformMocks defaults via route.fallback().
+ * Useful para flows multi-contenido (next episode) donde cada id necesita metadata distinta.
+ */
+export async function mockContentConfigById(
+  page: Page,
+  overridesById: Record<string, Record<string, unknown>>
+): Promise<void> {
+  const base = JSON.parse(FIXTURES.content.vod)
+  const { platformDomain } = getEnvironmentConfig()
+
+  await page.route(`**/${platformDomain}/**`, async (route) => {
+    const parsedPath = new URL(route.request().url()).pathname
+
+    if (parsedPath.includes('/player')) {
+      await route.fallback()
+      return
+    }
+
+    const match = parsedPath.match(/\/(?:video|episode|audio|live-stream)\/([^/]+)\.json$/)
+    if (!match) {
+      await route.fallback()
+      return
+    }
+
+    const id = match[1]
+    const override = overridesById[id]
+    if (!override) {
+      await route.fallback()
+      return
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ ...base, ...override }),
+    })
+  })
+}
+
 export async function mockPlayerConfig(
   page: Page,
   overrides: Record<string, unknown>
