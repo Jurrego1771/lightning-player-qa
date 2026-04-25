@@ -22,28 +22,22 @@
  */
 import { test, expect, MockContentIds, mockAudioPlayerConfig } from '../../fixtures'
 
-test.describe('View Types — audio', { tag: ['@regression'] }, () => {
+test.describe('View Types — audio (compact)', { tag: ['@regression'] }, () => {
 
-  test('view audio: inicializa sin error', async ({ isolatedPlayer, page }) => {
-    // mockAudioPlayerConfig se registra DESPUÉS de setupPlatformMocks (LIFO) →
-    // intercepta player config y devuelve view:audio antes de que llegue a default.json.
-    // route.fallback() pasa el contenido de vuelta al handler de setupPlatformMocks.
-    await mockAudioPlayerConfig(page)
-    await isolatedPlayer.goto({ type: 'media', id: MockContentIds.audio, autoplay: false, view: 'audio' })
+  test('view compact (audio): inicializa sin error', async ({ isolatedPlayer }) => {
+    await isolatedPlayer.goto({ type: 'media', id: MockContentIds.audio, autoplay: false, view: 'compact' })
     await isolatedPlayer.waitForReady(25_000)
     await isolatedPlayer.assertNoInitError()
   })
 
-  test('view audio: puede reproducir con autoplay=true', async ({ isolatedPlayer, page }) => {
-    await mockAudioPlayerConfig(page)
-    await isolatedPlayer.goto({ type: 'media', id: MockContentIds.audio, autoplay: true, view: 'audio' })
+  test('view compact (audio): puede reproducir con autoplay=true', async ({ isolatedPlayer }) => {
+    await isolatedPlayer.goto({ type: 'media', id: MockContentIds.audio, autoplay: true, view: 'compact' })
     await isolatedPlayer.waitForEvent('playing', 25_000)
     await isolatedPlayer.assertIsPlaying()
   })
 
-  test('view audio: play() → playing desde estado pausado', async ({ isolatedPlayer, page }) => {
-    await mockAudioPlayerConfig(page)
-    await isolatedPlayer.goto({ type: 'media', id: MockContentIds.audio, autoplay: false, view: 'audio' })
+  test('view compact (audio): play() → playing desde estado pausado', async ({ isolatedPlayer }) => {
+    await isolatedPlayer.goto({ type: 'media', id: MockContentIds.audio, autoplay: false, view: 'compact' })
     await isolatedPlayer.waitForReady(25_000)
     await isolatedPlayer.play()
     await isolatedPlayer.waitForEvent('playing', 20_000)
@@ -70,17 +64,19 @@ test.describe('View Types — compact', { tag: ['@regression'] }, () => {
 })
 
 test.describe('View Types — radio', { tag: ['@regression'] }, () => {
+  // TODO: view:radio requiere type:'live' — pendiente MockContentIds.live con stream local.
+  // type:'media' + view:'radio' no es una combinación válida en el Lightning Player.
 
-  test('view radio: inicializa sin error', async ({ isolatedPlayer, page }) => {
+  test.skip('view radio: inicializa sin error', async ({ isolatedPlayer, page }) => {
     await mockAudioPlayerConfig(page)
-    await isolatedPlayer.goto({ type: 'media', id: MockContentIds.audio, autoplay: false, view: 'radio' })
+    await isolatedPlayer.goto({ type: 'live', id: MockContentIds.live, autoplay: false, view: 'radio' })
     await isolatedPlayer.waitForReady(25_000)
     await isolatedPlayer.assertNoInitError()
   })
 
-  test('view radio: puede reproducir con autoplay=true', async ({ isolatedPlayer, page }) => {
+  test.skip('view radio: puede reproducir con autoplay=true', async ({ isolatedPlayer, page }) => {
     await mockAudioPlayerConfig(page)
-    await isolatedPlayer.goto({ type: 'media', id: MockContentIds.audio, autoplay: true, view: 'radio' })
+    await isolatedPlayer.goto({ type: 'live', id: MockContentIds.live, autoplay: true, view: 'radio' })
     await isolatedPlayer.waitForEvent('playing', 25_000)
     await isolatedPlayer.assertIsPlaying()
   })

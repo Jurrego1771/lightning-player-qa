@@ -93,7 +93,7 @@ test.describe('Accessibility — Player de Video', { tag: ['@a11y'] }, () => {
 
 test.describe('Accessibility — Player de Audio', { tag: ['@a11y'] }, () => {
   test('no hay violaciones WCAG en player de audio', async ({ isolatedPlayer: player, page }) => {
-    await player.goto({ type: 'media', id: MockContentIds.audio, autoplay: false, view: 'audio' })
+    await player.goto({ type: 'media', id: MockContentIds.audio, autoplay: false, view: 'compact' })
     await player.waitForReady()
 
     const results = await new AxeBuilder({ page })

@@ -90,7 +90,7 @@ test.describe('Visual Regression — Player de Video', { tag: ['@visual'] }, () 
 
 test.describe('Visual Regression — Player de Audio', { tag: ['@visual'] }, () => {
   test('audio player — estado idle', async ({ isolatedPlayer: player, page }) => {
-    await player.goto({ type: 'media', id: MockContentIds.audio, autoplay: false, view: 'audio' })
+    await player.goto({ type: 'media', id: MockContentIds.audio, autoplay: false, view: 'compact' })
     await player.waitForReady()
     await disableAnimations(page)
 

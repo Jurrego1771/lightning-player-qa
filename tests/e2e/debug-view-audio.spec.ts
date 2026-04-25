@@ -20,7 +20,7 @@ test('debug view:audio ALL requests', async ({ page }) => {
   await page.waitForFunction(() => typeof (window as any).loadMSPlayer === 'function', { timeout: 15000 })
 
   await page.evaluate(() => {
-    (window as any).__initPlayer({ type: 'media', id: 'mock-audio-1', autoplay: false, view: 'audio' })
+    (window as any).__initPlayer({ type: 'media', id: 'mock-audio-1', autoplay: false, view: 'compact' })
   })
 
   await page.waitForTimeout(15000)

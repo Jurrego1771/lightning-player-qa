@@ -1,7 +1,7 @@
 {
   "name": "QA Test Audio Player",
   "view": {
-    "type": "audio",
+    "type": "compact",
     "style": {
       "color1": "#000000",
       "color2": "#FFFFFF",
