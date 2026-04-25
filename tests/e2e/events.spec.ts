@@ -62,7 +62,16 @@ test.describe('Eventos HTML5 — Ciclo de Carga (via load())', { tag: ['@regress
 test.describe('Eventos HTML5 — canplaythrough', { tag: ['@regression'] }, () => {
 
   test('canplaythrough se emite durante reproducción de VOD', async ({ player }) => {
-    await player.goto({ type: 'media', id: ContentIds.vodShort, autoplay: true })
+    // autoplay: false ensures listeners are registered before play() is called.
+    // With autoplay=true and a warm CDN the event can race ahead of listener
+    // registration in the harness .then() — the harness backfill block does not
+    // cover canplaythrough (only canplay), so a lost race means a permanent miss.
+    await player.goto({ type: 'media', id: ContentIds.vodShort, autoplay: false })
+    await player.waitForReady()
+
+    await player.play()
+
+    // 25s timeout is preserved to cover CDN cold-cache on first CI run.
     await player.waitForEvent('canplaythrough', 25_000)
   })
 })

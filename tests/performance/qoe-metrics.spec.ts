@@ -14,7 +14,7 @@
  * Después del run: npm run perf:compare   → detecta regresiones vs baseline
  *                  npm run perf:update-baseline → actualiza el baseline si el run fue bueno
  */
-import { test, expect, Streams, NetworkProfiles } from '../../fixtures'
+import { test, expect, ContentIds, NetworkProfiles } from '../../fixtures'
 import {
   measureStartup,
   PlaybackMetricsCollector,
@@ -36,32 +36,44 @@ const THRESHOLDS = {
 test.describe('QoE — Startup', { tag: ['@performance'] }, () => {
 
   test('startup time < 3s en broadband (HLS VOD)', async ({ player, page }) => {
-    test.skip(process.env.STREAM_HLS_VOD_SHORT_OK !== 'true', 'Streams.hls.vodShort no disponible')
-    await player.goto({ type: 'media', src: Streams.hls.vodShort, autoplay: true })
-    const metrics = await measureStartup(page)
+    // Record playerInitT0 inside the beforeInit hook — fired right before loadMSPlayer()
+    // is called (after the player script has loaded). This measures "time from
+    // loadMSPlayer() call to first playing frame", excluding test infrastructure
+    // overhead (script download). That is the true player startup latency.
+    let playerInitT0 = 0
+    await player.goto(
+      { type: 'media', id: ContentIds.vodShort, autoplay: true },
+      { beforeInit: async () => { playerInitT0 = Date.now() } }
+    )
+    const metrics = await measureStartup(page, playerInitT0)
 
+    // Both bounds required: > 0 catches a broken measurement (returns 0 or negative),
+    // < threshold catches a real performance regression.
+    expect(
+      metrics.timeToFirstFrame,
+      'timeToFirstFrame must be a real positive measurement — 0 indicates the player never reached currentTime > 0'
+    ).toBeGreaterThan(0)
     expect(metrics.timeToFirstFrame).toBeLessThan(THRESHOLDS.startupMs)
-    expect(metrics.timeToLoadedMetadata).toBeLessThan(THRESHOLDS.loadedMetadataMs)
 
+    // timeToLoadedMetadata and timeToCanPlay are -1 by design (one-time events fired
+    // before measureStartup() ran). Do not assert on -1 sentinels.
     PerfStorage.record('startup_hls', {
-      timeToFirstFrame_ms:    metrics.timeToFirstFrame,
-      timeToLoadedMetadata_ms: metrics.timeToLoadedMetadata,
-      timeToCanPlay_ms:       metrics.timeToCanPlay,
+      timeToFirstFrame_ms:     metrics.timeToFirstFrame,
+      timeToLoadedMetadata_ms: metrics.timeToLoadedMetadata,  // -1: measurement gap — see measureStartup() JSDoc
+      timeToCanPlay_ms:        metrics.timeToCanPlay,          // -1: measurement gap — see measureStartup() JSDoc
     })
 
-    console.log('Startup metrics:', metrics)
+    console.log('Startup metrics (HLS VOD):', metrics)
   })
 
   test('startup time < 3s en broadband (DASH VOD — playback nativo)', async ({ player, page }) => {
-    test.skip(process.env.STREAM_DASH_VOD_OK !== 'true', 'Streams.dash.vod no disponible')
-
-    // IMPORTANTE: El player NO usa dash.js. DASH se reproduce via el elemento
-    // <video> nativo del browser. Este test valida únicamente que el browser
-    // puede iniciar reproducción de un stream DASH — no valida ABR ni propiedades
-    // del player como level/levels/bandwidth (no disponibles para DASH).
-    await player.goto({ type: 'media', src: Streams.dash.vod, autoplay: true })
+    // DASH se reproduce via el elemento <video> nativo del browser.
+    // Este test valida que el browser puede iniciar reproducción de un stream DASH.
+    // No valida ABR ni propiedades HLS-only (level/levels/bandwidth).
+    await player.goto({ type: 'media', id: ContentIds.dashVod, autoplay: true })
     const metrics = await measureStartup(page)
 
+    expect(metrics.timeToFirstFrame).toBeGreaterThan(0)
     expect(metrics.timeToFirstFrame).toBeLessThan(THRESHOLDS.startupMs)
 
     PerfStorage.record('startup_dash_native', {
@@ -75,9 +87,17 @@ test.describe('QoE — Startup', { tag: ['@performance'] }, () => {
 test.describe('QoE — Buffer Health', { tag: ['@performance'] }, () => {
 
   test('buffer forward ≥ 5s después de 3s de reproducción normal', async ({ player }) => {
-    test.skip(process.env.STREAM_HLS_VOD_OK !== 'true', 'Streams.hls.vod no disponible')
-    await player.goto({ type: 'media', src: Streams.hls.vod, autoplay: true })
+    await player.goto({ type: 'media', id: ContentIds.vodLong, autoplay: true })
     await player.waitForEvent('playing')
+
+    // Guard: confirm the video element is accessible before polling buffer health.
+    // If readyState is 0, getQoEMetrics() will return bufferedAhead: 0 for all 15s and
+    // the timeout error will not distinguish "never buffered" from "video element not found".
+    const initial = await player.getQoEMetrics()
+    expect(
+      initial.readyState,
+      'video element must be accessible and loading (readyState >= 1). If 0, the player may not have attached src correctly.'
+    ).toBeGreaterThanOrEqual(1)
 
     // Capturar el valor real mientras se espera al threshold.
     let bufferedAhead = 0
@@ -93,36 +113,46 @@ test.describe('QoE — Buffer Health', { tag: ['@performance'] }, () => {
   })
 
   test('buffer se mantiene bajo bandwidth degradado 3G', async ({ player, page }) => {
-    test.skip(process.env.STREAM_HLS_VOD_OK !== 'true', 'Streams.hls.vod no disponible')
-    const cdp = await createCDPSession(page)
-    await setNetworkThrottle(cdp, NetworkProfiles.degraded3G)
-
-    await player.goto({ type: 'media', src: Streams.hls.vod, autoplay: true })
+    // Apply CDP throttle via beforeInit so the player SCRIPT loads at full speed.
+    // Without this, the player's api.js (~200-400 KB) would download at 62.5 KB/s,
+    // adding 3-6s to script load time and making the 30s playing timeout flaky.
+    // Only media segments are throttled — this isolates ABR behavior.
+    let cdp: import('@playwright/test').CDPSession
+    await player.goto(
+      { type: 'media', id: ContentIds.vodLong, autoplay: true },
+      {
+        beforeInit: async () => {
+          cdp = await createCDPSession(page)
+          await setNetworkThrottle(cdp, NetworkProfiles.degraded3G)
+        },
+      }
+    )
     await player.waitForEvent('playing', 30_000)
 
-    // Bajo 500 Kbps el buffer tarda más en poblarse — poll hasta que sea positivo.
+    // Meaningful threshold: 1s of forward buffer under 3G is a real quality bar.
+    // The previous threshold (> 0) was trivially achievable with a single buffered frame
+    // and provided no signal about ABR behavior under constrained bandwidth.
     let bufferedAheadDegraded = 0
     await expect.poll(async () => {
       const m = await player.getQoEMetrics()
       bufferedAheadDegraded = m.bufferedAhead
       return bufferedAheadDegraded
-    }, { timeout: 20_000, intervals: [500] }).toBeGreaterThan(0)
+    }, { timeout: 20_000, intervals: [500] }).toBeGreaterThan(1.0)
 
     PerfStorage.record('buffer_health_degraded_3g', {
       bufferedAhead_sec: bufferedAheadDegraded,
     })
 
-    await cdp.detach()
+    await cdp!.detach()
   })
 })
 
 test.describe('QoE — Sesión Completa', { tag: ['@performance', '@slow'] }, () => {
 
   test('buffering ratio < 0.5% en 30s de reproducción normal', async ({ player, page }) => {
-    test.skip(process.env.STREAM_HLS_VOD_OK !== 'true', 'Streams.hls.vod no disponible')
     const collector = new PlaybackMetricsCollector()
 
-    await player.goto({ type: 'media', src: Streams.hls.vod, autoplay: true })
+    await player.goto({ type: 'media', id: ContentIds.vodLong, autoplay: true })
     await player.waitForEvent('playing')
     await collector.startCollecting(page)
 
@@ -133,6 +163,12 @@ test.describe('QoE — Sesión Completa', { tag: ['@performance', '@slow'] }, ()
 
     const metrics = await collector.collectFinal(page)
 
+    // Guard: totalPlayTime must reflect the actual 30s window. If it is near 0,
+    // the bufferingRatio computation (totalStallMs / totalPlayTime) is meaningless.
+    expect(
+      metrics.totalPlayTime,
+      'totalPlayTime must reflect the 30s observation window (expected > 25s)'
+    ).toBeGreaterThan(25_000)
     expect(metrics.bufferingRatio).toBeLessThan(THRESHOLDS.bufferingRatio)
     expect(metrics.droppedFrameRatio).toBeLessThan(THRESHOLDS.droppedFrameRatio)
 
@@ -154,18 +190,42 @@ test.describe('QoE — Sesión Completa', { tag: ['@performance', '@slow'] }, ()
 test.describe('QoE — Seek Latency', { tag: ['@performance'] }, () => {
 
   test('seek latency < 2s (tiempo de seeking → playing)', async ({ player, page }) => {
-    test.skip(process.env.STREAM_HLS_VOD_OK !== 'true', 'Streams.hls.vod no disponible')
-    await player.goto({ type: 'media', src: Streams.hls.vod, autoplay: true })
+    await player.goto({ type: 'media', id: ContentIds.vodLong, autoplay: true })
     await player.waitForEvent('playing')
+
+    // Flush seek-related events from __qa.events BEFORE the seek so that
+    // waitForEvent() cannot match pre-seek entries. Without this flush,
+    // waitForEvent('playing') uses array.includes() which returns true immediately
+    // because 'playing' from the initial autoplay is already in the array.
+    // A stale match produces seekLatency ~0ms, which always passes the 2s threshold
+    // while measuring nothing about actual seek performance.
+    await page.evaluate(() => {
+      ;(window as any).__qa.events = ((window as any).__qa.events as string[]).filter(
+        (e) => e !== 'seeking' && e !== 'seeked' && e !== 'playing'
+      )
+    })
 
     const seekStart = Date.now()
     await player.seek(60)
 
-    await player.waitForEvent('seeked')
-    await player.waitForEvent('playing')
+    // These waitForEvent calls now resolve only on the post-seek events because
+    // the pre-seek entries were removed above.
+    await player.waitForEvent('seeked', 10_000)
+    await player.waitForEvent('playing', 10_000)
     const seekLatency = Date.now() - seekStart
 
+    // Lower bound: a real seek + buffer-refill + playing sequence takes at minimum
+    // tens of milliseconds. A value near 0ms indicates a stale event match (the flush
+    // above did not work or was not awaited before the seek fired events).
+    expect(
+      seekLatency,
+      'seek latency must be a positive real measurement — value near 0 indicates a stale event match'
+    ).toBeGreaterThan(10)
     expect(seekLatency).toBeLessThan(THRESHOLDS.seekLatencyMs)
+
+    // Confirm the seek actually reached the target position — a silent seek failure
+    // (player stays at currentTime 0) would still fire seeked + playing events.
+    await player.assertCurrentTimeNear(60, 3)
 
     PerfStorage.record('seek_latency', {
       seekLatency_ms: seekLatency,

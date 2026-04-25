@@ -43,6 +43,9 @@ export const ContentIds = {
 
   /** VOD con ads: pre-roll + mid-roll a los 10s + post-roll */
   vodWithAds: '6900fffb6ddf33fd39a5288e',
+
+  /** VOD DASH — stream con manifiesto MPD para tests de startup DASH */
+  dashVod: '699afcb05a41925324fa4605',
 }
 
 // ── Access tokens para contenido restringido ─────────────────────────────
@@ -68,7 +71,7 @@ export const ContentAccess: Partial<Record<keyof typeof ContentIds, { accessToke
 export const ExternalStreams = {
   hls: {
     vodShort: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
-    vod: 'https://bitdash-a.akamaihd.net/content/sintel/hls/playlist.m3u8',
+    vod: 'https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_fmp4/master.m3u8',
     live: 'https://test-streams.mux.dev/tos_ismc/master.m3u8',
   },
   dash: {
@@ -92,6 +95,7 @@ export const MockContentIds = {
   live: 'mock-live-1',
   audio: 'mock-audio-1',
   episode: 'mock-episode-1',
+  podcast: 'mock-podcast-1',
 } as const
 
 // ── URLs de streams HLS locales (servidos por webServer en playwright.config.ts) ──

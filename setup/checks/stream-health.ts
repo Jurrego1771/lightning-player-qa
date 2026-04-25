@@ -1,14 +1,13 @@
 /**
  * stream-health.ts — Verifica disponibilidad de streams externos.
  *
- * Hace HEAD requests en paralelo con timeout de 5s.
+ * Hace GET requests en paralelo con timeout de 5s (GET es más confiable que HEAD — CDNs como Akamai bloquean HEAD desde Node.js).
  * El resultado se escribe en process.env para que los tests puedan
  * hacer test.skip() condicionalmente sin conocer la lógica de verificación.
  *
  * Env vars escritas (heredadas por todos los workers de Playwright):
  *   STREAM_HLS_VOD_SHORT_OK  — Streams.hls.vodShort (mux.dev)
  *   STREAM_HLS_VOD_OK        — Streams.hls.vod (akamai)
- *   STREAM_HLS_LIVE_OK       — Streams.hls.live (mux.dev)
  *   STREAM_DASH_VOD_OK       — Streams.dash.vod (akamai)
  *   PLAYER_SCRIPT_OK         — Player script CDN
  */
@@ -25,9 +24,14 @@ export interface StreamCheckResult {
 
 /** Env var names escritos por este módulo. Importar desde tests para evitar typos. */
 export const STREAM_ENV_KEYS = {
-  playerScript: 'PLAYER_SCRIPT_OK',
+  playerScript:    'PLAYER_SCRIPT_OK',
+  hlsVodShort:     'STREAM_HLS_VOD_SHORT_OK',
+  hlsVod:          'STREAM_HLS_VOD_OK',
+  dashVod:         'STREAM_DASH_VOD_OK',
 } as const
 
+// GET + immediate body abort — more reliable than HEAD since many CDNs block HEAD
+// from non-browser user agents (e.g. Akamai returns 403 for HEAD, 200 for GET).
 async function fetchHead(
   url: string
 ): Promise<{ ok: boolean; statusCode?: number; durationMs: number; error?: string }> {
@@ -36,7 +40,13 @@ async function fetchHead(
   const start = Date.now()
 
   try {
-    const res = await fetch(url, { method: 'HEAD', signal: controller.signal })
+    const res = await fetch(url, {
+      method: 'GET',
+      signal: controller.signal,
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36' },
+    })
+    // Got status — drop body to avoid downloading the full stream
+    res.body?.cancel().catch(() => {})
     return { ok: res.ok, statusCode: res.status, durationMs: Date.now() - start }
   } catch (err: unknown) {
     const isTimeout = (err as Error)?.name === 'AbortError'
@@ -51,9 +61,23 @@ async function fetchHead(
 }
 
 export async function checkExternalStreams(playerScriptUrl?: string): Promise<StreamCheckResult[]> {
-  // Solo chequeamos el player script CDN — los ExternalStreams de terceros (Mux, Akamai)
-  // no se usan en ningún test activo (los tests usan ContentIds o LocalStreams).
-  const checks: Array<{ label: string; url: string; envKey: string }> = []
+  const checks: Array<{ label: string; url: string; envKey: string }> = [
+    {
+      label:  'HLS VOD Short (mux.dev)',
+      url:    'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
+      envKey: STREAM_ENV_KEYS.hlsVodShort,
+    },
+    {
+      label:  'HLS VOD (akamai)',
+      url:    'https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_fmp4/master.m3u8',
+      envKey: STREAM_ENV_KEYS.hlsVod,
+    },
+    {
+      label:  'DASH VOD (akamai)',
+      url:    'https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd',
+      envKey: STREAM_ENV_KEYS.dashVod,
+    },
+  ]
 
   if (playerScriptUrl) {
     checks.push({
