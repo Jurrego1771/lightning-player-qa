@@ -1,0 +1,19 @@
+{
+  "src": {
+    "hls": "http://localhost:9001/vod/fake.mpd",
+    "mpd": "http://localhost:9001/vod/fake.mpd"
+  },
+  "drm": null,
+  "poster": "",
+  "title": "QA Test DASH VOD",
+  "description": "Mock DASH content — handler selection tests only (no real stream)",
+  "ads": {},
+  "account": "mock-account",
+  "dvr": null,
+  "subtitles": [],
+  "reactions": null,
+  "player": {
+    "type": "video"
+  },
+  "mediaId": "mock-dash-vod-1"
+}

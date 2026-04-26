@@ -36,6 +36,7 @@ const FIXTURES = {
     vod: readFixture('content/vod.json'),
     live: readFixture('content/live.json'),
     audio: readFixture('content/audio.json'),
+    dash: readFixture('content/dash.json'),
     error403: readFixture('content/error-403.json'),
   },
   player: {
@@ -104,10 +105,13 @@ export async function setupPlatformMocks(page: Page): Promise<void> {
 
     // Video content config: /video/{id}.json
     if (parsedPath.includes('/video/') && parsedPath.endsWith('.json')) {
+      const body = parsedPath.includes('mock-dash')
+        ? FIXTURES.content.dash
+        : FIXTURES.content.vod
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: FIXTURES.content.vod,
+        body,
       })
       return
     }

@@ -44,13 +44,13 @@ export const ContentIds = {
   /** VOD con ads: pre-roll + mid-roll a los 10s + post-roll */
   vodWithAds: '6900fffb6ddf33fd39a5288e',
 
-  /** VOD DASH — stream con manifiesto MPD para tests de startup DASH */
-  dashVod: '699afcb05a41925324fa4605',
+  /** VOD DASH — stream VOD con manifiesto MPD (type: 'media') */
+  dashVod: '69b0918a741d2bbba0cacf78',
 
-  /** Live DASH — stream live con manifiesto MPD */
+  /** Live DASH — stream live con manifiesto MPD (type: 'live', requiere accessToken) */
   dashLive: '699afcb05a41925324fa4605',
 
-  /** DVR DASH — stream live con ventana DVR sobre DASH */
+  /** DVR DASH — stream DVR sobre DASH (type: 'dvr', requiere accessToken) */
   dashDvr: '699afcb05a41925324fa4605',
 }
 
@@ -102,6 +102,7 @@ export const MockContentIds = {
   audio: 'mock-audio-1',
   episode: 'mock-episode-1',
   podcast: 'mock-podcast-1',
+  dashVod: 'mock-dash-vod-1',
 } as const
 
 // ── URLs de streams HLS locales (servidos por webServer en playwright.config.ts) ──
