@@ -64,6 +64,7 @@
             'levelchange', 'levelchanged',
             'metadataloading', 'metadataloaded', 'metadatachanged',
             'dismissButton',
+            'contentFirstPlay',
           ]
 
           var HTML5_EVENTS = [
@@ -127,8 +128,11 @@
           // Condición extendida: incluye !player.paused para capturar autoplay donde
           // currentTime puede ser 0 aún pero play ya se disparó.
           if (player.status === 'playing' || player.status === 'buffering' || !player.paused) {
-            if (!window.__qa.events.includes('playing')) window.__qa.events.push('playing')
-            if (!window.__qa.events.includes('play'))    window.__qa.events.push('play')
+            if (!window.__qa.events.includes('playing'))          window.__qa.events.push('playing')
+            if (!window.__qa.events.includes('play'))             window.__qa.events.push('play')
+            // contentFirstPlay se emite al inicio del primer play — si el player ya está
+            // playing cuando la Promise resuelve (autoplay rápido), el listener no lo capturó.
+            if (!window.__qa.events.includes('contentFirstPlay')) window.__qa.events.push('contentFirstPlay')
           }
           if (player.readyState >= 3) {
             if (!window.__qa.events.includes('canplay')) window.__qa.events.push('canplay')
@@ -179,6 +183,72 @@
       }
       return window.__player.load(options)
     }
+
+    // ── Debug manual via URL params ──────────────────────────────────────────
+    // Solo activo cuando la URL contiene ?id= (trigger de debug manual).
+    // Los tests automatizados nunca ponen ?id= — este bloque no interfiere con CI.
+    //
+    // Uso:
+    //   http://localhost:3000/?id=abc123&type=media&env=dev&autoplay=true
+    //   http://localhost:3000/?id=abc123&type=live&env=staging&player=xyz
+    //
+    // Params soportados:
+    //   id        — ID de contenido en la plataforma (requerido para activar debug)
+    //   type      — media | live | dvr | episode (default: media)
+    //   env       — dev | staging | prod (default: dev)
+    //   autoplay  — true | false (default: false)
+    //   player    — playerId custom (opcional)
+    //   volume    — 0-1 (default: 1)
+    //   startPos  — segundos (opcional)
+    //   muted     — true | false (opcional)
+    //   adsMap    — URL del VAST tag (opcional)
+    ;(function debugFromUrl() {
+      var params = new URLSearchParams(window.location.search)
+      var id = params.get('id')
+
+      // Sin ?id= → modo Playwright normal, no hacer nada
+      if (!id) return
+
+      var ENV_URLS = {
+        dev:     'https://player.cdn.mdstrm.com/lightning_player/develop/api.js',
+        staging: 'https://player.cdn.mdstrm.com/lightning_player/staging/api.js',
+        prod:    'https://player.cdn.mdstrm.com/lightning_player/api.js',
+      }
+
+      var env = params.get('env') || 'dev'
+      var scriptSrc = ENV_URLS[env] || ENV_URLS['dev']
+
+      // Mostrar banner de debug para dejar claro que estamos en modo manual
+      var banner = document.createElement('div')
+      banner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#1a1a2e;color:#0ff;font-family:monospace;font-size:12px;padding:6px 12px;z-index:9999;opacity:0.9'
+      banner.innerHTML = '🛠 DEBUG MANUAL &nbsp;|&nbsp; env: <b>' + env + '</b> &nbsp;|&nbsp; id: <b>' + id + '</b> &nbsp;|&nbsp; type: <b>' + (params.get('type') || 'media') + '</b>'
+      document.body.appendChild(banner)
+
+      // Construir config desde params
+      var config = { type: params.get('type') || 'media', id: id }
+      if (params.get('autoplay') === 'true') config.autoplay = true
+      if (params.get('player'))   config.player   = params.get('player')
+      if (params.get('volume'))   config.volume   = parseFloat(params.get('volume'))
+      if (params.get('startPos')) config.startPos = parseFloat(params.get('startPos'))
+      if (params.get('muted')   === 'true') config.muted = true
+      if (params.get('adsMap'))   config.adsMap   = params.get('adsMap')
+
+      // Inyectar script del player y luego inicializar
+      var script = document.createElement('script')
+      script.src = scriptSrc
+      script.onload = function () {
+        if (typeof loadMSPlayer !== 'function') {
+          banner.innerHTML += ' &nbsp;|&nbsp; <span style="color:red">❌ loadMSPlayer no encontrado</span>'
+          return
+        }
+        window.__initPlayer(config)
+        banner.innerHTML += ' &nbsp;|&nbsp; <span style="color:#0f0">✓ iniciando...</span>'
+      }
+      script.onerror = function () {
+        banner.innerHTML += ' &nbsp;|&nbsp; <span style="color:red">❌ falló carga de ' + scriptSrc + '</span>'
+      }
+      document.head.appendChild(script)
+    })()
   </script>
 </body>
 </html>
