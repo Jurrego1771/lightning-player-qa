@@ -37,7 +37,7 @@ if [[ -f "$ENV_FILE" ]]; then
 fi
 
 PLAYER_GITHUB_REPO="${PLAYER_GITHUB_REPO:-}"
-PLAYER_LOCAL_REPO="${PLAYER_LOCAL_REPO:-D:/repos/mediastream/lightning-player}"
+PLAYER_LOCAL_REPO="${PLAYER_LOCAL_REPO:-}"
 INPUT="${1:-}"
 
 # Archivos a ignorar (ruido sin valor para el análisis de riesgo)
@@ -195,9 +195,10 @@ case "$MODE" in
     ;;
 
   github-branch)
-    log "Fetching rama '$INPUT' vs main desde GitHub..."
+    BASE_BRANCH=$(gh api "repos/$PLAYER_GITHUB_REPO" --jq '.default_branch')
+    log "Fetching rama '$INPUT' vs $BASE_BRANCH desde GitHub..."
 
-    COMPARE_JSON=$(gh api "repos/$PLAYER_GITHUB_REPO/compare/main...$INPUT" \
+    COMPARE_JSON=$(gh api "repos/$PLAYER_GITHUB_REPO/compare/$BASE_BRANCH...$INPUT" \
       --jq '{
         commits: [.commits[].commit.message | split("\n")[0]],
         files: [.files[] | {filename: .filename, status: .status, patch: (.patch // ""), additions: .additions, deletions: .deletions}]
@@ -205,7 +206,7 @@ case "$MODE" in
 
     RAW_FILES_JSON=$(echo "$COMPARE_JSON" | jq '.files')
     COMMIT_MESSAGE=$(echo "$COMPARE_JSON" | jq -r '.commits[0] // ""')
-    SOURCE_DESC="branch $INPUT"
+    SOURCE_DESC="branch $INPUT vs $BASE_BRANCH"
     ;;
 
   github-commit)
@@ -247,7 +248,9 @@ case "$MODE" in
     fi
 
     BASE_BRANCH=$(git -C "$PLAYER_LOCAL_REPO" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null \
-      | sed 's|refs/remotes/origin/||' || echo "main")
+      | sed 's|refs/remotes/origin/||' || \
+      git -C "$PLAYER_LOCAL_REPO" remote show origin 2>/dev/null | grep 'HEAD branch' | awk '{print $NF}' || \
+      echo "master")
 
     if [[ -n "$INPUT" && "$INPUT" != "--local" ]]; then
       DIFF_TARGET="$INPUT"

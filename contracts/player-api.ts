@@ -11,8 +11,8 @@
  *   - Si un ítem fue agregado: añadirlo aquí para que futuros tests lo usen
  *   - Usar `player_system.md` en .claude/memory/ como referencia autorizada
  *
- * Versión del player validada: 1.0.58
- * Última verificación: 2026-04-08 (desde código fuente del player)
+ * Versión del player validada: 1.0.59 (feature/issue-655 — onNext/onPrev)
+ * Última verificación: 2026-04-25 (desde código fuente del player)
  */
 
 // ── Métodos que deben existir como funciones en la instancia del player ──────
@@ -72,6 +72,12 @@ export const REQUIRED_PROPERTIES: Record<string, PropertySpec> = {
   // Tracks
   textTracks:  { type: 'object', nullable: true, writable: false, description: 'TextTrackList (subtítulos)' },
   audioTracks: { type: 'object', nullable: true, writable: false, description: 'AudioTrackList (pistas de audio)' },
+
+  // Navigation overrides (feature/issue-655)
+  // Setter coerces non-function values to null silently.
+  // Available in: compact, podcast, podcast2, radio (VOD branch only).
+  onNext: { type: 'function', nullable: true, writable: true, description: 'Callback que intercepta el botón "siguiente". null = comportamiento default.' },
+  onPrev: { type: 'function', nullable: true, writable: true, description: 'Callback que intercepta el botón "anterior". null = comportamiento default.' },
 }
 
 // ── Eventos que el player debe emitir via window.postMessage ─────────────────

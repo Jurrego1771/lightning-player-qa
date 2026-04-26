@@ -65,6 +65,7 @@ export default defineConfig({
     trace: 'on-first-retry',
     video: 'on-first-retry',
     screenshot: 'only-on-failure',
+    locale: 'en-US',
 
     launchOptions: {
       args: [

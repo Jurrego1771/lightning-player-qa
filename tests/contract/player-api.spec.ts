@@ -189,6 +189,93 @@ test.describe('Player API Contract', {
     )).toHaveLength(0)
   })
 
+  // ── 5b. onNext / onPrev — setters de callback de navegación (feature/issue-655) ──
+  //
+  // onNext y onPrev son getter/setter definidos con Object.defineProperty en src/controls/index.js.
+  // El setter debe aceptar una función y coercionar valores no-función a null silenciosamente.
+  // Disponibles en: compact, podcast, podcast2, radio (rama VOD únicamente).
+  //
+  // Input esperado: player.onNext = fn / null / 'string' / 42
+  // Output esperado:
+  //   - fn → player.onNext devuelve la misma función
+  //   - null → player.onNext devuelve null
+  //   - 'string' → player.onNext coercionado a null (no lanza)
+  //   - 42 → player.onNext coercionado a null (no lanza)
+  // Justificación de aserción:
+  //   El setter es el único punto de entrada para override de navegación.
+  //   Si lanza o no coerciona, cualquier integrador que asigne un valor inválido
+  //   romperá la UI del player silenciosamente. Verificar getter/setter en contrato.
+  // Señales primarias: typeof player.onNext, typeof player.onPrev
+  // Riesgos de falso positivo: ninguno — evaluación síncrona en browser context.
+
+  test('onNext y onPrev son propiedades writable — setter acepta función y coerciona no-función a null', async ({ isolatedPlayer }) => {
+    await isolatedPlayer.goto({ type: 'media', id: MockContentIds.vod, autoplay: false })
+    await isolatedPlayer.waitForReady()
+
+    const result = await isolatedPlayer.page.evaluate(() => {
+      const p = (window as any).__player
+      const errors: string[] = []
+
+      // 1. Asignar función — debe conservarla
+      const fn = () => {}
+      try {
+        p.onNext = fn
+        if (p.onNext !== fn) {
+          errors.push('player.onNext = fn — getter no devolvió la misma función')
+        }
+      } catch (e: unknown) {
+        errors.push(`player.onNext = fn lanzó: ${e instanceof Error ? e.message : String(e)}`)
+      }
+
+      // 2. Asignar null — debe aceptarlo sin throw
+      try {
+        p.onNext = null
+        if (p.onNext !== null) {
+          errors.push(`player.onNext = null — getter devolvió ${p.onNext} en lugar de null`)
+        }
+      } catch (e: unknown) {
+        errors.push(`player.onNext = null lanzó: ${e instanceof Error ? e.message : String(e)}`)
+      }
+
+      // 3. Asignar string — debe coercionar a null sin throw
+      try {
+        p.onNext = 'not-a-function'
+        if (p.onNext !== null) {
+          errors.push(`player.onNext = 'string' — se esperaba null tras coerción, got: ${typeof p.onNext}`)
+        }
+      } catch (e: unknown) {
+        errors.push(`player.onNext = 'string' lanzó: ${e instanceof Error ? e.message : String(e)}`)
+      }
+
+      // 4. Verificar onPrev con el mismo patrón
+      const fn2 = () => {}
+      try {
+        p.onPrev = fn2
+        if (p.onPrev !== fn2) {
+          errors.push('player.onPrev = fn — getter no devolvió la misma función')
+        }
+      } catch (e: unknown) {
+        errors.push(`player.onPrev = fn lanzó: ${e instanceof Error ? e.message : String(e)}`)
+      }
+
+      try {
+        p.onPrev = null
+        if (p.onPrev !== null) {
+          errors.push(`player.onPrev = null — getter devolvió ${p.onPrev} en lugar de null`)
+        }
+      } catch (e: unknown) {
+        errors.push(`player.onPrev = null lanzó: ${e instanceof Error ? e.message : String(e)}`)
+      }
+
+      return errors
+    })
+
+    expect(result, contractViolation(
+      `onNext/onPrev setter contract violado — ${result.length} error(es)`,
+      result.join('\n  → ')
+    )).toHaveLength(0)
+  })
+
   // ── 6. isPlayingAd() retorna boolean ─────────────────────────────────────
 
   test('player.isPlayingAd es un getter que retorna boolean', async ({ isolatedPlayer }) => {

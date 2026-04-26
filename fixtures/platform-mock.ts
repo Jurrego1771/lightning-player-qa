@@ -156,7 +156,12 @@ export async function mockPlayerConfig(
   overrides: Record<string, unknown>
 ): Promise<void> {
   const base = JSON.parse(FIXTURES.player.default)
-  const merged = { ...base, ...overrides }
+  const merged = {
+    ...base,
+    ...overrides,
+    // Deep-merge view so overrides.view.type doesn't drop base.view.style
+    view: { ...base.view, ...((overrides.view as Record<string, unknown>) || {}) },
+  }
   const { platformDomain } = getEnvironmentConfig()
 
   await page.route(`**/${platformDomain}/**`, async (route) => {
