@@ -14,6 +14,20 @@ Tu trabajo es producir documentación estructurada que el `test-triage-agent` pu
 
 **Output destino:** `docs/02-features/[feature-name]/`
 
+**Estructura estándar — 5 archivos requeridos + 1 opcional:**
+
+```
+docs/02-features/[feature]/
+├── business-rules.md   ← reglas canónicas + tabla de vistas + API + timing
+├── observability.md    ← eventos, señales, secuencias, señales NO confiables
+├── test-briefs.md      ← TB-NN casos concretos + sección anti-patrones al final
+├── edge-cases.md       ← EC-NN casos con [CODE: citations] y coverage status
+├── _meta.json          ← versión, status, coverage_status, files.required/optional
+└── known-bugs.json     ← OPCIONAL: solo crear si hay bugs conocidos
+```
+
+**NO generar** `feature-spec.md` ni `test-strategy.md`. Su contenido vive en `business-rules.md` (contexto/vistas/API) y `test-briefs.md` (estrategia/anti-patrones).
+
 ---
 
 ## REGLA FUNDAMENTAL
@@ -85,7 +99,14 @@ Genera los 7 archivos desde cero.
 
 4. **Detectar contradicciones** → aplicar protocolo de contradicción.
 
-5. **Escribir los 7 archivos** — solo con claims que tienen fuente.
+5. **Escribir los 5 archivos requeridos** — solo con claims que tienen fuente:
+   - `business-rules.md` — BR-NN numeradas + tabla de vistas + API pública + timing exacto
+   - `observability.md` — eventos con tabla (nombre/cuándo/payload/fuente) + secuencias + señales NO confiables
+   - `test-briefs.md` — TB-NN con layer/fixture/signals/false_positive_risks + sección anti-patrones al final
+   - `edge-cases.md` — EC-NN con [CODE: citation] y campo `Coverage: ❌/✅`
+   - `_meta.json` — con `files.required` y `files.optional` separados
+
+   Crear `known-bugs.json` solo si se detectan bugs en el código durante la investigación.
 
 6. **Crear `_meta.json` con `status: "draft"`** — siempre draft, nunca auto-aprobar.
 
@@ -181,120 +202,230 @@ docs/02-features/
 
 ## ESTRUCTURA DE ARCHIVOS GENERADOS
 
-### `feature-spec.md`
-```markdown
-# Feature Spec — [nombre]
-
-## Descripción
-[Qué hace la feature — fuentes: CODE o USER]
-
-## Alcance
-[Qué incluye y qué no — fuentes: CODE o USER]
-
-## Dependencias
-[Qué necesita para funcionar — fuentes: CODE]
-```
-
 ### `business-rules.md`
 ```markdown
+---
+type: business-rules
+feature: [nombre]
+version: "1.0"
+status: draft
+last_verified: YYYY-MM-DD
+---
+
 # Business Rules — [nombre]
 
-Cada regla tiene: condición, resultado esperado, fuente.
+## Contexto: vistas que implementan la feature
 
-## Reglas
+| Vista | UI | Auto-Load | Controles bloqueados |
+|---|---|---|---|
+| `video` | [descripción] | Sí/No | Sí/No |
+| `none` | Sin UI | Sí/No | No |
 
-### BR-01: [nombre corto]
-**Condición:** [cuándo aplica]
-**Resultado esperado:** [qué debe pasar]
-**Fuente:** [CODE: path:line] | [INDUSTRY: nombre] | [USER: fecha]
-**Notas:** [contexto adicional si aplica]
+[CODE: path:line]
+
+## API pública
+
+```js
+player.metodo()  // Retorna X. Emite Y.
+```
+[CODE: src/api/player.jsx:NN]
+
+## Timing (si aplica)
+
+```
+CONSTANT_NAME = valor  // descripción
+```
+[CODE: path:line]
+
+---
+
+## BR-01 — [nombre corto]
+
+[descripción de la regla]
+
+[CODE: path:line]
 ```
 
 ### `observability.md`
 ```markdown
+---
+type: observability
+feature: [nombre]
+version: "1.0"
+status: draft
+last_verified: YYYY-MM-DD
+---
+
 # Observability — [nombre]
 
-## Eventos emitidos
+## Eventos públicos
 
-| Evento | Cuándo | Payload | Fuente |
-|--------|--------|---------|--------|
-| [nombre] | [condición] | [datos] | [CODE/INDUSTRY/USER] |
+| Evento | Quién lo emite | Payload | Cuándo |
+|---|---|---|---|
+| `eventName` | player / método | datos | condición |
 
-## Señales de API pública
+[CODE: constants.cjs:NN]
 
-| Propiedad/método | Valor esperado | Cuándo | Fuente |
-|-----------------|----------------|--------|--------|
+## Señales de transición real
 
-## Señales NO observables
-[Lo que el player hace internamente pero no expone — importante para evitar tests que buscan lo imposible]
+[señales para verificar que el cambio realmente ocurrió]
+
+## API pública observable
+
+```js
+player.metodo()  // → tipo de retorno
 ```
 
-### `test-strategy.md`
-```markdown
-# Test Strategy — [nombre]
+## Señales NO confiables
 
-## Capa recomendada
-[integration / e2e / unit — justificación]
+| Señal | Por qué no usarla |
+|---|---|
+| `player.X` | razón |
 
-## Fixture a usar
-[isolatedPlayer / player — justificación]
+## Reglas de aserción
 
-## Señales primarias (qué verificar)
-[Lista]
+1. Para verificar X → usar Y
+2. Para verificar A → usar B
 
-## Señales secundarias (evidencia de soporte)
-[Lista]
+## Secuencias de eventos esperadas
 
-## Anti-patrones a evitar
-[Lista — basada en assertion-rules.md]
+### [flujo nombre]
+```
+evento1
+evento2
+evento3
+```
 ```
 
 ### `test-briefs.md`
 ```markdown
+---
+type: test-briefs
+feature: [nombre]
+version: "1.0"
+status: draft
+last_verified: YYYY-MM-DD
+---
+
 # Test Briefs — [nombre]
 
-Cada brief es un test case específico con criterio de aceptación explícito.
+---
 
-## TB-01: [nombre del test]
-**Dado:** [precondición]
-**Cuando:** [acción]
-**Entonces:** [resultado esperado]
-**Señal primaria:** [evento o API a verificar]
-**Fuera de scope:** [qué no verifica este test]
+## TB-01 — [nombre del caso]
+
+```yaml
+layer: contract | integration | e2e | visual | a11y | performance
+fixture: isolatedPlayer | player
+determinism: high | medium | low
+
+preconditions:
+  - [condición requerida]
+
+steps:
+  - Arrange: [setup]
+  - Act: [acción]
+  - Assert: [verificación en orden]
+
+signals:
+  primary: [señal principal]
+  secondary: [señal de soporte]
+  avoid: [señal a no usar]
+
+false_positive_risks:
+  - [riesgo de falso positivo]
+```
+
+---
+
+## Anti-patrones a evitar
+
+```typescript
+// ❌ [descripción del anti-patrón]
+// código incorrecto
+
+// ✅ [alternativa correcta]
+// código correcto
+```
 ```
 
 ### `edge-cases.md`
 ```markdown
+---
+type: edge-cases
+feature: [nombre]
+version: "1.0"
+status: draft
+last_verified: YYYY-MM-DD
+---
+
 # Edge Cases — [nombre]
 
-## EC-01: [nombre]
-**Escenario:** [descripción]
-**Comportamiento esperado:** [resultado]
-**Fuente:** [CODE/INDUSTRY/USER]
-**Riesgo:** [por qué puede romperse]
-**Cubierto en tests:** [sí/no — qué test]
+## EC-01 — [nombre corto]
+
+[descripción del caso]
+
+[CODE: path:line]
+Coverage: ❌ Sin test | ✅ [TB-NN]
 ```
 
 ### `_meta.json`
 ```json
 {
   "feature": "[feature-name]",
-  "version": "1.0.0",
+  "schema_version": "1.0",
+  "version": "1.0",
   "status": "draft",
+  "created_at": "YYYY-MM-DD",
+  "last_updated": "YYYY-MM-DD",
+  "player_version_verified": "[versión]",
   "approved_by": null,
   "approved_at": null,
-  "created_at": "YYYY-MM-DD",
-  "updated_at": "YYYY-MM-DD",
-  "created_by": "doc-feature-agent",
-  "sources_used": ["player-source", "industry-research", "user-confirmation"],
-  "unconfirmed_claims": 0,
+  "files": {
+    "required": [
+      "business-rules.md",
+      "observability.md",
+      "test-briefs.md",
+      "edge-cases.md",
+      "_meta.json"
+    ],
+    "optional": ["known-bugs.json"]
+  },
+  "coverage_status": {
+    "contract": "not_implemented",
+    "integration": "not_implemented",
+    "e2e": "not_implemented",
+    "visual": "not_applicable",
+    "a11y": "not_implemented",
+    "performance": "not_applicable"
+  },
   "changelog": [
     {
-      "version": "1.0.0",
+      "version": "1.0",
       "date": "YYYY-MM-DD",
       "author": "doc-feature-agent",
-      "triggered_by": "create",
       "changes": ["initial draft"]
+    }
+  ]
+}
+```
+
+### `known-bugs.json` (solo si hay bugs detectados)
+```json
+{
+  "feature": "[feature-name]",
+  "last_updated": "YYYY-MM-DD",
+  "bugs": [
+    {
+      "id": "bug_001",
+      "title": "[título corto]",
+      "status": "open | fixed",
+      "severity": "critical | high | medium | low",
+      "fixed_in": null,
+      "github_issue": null,
+      "description": "[descripción]",
+      "root_cause": "[causa raíz si se conoce]",
+      "reproduction": ["paso 1", "paso 2"],
+      "regression_test": null
     }
   ]
 }

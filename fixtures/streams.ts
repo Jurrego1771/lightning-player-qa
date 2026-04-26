@@ -46,6 +46,12 @@ export const ContentIds = {
 
   /** VOD DASH — stream con manifiesto MPD para tests de startup DASH */
   dashVod: '699afcb05a41925324fa4605',
+
+  /** Live DASH — stream live con manifiesto MPD */
+  dashLive: '699afcb05a41925324fa4605',
+
+  /** DVR DASH — stream live con ventana DVR sobre DASH */
+  dashDvr: '699afcb05a41925324fa4605',
 }
 
 // ── Access tokens para contenido restringido ─────────────────────────────

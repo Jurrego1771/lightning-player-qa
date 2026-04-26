@@ -5,23 +5,19 @@
  * El nuevo DashHandler reworkeó la lógica de DVR (useDVRSeekAfterReload)
  * para cubrir DASH además de HLS.
  *
- * Fixture: player + contentAccess (DVR requiere access token)
- * Requiere: ContentIds.dvr (stream DVR en la plataforma DEV) con soporte DASH.
- *
- * NOTA: El stream DVR actual en ContentIds puede ser HLS. Si la plataforma
- * no tiene un DVR DASH disponible, los tests indicarán el gap con skip claro.
+ * Fixture: player
+ * Requiere: ContentIds.dashDvr (stream DVR en la plataforma DEV) con soporte DASH.
  */
 import { test, expect, ContentIds } from '../../fixtures'
 
 test.describe('DASH DVR — Seek en ventana live', { tag: ['@e2e'] }, () => {
 
-  test('player DVR con DASH: isDVR retorna true', async ({ player, contentAccess }) => {
-    // Arrange — cargar stream DVR con access token
+  test('player DVR con DASH: isDVR retorna true', async ({ player }) => {
+    // Arrange — cargar stream DVR que no requiere token
     await player.goto({
       type: 'dvr',
-      id: ContentIds.dvr,
+      id: ContentIds.dashDvr,
       autoplay: true,
-      ...contentAccess.dvr,
     })
     await player.waitForEvent('playing', 30_000)
 
@@ -35,13 +31,12 @@ test.describe('DASH DVR — Seek en ventana live', { tag: ['@e2e'] }, () => {
     ).toBe(true)
   })
 
-  test('seek dentro de la ventana DVR no provoca error fatal', async ({ player, contentAccess }) => {
+  test('seek dentro de la ventana DVR no provoca error fatal', async ({ player }) => {
     // Arrange
     await player.goto({
       type: 'dvr',
-      id: ContentIds.dvr,
+      id: ContentIds.dashDvr,
       autoplay: true,
-      ...contentAccess.dvr,
     })
     await player.waitForEvent('playing', 30_000)
 
@@ -58,13 +53,12 @@ test.describe('DASH DVR — Seek en ventana live', { tag: ['@e2e'] }, () => {
     await player.assertNoInitError()
   })
 
-  test('seek al inicio de la ventana DVR y el player retoma reproducción', async ({ player, contentAccess }) => {
+  test('seek al inicio de la ventana DVR y el player retoma reproducción', async ({ player }) => {
     // Arrange
     await player.goto({
       type: 'dvr',
-      id: ContentIds.dvr,
+      id: ContentIds.dashDvr,
       autoplay: true,
-      ...contentAccess.dvr,
     })
     await player.waitForEvent('playing', 30_000)
 
@@ -84,13 +78,12 @@ test.describe('DASH DVR — Seek en ventana live', { tag: ['@e2e'] }, () => {
     await player.assertNoInitError()
   })
 
-  test('DASH DVR: currentTime actualiza correctamente después de seek', async ({ player, contentAccess }) => {
+  test('DASH DVR: currentTime actualiza correctamente después de seek', async ({ player }) => {
     // Arrange
     await player.goto({
       type: 'dvr',
-      id: ContentIds.dvr,
+      id: ContentIds.dashDvr,
       autoplay: true,
-      ...contentAccess.dvr,
     })
     await player.waitForEvent('playing', 30_000)
 

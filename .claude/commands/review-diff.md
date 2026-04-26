@@ -82,6 +82,35 @@ Delega al agente `diff-analyzer`:
 - Si `risk_level = LOW` y `change_type = docs` → informar al usuario y preguntar si continuar
 - Si el agente no puede obtener el diff → pedir al usuario que lo proporcione directamente
 
+## Paso 1.5 — Doc check (prerequisito de test-generator)
+
+Para cada módulo en `risk-map.affected_modules`, verifica si existe `docs/02-features/[módulo]/_meta.json`:
+
+```bash
+# Para cada módulo afectado:
+ls docs/02-features/[módulo]/_meta.json 2>/dev/null
+```
+
+Si **todos los módulos tienen docs** → continuar en silencio.
+
+Si **algún módulo NO tiene docs**, mostrar:
+
+```
+⚠️  Docs de feature faltantes para: [módulo1], [módulo2]
+
+   test-generator necesita test-briefs.md para generar tests con contexto.
+   Sin docs, solo puede generar basado en el diff (cobertura genérica).
+
+   Opciones:
+     a) Correr /doc-feature [módulo] create primero — recomendado (5-10 min)
+     b) Continuar sin docs — test-generator opera en modo básico
+
+   ¿Continuar sin docs? [s/N]
+```
+
+- Si NO → detener aquí. El usuario corre `/doc-feature` y luego retoma `/review-diff`.
+- Si SÍ → continuar. Anotar en el resumen final cuáles módulos corrieron sin docs.
+
 ## Paso 2 — Verificación de cobertura (coverage-checker)
 
 Delega al agente `coverage-checker`:
@@ -176,27 +205,7 @@ Delega al agente `results-analyzer`:
 
 **Espera el resultado.** El agente presenta el informe completo.
 
-## Paso 7 — Sincronización con Notion (notion-sync)
-
-Si `NOTION_TOKEN` está configurado en el entorno, delega al agente `notion-sync`:
-
-> Lee tmp/pipeline/results-report.json, tmp/pipeline/coverage-report.json
-> y tmp/pipeline/risk-map.json.
-> Actualiza la tabla "Lightning - Risk Register (DB)" en Notion con los
-> resultados QA operacionales (cobertura, specs, resultado, veredicto).
-> Database ID: 9e40a96e-861c-4fb3-b745-02ab1e12290a
-> NO modificar las columnas del featureagent (Risk, Impact, Priority, etc.).
-
-Si `NOTION_TOKEN` no está configurado:
-```
-⚠️  NOTION_TOKEN no configurado — sync omitido.
-    Para habilitar: agregar NOTION_TOKEN en .env
-    Ver .env.example para instrucciones.
-```
-
-**Espera el resultado.** El agente reporta qué módulos se actualizaron.
-
-## Paso 8 — Limpieza y cierre
+## Paso 7 — Limpieza y cierre
 
 Preguntar al usuario:
 ```

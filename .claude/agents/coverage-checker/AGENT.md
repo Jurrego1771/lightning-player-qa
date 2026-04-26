@@ -137,7 +137,26 @@ Un **gap** es:
 - `generate-then-run` → gaps MUST sin cobertura
 - `run-existing-and-generate` → hay cobertura parcial + gaps MUST a cubrir
 
-### Paso 6 — Reportar al usuario
+### Paso 6 — Enriquecer risk-map.json
+
+Después de escribir `coverage-report.json`, actualiza los campos de cobertura
+en cada módulo de `tmp/pipeline/risk-map.json`.
+
+Para cada módulo en `coverage-report.json[coverage]`, busca el módulo
+correspondiente en `risk-map.json[modules]` por `name` y actualiza:
+
+```json
+{
+  "coverage": "<full|partial|none>",
+  "coverage_specs": ["<spec1>", "<spec2>"],
+  "open_gaps": "<número de gaps con priority MUST>"
+}
+```
+
+Sobreescribe `risk-map.json` completo con los módulos actualizados.
+No modificar ningún otro campo del risk-map.
+
+### Paso 7 — Reportar al usuario
 
 ```
 ## Coverage Report

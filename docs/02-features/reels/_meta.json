@@ -1,0 +1,41 @@
+{
+  "feature": "reels",
+  "schema_version": "1.0",
+  "version": "1.0",
+  "status": "draft",
+  "created_at": "2026-04-26",
+  "last_updated": "2026-04-26",
+  "player_version_verified": "1.0.62",
+  "approved_by": null,
+  "approved_at": null,
+  "files": {
+    "required": [
+      "business-rules.md",
+      "observability.md",
+      "test-briefs.md",
+      "edge-cases.md",
+      "_meta.json"
+    ],
+    "optional": [
+      "known-bugs.json"
+    ]
+  },
+  "coverage_status": {
+    "contract": "not_implemented",
+    "integration": "not_implemented",
+    "e2e": "not_implemented",
+    "visual": "not_implemented",
+    "a11y": "not_implemented",
+    "performance": "not_applicable"
+  },
+  "changelog": [
+    {
+      "version": "1.0",
+      "date": "2026-04-26",
+      "author": "doc-feature-agent",
+      "changes": [
+        "initial draft — sourced entirely from src/view/reels/ and src/plugins/index.js, no user confirmations pending"
+      ]
+    }
+  ]
+}

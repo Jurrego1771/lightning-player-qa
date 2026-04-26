@@ -34,7 +34,10 @@ Before touching any code, investigate:
    - `docs/01-sut/overview.md` and `observability-model.md` — player API and events
    - `docs/03-testing/philosophy.md` and `assertion-rules.md` — what assertions are valid
    - `docs/05-pipeline/ai-test-generation/contract.md` — test generation rules
-   - `docs/02-features/` — feature-specific specs relevant to the test
+   - `docs/02-features/[feature]/` — feature docs: `business-rules.md`, `observability.md`, `edge-cases.md`
+   - `docs/02-features/[feature]/known-bugs.json` — si existe, leerlo antes de diagnosticar:
+     - Bug `status: "open"` que coincide con el fallo → el test puede ser correcto; el bug del player es la causa real. **No corregir el test** — documentar el blocker y dejar el triage file con nota explicatoria.
+     - Bug `status: "fixed"` que coincide → posible regresión en el player. Escalar al usuario antes de continuar.
 3. **Consult the player source** at `../lightning-player` (sibling directory relative to project root — path is machine-dependent, derive from CWD) when you need to understand internal behavior, event payloads, or API contracts that are not fully documented in the QA repo.
 4. **Classify the defect type:**
    - **Wrong assertion** — the assertion checks the wrong thing or uses wrong tolerance

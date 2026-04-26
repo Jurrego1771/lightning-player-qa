@@ -112,6 +112,11 @@ test.describe('DASH VOD Playback', { tag: ['@e2e'] }, () => {
     // Arrange
     await player.goto({ type: 'media', src: DASH_SRC, autoplay: false })
     await player.waitForReady(30_000)
+    // loadMSPlayer() resolves after _controlsReady (Controls mounts), before the DashHandler
+    // lazy chunk mounts. player.handler returns '' until _setInnerRef fires on DashHandler mount.
+    // loadedmetadata is emitted by the handler itself (not backfilled in harness), so waiting
+    // for it guarantees _handler !== null before reading player.handler.
+    await player.waitForEvent('loadedmetadata', 20_000)
 
     // Assert — el player debe seleccionar el DashHandler
     const handler = await player.getHandler()

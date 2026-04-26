@@ -116,6 +116,11 @@ test.describe('Player API Contract', {
   test('propiedades requeridas existen con el tipo correcto', async ({ isolatedPlayer }) => {
     await isolatedPlayer.goto({ type: 'media', id: MockContentIds.vod, autoplay: false })
     await isolatedPlayer.waitForReady()
+    // loadMSPlayer() resuelve después de _controlsReady (Controls mounts), antes de que el
+    // HLS handler lazy-load monte. Sin este wait, _handler es null y las propiedades
+    // delegadas a _handler.get() retornan null. loadedmetadata no se backfilla en harness
+    // (player.readyState es undefined cuando _handler es null), así que este wait es real.
+    await isolatedPlayer.waitForEvent('loadedmetadata', 15_000)
 
     const propResults: Record<string, { actualType: string; value: unknown }> =
       await isolatedPlayer.page.evaluate((specs) => {

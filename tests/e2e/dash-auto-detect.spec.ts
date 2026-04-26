@@ -16,12 +16,7 @@ import { test, expect, ExternalStreams } from '../../fixtures'
 
 const DASH_MPD_SRC = ExternalStreams.dash.vod
 
-// ⚠️  DASH auto-detect depende de feature/issue-496-dash-implementation
-// que aún no está mergeada a develop. Los tests se marcan fixme hasta entonces.
-// Cuando la feature llegue a develop, remover el fixme y verificar que pasen.
 test.describe('DASH Auto-Detect', { tag: ['@e2e'] }, () => {
-
-  test.fixme(true, 'DASH handler no mergeado a develop — branch: feature/issue-496-dash-implementation')
 
   test('URL con extensión .mpd: DashHandler se selecciona automáticamente', async ({ player }) => {
     // Arrange — pasar src con .mpd directamente, sin format explícito
@@ -35,6 +30,7 @@ test.describe('DASH Auto-Detect', { tag: ['@e2e'] }, () => {
     } as any)
 
     await player.waitForReady(30_000)
+    await player.waitForEvent('loadedmetadata', 20_000)
 
     // Assert — el handler seleccionado debe ser DASH
     const handler = await player.getHandler()
@@ -104,6 +100,7 @@ test.describe('DASH Auto-Detect', { tag: ['@e2e'] }, () => {
     } as any)
 
     await player.waitForReady(30_000)
+    await player.waitForEvent('loadedmetadata', 20_000)
 
     // Assert — el handler debe ser HLS (no DASH)
     const handler = await player.getHandler()
@@ -138,6 +135,12 @@ test.describe('DASH Auto-Detect', { tag: ['@e2e'] }, () => {
       },
       { timeout: 25_000 }
     ).toBe(true)
+
+    // Poll until DashHandler lazy chunk mounts — handler is set on _setInnerRef (network-free).
+    await expect.poll(
+      () => player.page.evaluate(() => (window as any).__player?.handler ?? ''),
+      { timeout: 15_000 }
+    ).toMatch(/.+/)
 
     // El handler debe ser DASH (aunque la reproducción falle por el formato incompatible)
     const handler = await player.getHandler()

@@ -128,7 +128,31 @@ DO NOT MERGE:
 }
 ```
 
-### Paso 7 — Presentar informe ejecutivo
+### Paso 7 — Enriquecer risk-map.json
+
+Después de escribir `results-report.json`, actualiza los campos de resultado
+en cada módulo de `tmp/pipeline/risk-map.json`.
+
+Para cada módulo en `results-report.json[risk_coverage]`, busca el módulo
+correspondiente en `risk-map.json[modules]` por `name` y actualiza:
+
+```json
+{
+  "test_result": "<passed|failed|flaky|not-run>",
+  "last_run": "<ISO timestamp del run>",
+  "verdict": "<safe|investigate|blocked>"
+}
+```
+
+Derivar `verdict` por módulo:
+- Si `result = failed` y fallo es PLAYER_REGRESSION → `"blocked"`
+- Si `result = flaky` o fallo es INFRASTRUCTURE → `"investigate"`
+- Si `result = passed` o `result = not-run` sin gaps CRITICAL → `"safe"`
+
+Sobreescribe `risk-map.json` completo con los módulos actualizados.
+No modificar ningún otro campo del risk-map.
+
+### Paso 8 — Presentar informe ejecutivo
 
 ```
 ═══════════════════════════════════════════════

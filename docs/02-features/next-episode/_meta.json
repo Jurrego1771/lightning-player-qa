@@ -1,0 +1,63 @@
+{
+  "feature": "next-episode",
+  "schema_version": "1.0",
+  "version": "2.1",
+  "status": "draft",
+  "created_at": "2026-04-26",
+  "last_updated": "2026-04-26",
+  "player_version_verified": "1.0.62",
+  "approved_by": null,
+  "approved_at": null,
+  "files": {
+    "required": [
+      "business-rules.md",
+      "observability.md",
+      "test-briefs.md",
+      "edge-cases.md",
+      "_meta.json"
+    ],
+    "optional": [
+      "known-bugs.json"
+    ]
+  },
+  "coverage_status": {
+    "contract": "not_implemented",
+    "integration": "not_implemented",
+    "e2e": "not_implemented",
+    "visual": "not_applicable",
+    "a11y": "not_implemented",
+    "performance": "not_applicable"
+  },
+  "changelog": [
+    {
+      "version": "2.1",
+      "date": "2026-04-26",
+      "author": "claude-code",
+      "changes": [
+        "Estructura reducida de 7 archivos a 5 (eliminados feature-spec.md y test-strategy.md)",
+        "Tabla de vistas y API pública movida a business-rules.md",
+        "Anti-patrones movidos a test-briefs.md como sección final",
+        "known-bugs.md → known-bugs.json con schema estructurado",
+        "files separado en required/optional en _meta.json"
+      ]
+    },
+    {
+      "version": "2.0",
+      "date": "2026-04-26",
+      "author": "claude-code",
+      "changes": [
+        "Reescritura completa verificada contra código fuente v1.0.62",
+        "Corregido: updateNextEpisode() retorna undefined",
+        "Agregado: 5to evento nextEpisodeLoadRequested",
+        "12 test briefs (TB-01 a TB-12)",
+        "13 edge cases con code citations"
+      ]
+    },
+    {
+      "version": "1.0",
+      "date": "2026-04-15",
+      "author": "manual",
+      "changes": ["Versión inicial"]
+    }
+  ]
+}

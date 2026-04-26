@@ -133,6 +133,15 @@ test.describe('Player API — format param', {
       { timeout: 25_000 }
     ).toBe(true)
 
+    // Wait for lazy-loaded DashHandler to mount and set _handler ref.
+    // initialized fires when loadMSPlayer() resolves (after _controlsReady), before
+    // React.Suspense finishes loading the lazy chunk. player.handler returns '' until
+    // _setInnerRef fires. This poll is network-free — handler string is set on mount.
+    await expect.poll(
+      () => isolatedPlayer.page.evaluate(() => (window as any).__player?.handler ?? ''),
+      { timeout: 15_000 }
+    ).toMatch(/.+/)
+
     // Assert — el handler seleccionado debe ser DASH (auto-detected)
     const handler = await isolatedPlayer.getHandler()
     expect(
@@ -195,6 +204,8 @@ test.describe('Player API — format param', {
 
     await isolatedPlayer.waitForReady(20_000)
     await isolatedPlayer.assertNoInitError()
+    // Same race as player-api.spec.ts test #4: ready fires before HLS lazy chunk mounts.
+    await isolatedPlayer.waitForEvent('loadedmetadata', 15_000)
 
     // El player debe seguir reproduciendo HLS por defecto
     const handler = await isolatedPlayer.getHandler()

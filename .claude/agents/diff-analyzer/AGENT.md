@@ -124,6 +124,7 @@ ui-change:
 
 ```json
 {
+  "schema_version": "2.0",
   "timestamp": "<ISO timestamp>",
   "input": {
     "source": "<del diff-input.source>",
@@ -131,24 +132,49 @@ ui-change:
   },
   "change_type": "<bug-fix|feature|refactor|performance|dependency|ui-change|docs>",
   "risk_level": "<CRITICAL|HIGH|MEDIUM|LOW>",
-  "changed_files": [
+
+  "modules": [
     {
-      "path": "<archivo>",
-      "module": "<módulo>",
-      "risk": "<CRITICAL|HIGH|MEDIUM|LOW>",
-      "change_summary": "<qué cambió en 1 línea>"
+      "name": "<módulo — ads|api|hls|events|platform|controls|analytics|drm|ui|general>",
+      "player_path": "<path en el repo del player — ej: src/ads>",
+      "risk_level": "<CRITICAL|HIGH|MEDIUM|LOW>",
+      "changed_files": [
+        {
+          "path": "<ruta relativa en el player>",
+          "status": "<added|modified|removed|renamed>",
+          "risk": "<CRITICAL|HIGH|MEDIUM|LOW>",
+          "change_summary": "<qué cambió en 1 línea>"
+        }
+      ],
+      "recommended_test_types": ["<smoke|e2e|integration|contract|visual|a11y|performance>"],
+      "suggested_specs": ["<tests/integration/ad-beacons.spec.ts>"],
+
+      "coverage": null,
+      "coverage_specs": null,
+      "open_gaps": null,
+      "test_result": null,
+      "last_run": null,
+      "verdict": null
     }
   ],
-  "affected_modules": ["<módulo1>", "<módulo2>"],
-  "recommended_test_types": ["<smoke|e2e|integration|contract|visual|a11y|performance>"],
+
   "test_priority": "<run-existing|generate-and-run|skip>",
   "rationale": "<explicación en 2-3 líneas>",
+
+  "affected_modules": ["<módulo1>", "<módulo2>"],
+  "recommended_test_types": ["<smoke|e2e|integration|contract|visual|a11y|performance>"],
   "suggested_spec_patterns": [
     "<tests/e2e/vod-playback.spec.ts>",
     "<tests/integration/ad-beacons.spec.ts>"
   ]
 }
 ```
+
+**Notas sobre el schema:**
+
+- `modules[]` es la fuente de verdad por módulo. Los campos `affected_modules`, `recommended_test_types` y `suggested_spec_patterns` son derivados de `modules[]` y se mantienen para compatibilidad con coverage-checker y test-selector.
+- Los campos nulos en cada módulo (`coverage`, `coverage_specs`, `open_gaps`, `test_result`, `last_run`, `verdict`) son llenados por agentes posteriores del pipeline: `coverage-checker` llena `coverage`, `coverage_specs` y `open_gaps`; `results-analyzer` llena `test_result`, `last_run` y `verdict`.
+- Dejar los campos nulos si el agente que los llena no ha corrido aún.
 
 **Criterio para test_priority:**
 - `run-existing` → hay tests que cubren el área
