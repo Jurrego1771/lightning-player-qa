@@ -150,6 +150,39 @@ export class LightningPlayerPage {
   }
 
   /**
+   * Navega al harness multi-init y carga el player via método alternativo:
+   *   'callback' → data-loaded attribute (player llama window.__playerLoadedCallback)
+   *   'event'    → playerloaded CustomEvent en el script element (event.detail = player)
+   *
+   * La plataforma está mockeada si el test usa isolatedPlayer (page.route interceptors
+   * se mantienen activos entre navegaciones). El script del player se inyecta desde CDN
+   * exactamente igual que en goto() — solo cambia el mecanismo de entrega de la instancia.
+   */
+  async gotoMultiInit(config: InitConfig, method: 'callback' | 'event'): Promise<void> {
+    const envConfig = getEnvironmentConfig()
+    const scriptUrl = envConfig.playerScriptUrl
+
+    await this.page.goto('http://localhost:3000/multi-init.html', { waitUntil: 'domcontentloaded' })
+
+    if (method === 'callback') {
+      await this.page.evaluate(
+        ({ url, cfg }) => (window as any).__initViaCallback(url, cfg),
+        { url: scriptUrl, cfg: config as Record<string, unknown> }
+      )
+    } else {
+      await this.page.evaluate(
+        ({ url, cfg }) => (window as any).__initViaEvent(url, cfg),
+        { url: scriptUrl, cfg: config as Record<string, unknown> }
+      )
+    }
+
+    await this.page.waitForFunction(
+      () => (window as any).__qa?.initialized === true || (window as any).__qa?.initError != null,
+      { timeout: 30_000 }
+    )
+  }
+
+  /**
    * Carga nuevo contenido en un player ya inicializado via player.load().
    * Este es el método principal para cambiar contenido dinámicamente.
    * Referencia: sección "load options" en lightning_player.md

@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lightning Player QA — Multi-Init Harness</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+    #player-container { width: 100%; max-width: 1280px; aspect-ratio: 16/9; }
+  </style>
+</head>
+<body>
+  <div id="player-container"></div>
+
+  <script>
+    // ── Estado observable por Playwright ─────────────────────────────────────
+    window.__qa = {
+      ready: false,
+      initialized: false,
+      events: [],
+      eventData: {},
+      errors: [],
+      initError: null,
+      initMethod: null,   // 'callback' | 'event' — registrado cuando __setupPlayerEvents corre
+    }
+
+    // ── Setup compartido — llamado por cualquier método de init ──────────────
+    // Idéntico al bloque .then() de index.html para consistencia observable.
+    window.__setupPlayerEvents = function (player, initMethod) {
+      window.__player = player
+      window.__qa.initMethod = initMethod || 'unknown'
+
+      var CUSTOM_EVENTS = [
+        'loaded', 'ready', 'sourcechange', 'error', 'buffering',
+        'programdatetime', 'adblockerDetected', 'share',
+        'levelchange', 'levelchanged',
+        'metadataloading', 'metadataloaded', 'metadatachanged',
+        'dismissButton', 'contentFirstPlay',
+      ]
+      var HTML5_EVENTS = [
+        'abort', 'canplay', 'canplaythrough', 'durationchange', 'emptied',
+        'ended', 'loadeddata', 'loadedmetadata', 'loadstart',
+        'pause', 'play', 'playing', 'progress', 'ratechange',
+        'seeked', 'seeking', 'stalled', 'suspend', 'timeupdate',
+        'volumechange', 'waiting',
+      ]
+      var AD_EVENTS = [
+        'adsAdBreakReady', 'adsAdMetadata', 'adsAllAdsCompleted',
+        'adsClick', 'adsComplete', 'adsContentPauseRequested',
+        'adsContentResumeRequested', 'adsDurationChange',
+        'adsFirstQuartile', 'adsImpression', 'adsLinearChanged',
+        'adsLoaded', 'adsLog', 'adsMidpoint', 'adsPaused',
+        'adsResumed', 'adsSkippableStateChanged', 'adsSkipped',
+        'adsStarted', 'adsThirdQuartile', 'adsTimeUpdate',
+        'adsUserClose', 'adsVolumeChanged', 'adsVolumeMuted',
+        'adsError', 'adsAdBuffering', 'adsAdProgress',
+        'adsInteraction', 'adsVideoClicked', 'adsVideoIconClicked',
+      ]
+      var TRACK_EVENTS = [
+        'texttrackchange', 'texttrackaddtrack', 'texttrackremovetrack',
+        'audiotrackchange', 'audiotrackaddtrack', 'audiotrackremovetrack',
+      ]
+
+      var ALL_EVENTS = CUSTOM_EVENTS.concat(HTML5_EVENTS, AD_EVENTS, TRACK_EVENTS)
+
+      ALL_EVENTS.forEach(function (eventName) {
+        player.on(eventName, function (data) {
+          if (eventName === 'timeupdate') {
+            if (!window.__qa.events.includes('timeupdate')) window.__qa.events.push('timeupdate')
+            return
+          }
+          window.__qa.events.push(eventName)
+          if (data !== undefined) window.__qa.eventData[eventName] = data
+          if (eventName === 'ready') window.__qa.ready = true
+          if (eventName === 'error') window.__qa.errors.push(data || { message: 'unknown error' })
+        })
+      })
+
+      // Backfill — mismo razonamiento que index.html
+      if (player.status === 'playing' || player.status === 'buffering' || !player.paused) {
+        if (!window.__qa.events.includes('playing'))          window.__qa.events.push('playing')
+        if (!window.__qa.events.includes('play'))             window.__qa.events.push('play')
+        if (!window.__qa.events.includes('contentFirstPlay')) window.__qa.events.push('contentFirstPlay')
+      }
+      if (player.readyState >= 3) {
+        if (!window.__qa.events.includes('canplay')) window.__qa.events.push('canplay')
+      }
+      if (player.readyState >= 1) {
+        if (!window.__qa.events.includes('loadedmetadata')) window.__qa.events.push('loadedmetadata')
+        if (!window.__qa.events.includes('canplay')) window.__qa.events.push('canplay')
+      }
+      if (!window.__qa.events.includes('loaded')) window.__qa.events.push('loaded')
+      if (!window.__qa.events.includes('metadataloaded')) window.__qa.events.push('metadataloaded')
+      if (player.status === 'error' || window.__qa.errors.length > 0) {
+        if (!window.__qa.events.includes('error')) window.__qa.events.push('error')
+      }
+
+      window.__qa.ready = true
+      if (!window.__qa.events.includes('ready')) window.__qa.events.push('ready')
+      window.__qa.initialized = true
+    }
+
+    // ── Método 2: data-loaded callback ────────────────────────────────────────
+    // El player llama a window.__playerLoadedCallback(player) cuando está listo.
+    window.__playerLoadedCallback = function (player) {
+      window.__setupPlayerEvents(player, 'callback')
+    }
+
+    // Inyecta el script tag con data-loaded apuntando al callback anterior.
+    window.__initViaCallback = function (scriptUrl, config) {
+      var script = document.createElement('script')
+      script.src = scriptUrl
+      script.setAttribute('data-container', 'player-container')
+      script.setAttribute('data-loaded', '__playerLoadedCallback')
+      script.setAttribute('data-type', config.type || 'media')
+      if (config.id) script.setAttribute('data-id', String(config.id))
+      if (config.autoplay != null) script.setAttribute('data-autoplay', String(config.autoplay))
+      if (config.volume != null)   script.setAttribute('data-volume',   String(config.volume))
+      if (config.player)           script.setAttribute('data-player',   String(config.player))
+      if (config.view)             script.setAttribute('data-view',     String(config.view))
+      if (config.startPos != null) script.setAttribute('data-start-pos', String(config.startPos))
+      if (config.adsMap)           script.setAttribute('data-ads-map',  String(config.adsMap))
+      if (config.appName)          script.setAttribute('data-app-name', String(config.appName))
+      document.head.appendChild(script)
+    }
+
+    // ── Método 3: playerloaded event ──────────────────────────────────────────
+    // El player dispara un CustomEvent 'playerloaded' en el script element.
+    // event.detail es la instancia del player (doc: loading-with-playerloaded-event).
+    window.__initViaEvent = function (scriptUrl, config) {
+      var script = document.createElement('script')
+      script.id = 'lightning-player-script'
+      script.src = scriptUrl
+      script.setAttribute('data-container', 'player-container')
+      script.setAttribute('data-type', config.type || 'media')
+      if (config.id) script.setAttribute('data-id', String(config.id))
+      if (config.autoplay != null) script.setAttribute('data-autoplay', String(config.autoplay))
+      if (config.volume != null)   script.setAttribute('data-volume',   String(config.volume))
+      if (config.player)           script.setAttribute('data-player',   String(config.player))
+      if (config.view)             script.setAttribute('data-view',     String(config.view))
+      if (config.startPos != null) script.setAttribute('data-start-pos', String(config.startPos))
+      if (config.adsMap)           script.setAttribute('data-ads-map',  String(config.adsMap))
+      if (config.appName)          script.setAttribute('data-app-name', String(config.appName))
+
+      // Registrar listener ANTES de appendChild para no perder el evento
+      script.addEventListener('playerloaded', function (e) {
+        var player = e.detail
+        window.__setupPlayerEvents(player, 'event')
+      })
+
+      document.head.appendChild(script)
+    }
+  </script>
+</body>
+</html>
