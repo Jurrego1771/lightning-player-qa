@@ -26,6 +26,7 @@
       eventData: {},       // último payload por evento
       errors: [],          // errores capturados
       initError: null,     // error de inicialización
+      initMethod: null,    // 'promise' | 'callback' | 'event' — para player-init-methods.spec.ts
     }
 
     // ── Método principal de inicialización ───────────────────────────────────
@@ -56,6 +57,7 @@
         .then(function (player) {
           // ── Exponer instancia al Page Object ──────────────────────────────
           window.__player = player
+          window.__qa.initMethod = 'promise'
 
           // ── Suscribir todos los eventos conocidos ─────────────────────────
           var CUSTOM_EVENTS = [

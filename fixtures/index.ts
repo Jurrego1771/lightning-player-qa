@@ -34,7 +34,7 @@ try {
 
 export { expect } from '@playwright/test'
 export { ContentIds, ContentAccess, ExternalStreams, Streams, NetworkProfiles, MockContentIds, LocalStreams } from './streams'
-export type { InitConfig, LoadOptions, PlayerStatus, QoEMetrics, AdInfo } from './player'
+export type { InitConfig, LoadOptions, PlayerStatus, QoEMetrics, AdInfo, LightningPlayerPage } from './player'
 export { setupPlatformMocks, mockContentConfig, mockPlayerConfig, mockContentError, mockAudioPlayerConfig } from './platform-mock'
 export { generateAccessToken, isAccessTokenAvailable } from '../helpers/access-token'
 
