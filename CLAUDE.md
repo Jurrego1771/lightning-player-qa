@@ -38,11 +38,11 @@ Para una feature concreta, usar primero su carpeta en `docs/02-features/`.
 ## 2. Sistema Bajo Test (SUT)
 
 El **Mediastream Lightning Player** es un reproductor multimedia HTML5 desarrollado por Mediastream.
-Versión actual: `1.0.56`. Branch de desarrollo: `develop`.
+Versión actual: `1.0.62`. Branch de desarrollo: `develop`.
 
 ### Qué soporta
 
-- **Formatos de stream:** HLS (hls.js), MPEG-DASH (dash.js), HTML5 nativo (MP4, WebM, MP3)
+- **Formatos de stream:** HLS (hls.js), MPEG-DASH (dash.js — sin soporte nativo en browsers, siempre via dashjs), HTML5 nativo (MP4, WebM, MP3)
 - **Tipos de contenido:** VOD, Live, DVR, Audio, Radio, Reels, Podcast
 - **DRM:** Widevine, PlayReady, FairPlay
 - **Ads:** Google IMA (VAST/VMAP), Google DAI, Google SGAI, AWS MediaTailor, AdSwizz, ITG
@@ -52,37 +52,111 @@ Versión actual: `1.0.56`. Branch de desarrollo: `develop`.
 ### API pública (lo que usamos en tests)
 
 ```js
+// Playback
 player.play()              // iniciar reproducción
 player.pause()             // pausar
-player.currentTime         // getter/setter — posición actual / seek
-player.duration            // duración total
-player.volume              // getter/setter — volumen 0-1
-player.status              // 'playing' | 'pause' | 'buffering'
-player.isPlayingAd()       // boolean
-player.destroy()           // destruir instancia
+player.destroy()           // destruir instancia y desmontar React
+
+// Estado y posición
+player.status              // 'playing' | 'pause' | 'buffering' | 'idle'
+player.currentTime         // getter/setter — posición actual en segundos / seek
+player.duration            // duración total en segundos
+player.paused              // boolean
+player.loop                // getter/setter — boolean
+player.playbackRate        // getter/setter — velocidad de reproducción
+
+// Audio / video
+player.volume              // getter/setter — 0 a 1
+player.muted               // getter/setter — boolean
+player.videoWidth          // ancho del video en píxeles (solo video handler)
+player.videoHeight         // alto del video en píxeles (solo video handler)
+
+// Stream
+player.isLive              // boolean — true si type='live'
+player.isDVR               // boolean — true si type='dvr'
+player.seekable            // TimeRanges — rango seekable (útil en DVR)
+player.edge                // número — posición del live edge (segundos)
+player.handler             // 'hls' | 'dash' | 'native' — handler activo
+player.version             // string — versión del player (ej: '1.0.62')
+
+// ABR (HLS.js)
+player.level               // nivel de calidad activo (-1 = auto)
+player.nextLevel           // nivel solicitado (puede diferir de level durante cambio)
+player.levels              // array de niveles disponibles
+player.bitrate             // bitrate del nivel activo
+player.bandwidth           // bandwidth estimado
+
+// Ads
+player.isPlayingAd()       // boolean — true si hay ad reproduciéndose
+player.ad.info             // AdInfo | null — info del ad activo
+player.ad.cuePoints        // number[] — tiempos de mid-rolls
+
+// Metadata
+player.metadata            // object — metadata del contenido (reels, radio, etc.)
+player.type                // string — tipo de contenido ('media', 'live', etc.)
+
+// Tracks
+player.textTracks          // TextTrackList — subtítulos
+player.audioTracks         // AudioTrackList — pistas de audio
+
+// Next episode
+player.updateNextEpisode(data)  // fuerza carga del siguiente episodio con datos
+player.keepWatching()           // cancela auto-carga del siguiente episodio
+player.playNext()               // carga el siguiente episodio inmediatamente
+
+// Dynamic load
+player.load({ type, id })  // carga nuevo contenido sin destruir la instancia
 ```
 
-Eventos via `window.postMessage` (prefijo `msp:`):
-`ready`, `play`, `playing`, `pause`, `seeking`, `seeked`, `ended`, `error`,
-`buffering`, `waiting`, `levelchanged`, `adsStarted`, `adsComplete`,
-`adsAllAdsCompleted`, `adsError`, `adsContentPauseRequested`, `adsContentResumeRequested`
+**Eventos player.on() — los más relevantes:**
+```
+ready             — player listo (siempre se emite al init)
+loaded            — config de plataforma cargada
+sourcechange      — src cambió (se emite en player.load())
+playing           — reproducción activa
+play              — transición a playing iniciada
+pause             — reproducción pausada
+ended             — contenido terminó
+seeking / seeked  — seek iniciado / completado
+buffering         — buffering activo
+error             — error de cualquier tipo
+contentFirstPlay  — primera reproducción del contenido (analytics crítico)
+levelchanged      — cambio de calidad ABR confirmado
+metadataloaded    — metadata del contenido disponible
+metadatachanged   — metadata actualizada (nowplaying en radio)
+adsImpression     — ad impression registrada
+adsStarted        — ad iniciado
+adsComplete       — ad completado
+adsAllAdsCompleted — todos los ads del break completados
+adsError          — error en ads
+adsContentPauseRequested / adsContentResumeRequested — content pause/resume por ad
+```
 
 ### Inicialización del player
 
+Tres métodos documentados (ver `harness/` para implementaciones de referencia):
+
 ```js
-// Opción A: data-attributes en el script tag
-// Opción B: API imperativa
+// Método 1 — loadMSPlayer() Promise (principal — usado en harness/index.html)
 window.loadMSPlayer('container-id', {
-  type: 'media',     // 'live' | 'dvr' | 'media' | 'audio' | 'radio' | 'reels' | 'podcast'
-  src: 'https://...',
+  type: 'media',    // 'live' | 'dvr' | 'media' | 'audio' | 'radio' | 'reels' | 'podcast'
+  id: 'content-id',
   autoplay: false,
-  ads: { map: 'https://vast-server/tag' }
-})
+  adsMap: 'https://vast-server/tag',  // VAST tag URL (camelCase de data-ads-map)
+  // ads: { map: 'url' }             // forma alternativa también funciona
+}).then(player => { /* ... */ })
+
+// Método 2 — data-loaded callback (harness/multi-init.html)
+<script src="...api.js" data-container="div-id" data-type="media" data-id="..." data-loaded="myCallback"></script>
+// → llama window.myCallback(player) cuando listo
+
+// Método 3 — playerloaded CustomEvent (harness/multi-init.html)
+script.addEventListener('playerloaded', ({ detail: player }) => { /* ... */ })
+// → el script element emite el evento con player en event.detail
 ```
 
-**CRÍTICO:** El player hace requests a `embed.mdstrm.com` para cargar config remota.
-En tests hay que interceptar estas o usar un harness que pase config inline.
-Preguntar al usuario cómo está configurado el harness si no está documentado.
+**CRÍTICO:** El player hace requests a `develop.mdstrm.com` (u otros subdominios según env) para cargar config remota.
+En tests `isolatedPlayer` intercepta estos requests con `page.route()`. El dominio interceptado varía por ambiente — ver `fixtures/platform-mock.ts`.
 
 ---
 
@@ -495,6 +569,19 @@ Los directorios `agents/` y `skills/` existen con sus READMEs.
 - **Tests del backend/plataforma** → otro repo
 
 - **Tests de producción (real users)** → analytics del player en producción
+
+---
+
+## 13. SGAI — Bugs conocidos (Google Server-Guided Ad Insertion)
+
+**Estado:** sin cobertura de tests (gap #5). Los siguientes bugs están documentados en el source
+pero no tienen specs todavía.
+
+- `useGoogleSGAILifecycle.js` — hook que gestiona el ciclo de vida SGAI. Hay casos edge
+  donde el manifest con ads puede no recargar correctamente si el player está en estado buffering
+  cuando llega la señal de ad-break.
+- La interacción SGAI + DVR (live stream con DVR habilitado) no está testeada.
+- Gap #5 en `testing_gaps.md`: archivo a crear = `tests/integration/sgai.spec.ts`
 
 ---
 
