@@ -1,8 +1,8 @@
 {
   "src": {
-    "hls": "http://localhost:9001/vod/master.m3u8",
-    "mp3": "http://localhost:9001/vod/master.m3u8",
-    "m4a": "http://localhost:9001/vod/master.m3u8"
+    "hls": "http://localhost:9001/audio/index.m3u8",
+    "mp3": "http://localhost:9001/audio/index.m3u8",
+    "m4a": "http://localhost:9001/audio/index.m3u8"
   },
   "drm": null,
   "poster": "",
