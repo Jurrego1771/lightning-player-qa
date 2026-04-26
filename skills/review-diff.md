@@ -61,27 +61,92 @@ Delega al agente `coverage-checker`:
 **Espera el resultado.** Muestra el coverage report al usuario.
 
 **Decisión:**
-- Si `action = run-existing` → ir al Paso 4 directamente (saltar generación)
-- Si `action = generate-then-run` → ir al Paso 3
-- Si `action = run-existing-and-generate` → ir al Paso 3, luego Paso 4
+- Si `action = run-existing` → ir al Paso 4 directamente (saltar 2.5 y 3)
+- Si `action = generate-then-run` → ir al Paso 2.5, luego Paso 3, luego Paso 4
+- Si `action = run-existing-and-generate` → ir al Paso 2.5, luego Paso 3, luego Paso 4
 
-## Paso 3 — Generación de tests (si hay gaps MUST)
+## Paso 2.5 — Test Charter (parada humana obligatoria)
 
-⚠️ **Solo ejecutar si hay gaps con priority MUST en coverage-report.json**
+⚠️ **Solo ejecutar si hay gaps con priority MUST en coverage-report.json.**
+**No pasar al Paso 3 sin charter aprobado para cada gap MUST.**
+
+Para cada gap MUST en `coverage-report.json`, presenta una propuesta pre-llenada
+derivada del risk-map y pide confirmación antes de generar:
+
+```
+📋 Gaps MUST detectados: N
+
+── Gap 1: [nombre del gap] ──────────────────────────────
+  Riesgo: [descripción del riesgo del risk-map]
+  Áreas afectadas: [archivos / views / componentes del risk-map]
+
+  Propuesta:
+    Comportamiento bajo test : [qué hace el sistema, no cómo]
+    Criterio de aceptación   : [DEBE pasar X / NO DEBE pasar Y]
+    Scope                    : [views / configs / casos incluidos]
+    Fuera de scope           : [qué no se testea y por qué]
+    Señales disponibles      : [API pública, eventos, flags __qa]
+    Resultado esperado       : [N specs máximo, M tests total]
+    ¿Nuevo archivo o extender existente?
+
+  ¿Aceptar propuesta / Modificar / Saltar este gap? [A/m/s]
+```
+
+**Si el usuario acepta (A):** guardar el charter tal cual para el Paso 3.
+**Si el usuario modifica (m):** editar los campos que el usuario indique, mostrar charter revisado, pedir confirmación final antes de continuar.
+**Si el usuario salta (s):** excluir ese gap de la generación en esta sesión. Registrar en el resumen final como "gap pospuesto".
+
+**Guardar charters aprobados en `tmp/pipeline/charters.json`:**
+
+```json
+{
+  "charters": [
+    {
+      "gap_id": "gap-1",
+      "behavior": "...",
+      "acceptance_criteria": { "must": ["..."], "must_not": ["..."] },
+      "scope": ["..."],
+      "out_of_scope": ["..."],
+      "signals": ["..."],
+      "expected_output": { "max_specs": 2, "max_tests": 16 }
+    }
+  ]
+}
+```
+
+**Decisión de deduplicación antes de generar:**
+Antes de pasar al Paso 3, pregunta para cada charter:
+
+```
+¿Existe ya cobertura equivalente en tests/ para este comportamiento?
+  → Si SÍ: ¿parametrizar spec existente o crear archivo nuevo?
+  → Si NO: crear archivo nuevo
+```
+
+Presenta la decisión al usuario y espera confirmación.
+
+## Paso 3 — Generación de tests (si hay charters aprobados)
+
+⚠️ **Solo ejecutar si hay charters aprobados en tmp/pipeline/charters.json**
 
 Delega al agente `test-generator`:
 
-> Lee tmp/pipeline/coverage-report.json y tmp/pipeline/risk-map.json.
-> Genera los specs indicados en specs_to_generate con priority MUST.
-> Sigue las convenciones del proyecto estrictamente.
+> Lee tmp/pipeline/coverage-report.json, tmp/pipeline/risk-map.json
+> y tmp/pipeline/charters.json.
+> Para cada charter en charters.json:
+>   - Respeta el scope, out_of_scope y expected_output definidos por el usuario.
+>   - No superar max_specs ni max_tests del charter.
+>   - Si la decisión de deduplicación indica "parametrizar existente", modifica
+>     el spec existente en lugar de crear uno nuevo.
+>   - Sigue las convenciones del proyecto estrictamente.
 
-**Espera el resultado.** Muestra los archivos generados.
+**Espera el resultado.** Muestra los archivos generados o modificados.
 
 **Confirmar con el usuario:**
 ```
-Se generaron N specs nuevos:
-- tests/e2e/nombre.spec.ts (3 tests)
-- tests/integration/nombre.spec.ts (2 tests)
+Se generaron/modificaron N specs:
+- tests/integration/nombre.spec.ts (3 tests) [nuevo]
+- tests/integration/otro.spec.ts (2 tests añadidos) [extendido]
 
 ¿Proceder a ejecutar la suite incluyendo estos tests? [S/n]
 ```
