@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lightning Player QA — Multi-Instance Harness</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; display: grid; grid-template-columns: 1fr 1fr; gap: 2px; min-height: 100vh; }
+    .player-slot { width: 100%; aspect-ratio: 16/9; }
+  </style>
+</head>
+<body>
+  <div id="player-one" class="player-slot"></div>
+  <div id="player-two" class="player-slot"></div>
+
+  <script>
+    // ── Estado observable por Playwright — un objeto qa por instancia ─────────
+    window.__qaMulti = {
+      players: [
+        { ready: false, initialized: false, events: [], eventData: {}, errors: [], initError: null },
+        { ready: false, initialized: false, events: [], eventData: {}, errors: [], initError: null },
+      ],
+      allInitialized: false,  // true cuando ambas instancias terminaron su init
+    }
+
+    window.player1  = null
+    window.player2  = null
+    window.players  = [null, null]
+
+    // ── Verifica si ambas instancias terminaron su init ───────────────────────
+    function checkAllInitialized() {
+      if (window.__qaMulti.players[0].initialized && window.__qaMulti.players[1].initialized) {
+        window.__qaMulti.allInitialized = true
+      }
+    }
+
+    // ── Setup de event tracking para una instancia ────────────────────────────
+    // Idéntico al bloque .then() de index.html — duplicado intencionalmente
+    // para que cada harness sea auto-contenido sin dependencias entre archivos.
+    function setupPlayerQa(player, index) {
+      var qa = window.__qaMulti.players[index]
+
+      var CUSTOM_EVENTS = [
+        'loaded', 'ready', 'sourcechange', 'error', 'buffering',
+        'programdatetime', 'adblockerDetected', 'share',
+        'levelchange', 'levelchanged',
+        'metadataloading', 'metadataloaded', 'metadatachanged',
+        'dismissButton', 'contentFirstPlay',
+      ]
+      var HTML5_EVENTS = [
+        'abort', 'canplay', 'canplaythrough', 'durationchange', 'emptied',
+        'ended', 'loadeddata', 'loadedmetadata', 'loadstart',
+        'pause', 'play', 'playing', 'progress', 'ratechange',
+        'seeked', 'seeking', 'stalled', 'suspend', 'timeupdate',
+        'volumechange', 'waiting',
+      ]
+      var AD_EVENTS = [
+        'adsAdBreakReady', 'adsAdMetadata', 'adsAllAdsCompleted',
+        'adsClick', 'adsComplete', 'adsContentPauseRequested',
+        'adsContentResumeRequested', 'adsDurationChange',
+        'adsFirstQuartile', 'adsImpression', 'adsLinearChanged',
+        'adsLoaded', 'adsLog', 'adsMidpoint', 'adsPaused',
+        'adsResumed', 'adsSkippableStateChanged', 'adsSkipped',
+        'adsStarted', 'adsThirdQuartile', 'adsTimeUpdate',
+        'adsUserClose', 'adsVolumeChanged', 'adsVolumeMuted',
+        'adsError', 'adsAdBuffering', 'adsAdProgress',
+        'adsInteraction', 'adsVideoClicked', 'adsVideoIconClicked',
+      ]
+      var TRACK_EVENTS = [
+        'texttrackchange', 'texttrackaddtrack', 'texttrackremovetrack',
+        'audiotrackchange', 'audiotrackaddtrack', 'audiotrackremovetrack',
+      ]
+
+      var ALL_EVENTS = CUSTOM_EVENTS.concat(HTML5_EVENTS, AD_EVENTS, TRACK_EVENTS)
+
+      ALL_EVENTS.forEach(function (eventName) {
+        player.on(eventName, function (data) {
+          if (eventName === 'timeupdate') {
+            if (!qa.events.includes('timeupdate')) qa.events.push('timeupdate')
+            return
+          }
+          qa.events.push(eventName)
+          if (data !== undefined) qa.eventData[eventName] = data
+          if (eventName === 'ready') qa.ready = true
+          if (eventName === 'error') qa.errors.push(data || { message: 'unknown error' })
+        })
+      })
+
+      // Backfill — misma lógica que index.html
+      if (player.status === 'playing' || player.status === 'buffering' || !player.paused) {
+        if (!qa.events.includes('playing'))          qa.events.push('playing')
+        if (!qa.events.includes('play'))             qa.events.push('play')
+        if (!qa.events.includes('contentFirstPlay')) qa.events.push('contentFirstPlay')
+      }
+      if (player.readyState >= 3) {
+        if (!qa.events.includes('canplay')) qa.events.push('canplay')
+      }
+      if (player.readyState >= 1) {
+        if (!qa.events.includes('loadedmetadata')) qa.events.push('loadedmetadata')
+        if (!qa.events.includes('canplay'))         qa.events.push('canplay')
+      }
+      if (!qa.events.includes('loaded'))        qa.events.push('loaded')
+      if (!qa.events.includes('metadataloaded')) qa.events.push('metadataloaded')
+      if (player.status === 'error' || qa.errors.length > 0) {
+        if (!qa.events.includes('error')) qa.events.push('error')
+      }
+
+      qa.ready = true
+      if (!qa.events.includes('ready')) qa.events.push('ready')
+      qa.initialized = true
+
+      checkAllInitialized()
+    }
+
+    // ── Init de ambas instancias ──────────────────────────────────────────────
+    // Llamado por el fixture vía page.evaluate() después de inyectar el script.
+    // Usa loadMSPlayer (método 1) para cada container.
+    // Cada promesa maneja su propio error — allInitialized se setea cuando ambas terminan.
+    window.__initMultiInstance = function (config1, config2) {
+      if (typeof loadMSPlayer === 'undefined') {
+        var msg = '[harness] loadMSPlayer no definido'
+        window.__qaMulti.players[0].initError = msg
+        window.__qaMulti.players[1].initError = msg
+        window.__qaMulti.players[0].initialized = true
+        window.__qaMulti.players[1].initialized = true
+        window.__qaMulti.allInitialized = true
+        return
+      }
+
+      function initOne(containerId, config, index) {
+        return loadMSPlayer(containerId, config)
+          .then(function (player) {
+            window.players[index] = player
+            if (index === 0) window.player1 = player
+            if (index === 1) window.player2 = player
+            setupPlayerQa(player, index)
+          })
+          .catch(function (err) {
+            var msg = '[harness] Error en loadMSPlayer(' + containerId + '): ' +
+              (err && err.message ? err.message : String(err))
+            console.error(msg, err)
+            window.__qaMulti.players[index].initError = msg
+            window.__qaMulti.players[index].initialized = true
+            checkAllInitialized()
+          })
+      }
+
+      // initOne siempre resuelve (error capturado en catch) — Promise.all nunca rechaza
+      return Promise.all([
+        initOne('player-one', config1, 0),
+        initOne('player-two', config2, 1),
+      ])
+    }
+  </script>
+</body>
+</html>

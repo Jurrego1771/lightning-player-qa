@@ -183,6 +183,79 @@ export class LightningPlayerPage {
   }
 
   /**
+   * Navega al harness multi-instancia e inicializa dos players simultáneamente.
+   * Cada player tiene su propio event tracking en window.__qaMulti.players[0|1].
+   * Compatible con isolatedPlayer: los page.route() interceptors cubren ambas instancias.
+   *
+   * Acceso a instancias desde tests:
+   *   page.evaluate(() => window.player1)  — via métodos helper abajo
+   *   page.evaluate(() => window.player2)
+   *   page.evaluate(() => window.players[n])
+   */
+  async gotoMultiInstance(config1: InitConfig, config2: InitConfig): Promise<void> {
+    const envConfig = getEnvironmentConfig()
+
+    await this.page.goto('http://localhost:3000/multi-instance.html', { waitUntil: 'domcontentloaded' })
+
+    await this.page.addScriptTag({ url: envConfig.playerScriptUrl })
+
+    await this.page.waitForFunction(() => typeof (window as any).loadMSPlayer === 'function', { timeout: 15_000 })
+
+    await this.page.evaluate(
+      ([cfg1, cfg2]) => (window as any).__initMultiInstance(cfg1, cfg2),
+      [config1 as Record<string, unknown>, config2 as Record<string, unknown>]
+    )
+
+    await this.page.waitForFunction(
+      () => (window as any).__qaMulti?.allInitialized === true,
+      { timeout: 30_000 }
+    )
+  }
+
+  // ── Helpers multi-instancia ────────────────────────────────────────────────
+  // Operan sobre window.players[n] — n es 0 (player1) o 1 (player2).
+
+  async getEventsForPlayer(n: 0 | 1): Promise<string[]> {
+    return this.page.evaluate((idx) => (window as any).__qaMulti?.players[idx]?.events ?? [], n)
+  }
+
+  async waitForEventOnPlayer(n: 0 | 1, eventName: string, timeout = 15_000): Promise<void> {
+    await this.page.waitForFunction(
+      ([idx, name]) => (window as any).__qaMulti?.players[idx]?.events?.includes(name),
+      [n, eventName] as [number, string],
+      { timeout }
+    )
+  }
+
+  async getStatusOfPlayer(n: 0 | 1): Promise<PlayerStatus> {
+    return this.page.evaluate((idx) => (window as any).players[idx]?.status ?? 'idle', n)
+  }
+
+  async getVolumeOfPlayer(n: 0 | 1): Promise<number> {
+    return this.page.evaluate((idx) => Number((window as any).players[idx]?.volume ?? -1), n)
+  }
+
+  async setVolumeOnPlayer(n: 0 | 1, volume: number): Promise<void> {
+    await this.page.evaluate(([idx, v]) => { (window as any).players[idx].volume = v }, [n, volume] as [number, number])
+  }
+
+  async playPlayer(n: 0 | 1): Promise<void> {
+    await this.page.evaluate((idx) => (window as any).players[idx]?.play(), n)
+  }
+
+  async pausePlayer(n: 0 | 1): Promise<void> {
+    await this.page.evaluate((idx) => (window as any).players[idx]?.pause(), n)
+  }
+
+  async destroyPlayer(n: 0 | 1): Promise<void> {
+    await this.page.evaluate((idx) => (window as any).players[idx]?.destroy?.(), n)
+  }
+
+  async hasInitErrorForPlayer(n: 0 | 1): Promise<string | null> {
+    return this.page.evaluate((idx) => (window as any).__qaMulti?.players[idx]?.initError ?? null, n)
+  }
+
+  /**
    * Carga nuevo contenido en un player ya inicializado via player.load().
    * Este es el método principal para cambiar contenido dinámicamente.
    * Referencia: sección "load options" en lightning_player.md
