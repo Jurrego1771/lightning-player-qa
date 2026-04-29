@@ -53,27 +53,48 @@ const YOUBORA_CONFIG = {
 // ── Helper: capturar beacons NPAW ───────────────────────────────────────────
 
 /**
- * Registra un interceptor de red para dominios NPAW y devuelve el array de URLs
- * capturadas. El array se actualiza en tiempo real — se puede leer con expect.poll().
+ * Registra un interceptor de red para beacons NQS de NPAW y devuelve el array de
+ * URLs capturadas. El array se actualiza en tiempo real — se puede leer con expect.poll().
+ *
+ * IMPORTANTE — solo captura NQS, no LMA:
+ *   LMA (lma.npaw.com) devuelve la asignación del servidor NQS al SDK.
+ *   Si LMA se intercepta con body vacío, el SDK no puede parsear la respuesta
+ *   y nunca envía beacons NQS. Por eso LMA debe llegar al servidor real.
+ *   NQS (*.youboranqs01.com) es write-only — el SDK no depende del response body,
+ *   así que interceptarlo con 200 vacío es seguro.
  *
  * IMPORTANTE: llamar ANTES de player.goto() para no perder beacons de init del SDK.
  */
 async function setupNpawInterceptor(page: import('@playwright/test').Page): Promise<string[]> {
   const beacons: string[] = []
+  const seen = new Set<string>()
+
+  const recordBeacon = (url: string) => {
+    if (seen.has(url)) return
+    seen.add(url)
+    beacons.push(url)
+  }
 
   const captureBeacon = async (route: Route) => {
-    beacons.push(route.request().url())
+    recordBeacon(route.request().url())
     await route.fulfill({ status: 200, body: '' })
   }
 
-  // npaw-plugin@7.3.28 usa tres dominios distintos:
-  //   lma.npaw.com        — LMA init/config (configuration, data)
-  //   *.youboranqs01.com  — NQS beacons reales (start, pause, seek, adInit, etc.)
-  //                         ej: infinity-c40.youboranqs01.com
-  //   *.youbora.com       — fallback legacy (poco frecuente en v7)
-  await page.route('**/*.npaw.com/**', captureBeacon)
-  await page.route('**youboranqs01.com/**', captureBeacon)
-  await page.route('**/*.youbora.com/**', captureBeacon)
+  // page.on('request') es más estable para observabilidad que page.route() sola.
+  // En runs paralelos vimos requests NQS descubiertas en consola que no siempre
+  // pasaban por el closure del route handler a tiempo para alimentar `beacons`.
+  page.on('request', (req) => {
+    const url = req.url()
+    if (url.includes('youboranqs01.com/') || url.includes('.youbora.com/')) {
+      recordBeacon(url)
+    }
+  })
+
+  // Capturar solo NQS (beacons de sesión reales) — dejar LMA sin interceptar.
+  // Regex en lugar de glob: **youboranqs01.com/** falla en Playwright porque
+  // ** adyacente a un literal sin separador / no se resuelve correctamente.
+  await page.route(/youboranqs01\.com\//, captureBeacon)
+  await page.route(/\.youbora\.com\//, captureBeacon)
 
   return beacons
 }
@@ -159,11 +180,15 @@ test.describe('Youbora — Content Tracking', { tag: ['@integration', '@analytic
     // Act — esperar la señal que dispara fireStart + fireJoin en el tracker
     await player.waitForEvent('contentFirstPlay', 20_000)
 
-    // Assert — el SDK debe haber emitido al menos 1 beacon hacia NPAW
-    // tras contentFirstPlay. No verificamos el path exacto — es interno al SDK.
-    await expect.poll(() => beacons.length, {
-      timeout: 8_000,
-      message: 'Se esperaba al menos 1 beacon NPAW tras contentFirstPlay (fireStart + fireJoin)',
+
+    const startBeacons = () =>
+      beacons.filter(url =>
+        url.includes('/start') || url.includes('/joinTime')
+      ).length
+
+    await expect.poll(startBeacons, {
+      timeout: 20_000,
+      message: 'Se esperaban beacons /start y/o /joinTime tras contentFirstPlay',
     }).toBeGreaterThan(0)
   })
 
@@ -173,25 +198,66 @@ test.describe('Youbora — Content Tracking', { tag: ['@integration', '@analytic
 
     const beacons = await setupNpawInterceptor(page)
 
+    // Strategy B — logging de descubrimiento de dominios reales del SDK.
+    // Útil para auditoría empírica de qué dominios usa npaw-plugin@7.3.28.
+    page.on('request', (req) => {
+      const url = req.url()
+      if (url.includes('npaw') || url.includes('youbora')) {
+        console.log('[NPAW beacon discovered]', url)
+      }
+    })
+
     await player.goto({ type: 'media', id: MockContentIds.vod, autoplay: true })
 
     // Esperar sesión iniciada
     await player.waitForEvent('contentFirstPlay', 20_000)
+    const startBeacons = () =>
+      beacons.filter(url =>
+        url.includes('/start') || url.includes('/joinTime')
+      ).length
+
+    await expect.poll(startBeacons, {
+      timeout: 20_000,
+      message: 'Se esperaban beacons /start y/o /joinTime antes de pausar el player',
+    }).toBeGreaterThan(0)
 
     // Registrar línea base de beacons antes de pausar.
     // heartbeats del SDK pueden llegar en cualquier momento — comparamos
     // con el snapshot en lugar de un número absoluto.
     const n0 = beacons.length
 
+    // Debug: estado antes de pausar
+    console.log('[DEBUG] Beacons antes de pause:', beacons.length)
+    const playerStateBefore = await player.page.evaluate(() => ({
+      paused: (window as any).__player?.paused,
+      playing: (window as any).__player?.isPlaying?.(),
+      currentTime: (window as any).__player?.currentTime,
+      ready: (window as any).__player?.isReady?.() ?? !!(window as any).__player
+    }))
+    console.log('[DEBUG] Estado player antes de pause:', playerStateBefore)
+
     // Act
     await player.pause()
     await player.waitForEvent('pause', 5_000)
 
+    // Debug: estado después de pausar
+    console.log('[DEBUG] Beacons después de pause:', beacons.length)
+    const playerStateAfter = await player.page.evaluate(() => ({
+      paused: (window as any).__player?.paused,
+      playing: (window as any).__player?.isPlaying?.(),
+      currentTime: (window as any).__player?.currentTime
+    }))
+    console.log('[DEBUG] Estado player después de pause:', playerStateAfter)
+    console.log('[DEBUG] Beaacons capturados:', beacons.map(url => url.split('/').pop()))
+
     // Assert — al menos 1 beacon adicional tras la pausa (firePause)
-    await expect.poll(() => beacons.length, {
-      timeout: 5_000,
-      message: 'Se esperaba al menos 1 beacon NPAW adicional después de player.pause()',
-    }).toBeGreaterThan(n0)
+    const pauseBeacons = () =>
+      beacons.filter(url => url.includes('/pause')).length
+
+    await expect.poll(pauseBeacons, {
+      timeout: 8_000,
+      message: 'Se esperaba beacon /pause tras player.pause()',
+    }).toBeGreaterThan(0)
   })
 })
 
@@ -311,16 +377,15 @@ test.describe('Youbora — Session Management', { tag: ['@integration', '@analyt
     // pero como _started = false, no debería haber sesión activa que reportar.
     await player.destroy()
 
-    // Assert — no deben existir beacons de inicio de sesión.
-    // NOTA (EC-07): el SDK npaw-plugin@7.3.28 puede emitir un request de "init" al
-    // instanciarse con new NpawPlugin(), antes de cualquier fireXxx. Si este test
-    // falla consistentemente con exactamente 1 beacon inmediatamente tras el init,
-    // ese sería el comportamiento de init-request del SDK, no un bug del player.
-    // En ese caso, ajustar la aserción a "no beacon tras destroy" vs "sin beacons en total".
-    await expect.poll(() => beacons.length, {
+    // Assert — el SDK emite /init + /ping al instanciar NpawPlugin(), así que
+    // beacons.length puede ser > 0. Lo que no debe existir son beacons de sesión
+    // (/start, /joinTime) — esos requieren contentFirstPlay, que nunca se disparó.
+    const startBeacons = () =>
+      beacons.filter(url => url.includes('/start') || url.includes('/joinTime')).length
+    await expect.poll(startBeacons, {
       timeout: 3_000,
       intervals: [200],
-      message: 'Se esperaba que no hubiera beacons de sesión NPAW — destroy() antes de contentFirstPlay',
+      message: 'Se esperaba 0 beacons /start y /joinTime — destroy() antes de contentFirstPlay no inicia sesión',
     }).toBe(0)
   })
 })
@@ -419,29 +484,48 @@ test.describe('Youbora — Content Tracking Guards', { tag: ['@integration', '@a
 
     await player.goto({ type: 'media', id: MockContentIds.vod, autoplay: true })
     await player.waitForEvent('contentFirstPlay', 20_000)
+    const startBeacons = () =>
+      beacons.filter(url =>
+        url.includes('/start') || url.includes('/joinTime')
+      ).length
+
+    await expect.poll(startBeacons, {
+      timeout: 20_000,
+      message: 'Se esperaban beacons /start y/o /joinTime antes de la primera pausa',
+    }).toBeGreaterThan(0)
 
     const n0 = beacons.length
+
+    // Filtrar solo beacons de pausa de contenido — pings continúan durante pause
+    // (guard no chequea _paused, solo _inAdBreak), así que el conteo total de beacons
+    // no se estabiliza. Comparar solo /pause para aislar el comportamiento del guard.
+    const pauseBeaconCount = () => beacons.filter(url => url.includes('/pause')).length
 
     // Act — primera pausa: _paused = false → _paused = true, firePause() se llama
     await player.pause()
     await player.waitForEvent('pause', 5_000)
-    const n1 = beacons.length
+
+    // Esperar que llegue el beacon /pause de la primera pausa
+    await expect.poll(pauseBeaconCount, {
+      timeout: 8_000,
+      intervals: [150],
+      message: 'Primera pausa debe emitir exactamente 1 beacon /pause hacia NQS',
+    }).toBe(1)
 
     // Segunda pausa inmediata: _paused ya es true → la guarda en tracker.js:102
     // `if (!this._adapter || !this._started || this._inAdBreak || this._paused) return`
     // impide que firePause() se vuelva a llamar.
     await player.pause()
 
-    // Esperar un intervalo estable — si hubiera un beacon rezagado de la segunda pausa,
-    // debería llegar en este window de 1500ms.
-    await expect.poll(() => beacons.length, {
+    // Esperar 1.5s — si hubiera un segundo /pause, debería llegar en este window.
+    await expect.poll(pauseBeaconCount, {
       timeout: 1_500,
       intervals: [150],
-      message: 'Conteo de beacons debe estabilizarse — _paused guard en tracker.js:102 previene firePause duplicado',
-    }).toBe(n1)
+      message: 'Segunda pausa no debe emitir beacon adicional — _paused guard previene firePause duplicado',
+    }).toBe(1)
 
-    // Verificar que n1 > n0 (primera pausa sí generó beacon) y n1 === final (segunda no)
-    expect(n1).toBeGreaterThan(n0)
+    // Confirmar que sí hubo actividad (sesión activa)
+    expect(beacons.length).toBeGreaterThan(n0)
   })
 
   test('no fireStart beacon before contentFirstPlay when autoplay is false', async ({ isolatedPlayer: player, page }) => {
@@ -457,13 +541,15 @@ test.describe('Youbora — Content Tracking Guards', { tag: ['@integration', '@a
     // pero _started = false porque contentFirstPlay no se emitirá hasta el primer play.
     await player.waitForReady(20_000)
 
-    // Assert — _started guard en tracker.js:85: onFirstPlay verifica `if (!this._adapter || this._started) return`
-    // Aquí _started es false, pero más importante: contentFirstPlay no se emitió todavía,
-    // así que onFirstPlay() nunca se llama. No debe haber beacon de fireStart/fireJoin.
-    await expect.poll(() => beacons.length, {
+    // Assert — el SDK emite /init + /ping al instanciar NpawPlugin(), pero
+    // fireStart y fireJoin solo se disparan en contentFirstPlay (tracker.js:85).
+    // Sin play(), contentFirstPlay no se emite → /start y /joinTime deben ser 0.
+    const startBeacons = () =>
+      beacons.filter(url => url.includes('/start') || url.includes('/joinTime')).length
+    await expect.poll(startBeacons, {
       timeout: 3_000,
       intervals: [200],
-      message: 'Se esperaba beacons.length === 0 — fireStart solo se dispara en contentFirstPlay (tracker.js:85)',
+      message: 'Se esperaba 0 beacons /start y /joinTime — fireStart solo dispara en contentFirstPlay (tracker.js:85)',
     }).toBe(0)
   })
 })
