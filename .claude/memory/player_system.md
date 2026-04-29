@@ -7,7 +7,7 @@ type: reference
 # Mediastream Lightning Player — Referencia QA (verificada desde código fuente)
 
 **Versión actual del código:** 1.0.58
-**Repo player:** `D:\repos\mediastream\lightning-player`
+**Repo player:** `$PLAYER_LOCAL_REPO` (configurar en `.env` — varía por máquina)
 **Repo QA:** `D:\repos\jurrego1771\lightning-player-qa`
 **Última verificación desde fuente:** 2026-04-08
 

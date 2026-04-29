@@ -236,7 +236,7 @@ Always check these before implementing a fix:
 - **Mock strategy**: `CLAUDE.md` Section 5 — what to mock and when
 - **Fixture usage**: `CLAUDE.md` Section 7 — how to write a test
 - **Anti-patterns**: `CLAUDE.md` Section 7 — what to avoid
-- **Player internals** (when needed): `D:\repos\mediastream\lightning-player` — consult source for event payloads and API contracts
+- **Player internals** (when needed): `$PLAYER_LOCAL_REPO` (from `.env`) — consult source for event payloads and API contracts
 
 ---
 

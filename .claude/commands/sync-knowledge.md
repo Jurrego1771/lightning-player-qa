@@ -21,7 +21,7 @@ Anota la versión del player que está documentada y los supuestos principales.
 
 ## Paso 2 — Leer el estado actual del player repo
 
-Lee estos archivos del player repo (`D:\repos\mediastream\lightning-player`):
+Lee estos archivos del player repo (`$PLAYER_LOCAL_REPO` — leer desde `.env`):
 
 **Versión y dependencias:**
 - `package.json` — versión del player, hls.js version, dependencias nuevas

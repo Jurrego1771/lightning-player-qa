@@ -2,7 +2,7 @@
 
 ## Sistema bajo prueba
 
-- Repo SUT: `D:\Dev\Repos\mediastream\lightning-player`
+- Repo SUT: `$PLAYER_LOCAL_REPO` (configurar en `.env`)
 - Repo QA: `D:\Dev\Repos\jurrego1771\lightning-player-qa`
 - Tipo: suite externa de QA, no integrada en el repo del player
 

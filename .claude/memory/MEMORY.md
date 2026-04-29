@@ -52,4 +52,4 @@ Máximo 200 líneas — mantener conciso.
 
 - `player_system.md` es la fuente de verdad de la API del player. Si hay conflicto con `CLAUDE.md`, confiar en `player_system.md` (fue verificada desde el código fuente).
 - `testing_gaps.md` tiene el estado (⬜/✅) de cada gap. Actualizar cuando se implementen tests.
-- Para el skill `/sync-knowledge`, el player repo está en `D:\repos\mediastream\lightning-player`.
+- Para el skill `/sync-knowledge`, el player repo viene de `$PLAYER_LOCAL_REPO` en `.env` (varía por máquina).

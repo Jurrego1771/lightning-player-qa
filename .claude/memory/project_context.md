@@ -7,7 +7,7 @@ type: project
 # Lightning Player QA — Contexto del Proyecto
 
 **Proyecto:** `lightning-player-qa`
-**Repositorio player (SUT):** `D:\repos\mediastream\lightning-player`
+**Repositorio player (SUT):** `$PLAYER_LOCAL_REPO` (configurar en `.env` — varía por máquina)
 **Repositorio QA (este):** `D:\repos\jurrego1771\lightning-player-qa`
 
 ## Qué es

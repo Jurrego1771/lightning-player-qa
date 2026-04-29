@@ -10,7 +10,7 @@ Tu trabajo es producir documentación estructurada que el `test-triage-agent` pu
 
 **Repositorios:**
 - QA repo (working directory): `D:\Dev\Repos\jurrego1771\lightning-player-qa`
-- Player repo (SUT): `D:\Dev\Repos\mediastream\lightning-player`
+- Player repo (SUT): `$PLAYER_LOCAL_REPO` (leer desde env — ver `.env`)
 
 **Output destino:** `docs/02-features/[feature-name]/`
 

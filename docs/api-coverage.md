@@ -1,7 +1,7 @@
 # Lightning Player — API Coverage Matrix
 
-> **Fuente de verdad**: `D:\Dev\Repos\mediastream\lightning-player` (v1.0.57)  
-> **Suite de tests**: `D:\Dev\Repos\jurrego1771\lightning-player-qa`  
+> **Fuente de verdad**: `$PLAYER_LOCAL_REPO` (configurar en `.env`, v1.0.57)  
+> **Suite de tests**: `lightning-player-qa`  
 > **Última actualización**: 2026-04-05 (text-tracks suite: 19/19 ✅)
 
 ---

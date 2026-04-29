@@ -1,0 +1,53 @@
+{
+  "feature": "youbora",
+  "schema_version": "1.0",
+  "version": "1.1",
+  "status": "draft",
+  "created_at": "2026-04-28",
+  "last_updated": "2026-04-28",
+  "player_version_verified": "1.0.62",
+  "approved_by": null,
+  "approved_at": null,
+  "files": {
+    "required": [
+      "feature-spec.md",
+      "business-rules.md",
+      "observability.md",
+      "test-strategy.md",
+      "edge-cases.md",
+      "_meta.json"
+    ],
+    "optional": [
+      "known-bugs.json"
+    ]
+  },
+  "coverage_status": {
+    "contract": "not_implemented",
+    "integration": "not_implemented",
+    "e2e": "not_applicable",
+    "visual": "not_applicable",
+    "a11y": "not_applicable",
+    "performance": "not_applicable"
+  },
+  "changelog": [
+    {
+      "version": "1.0",
+      "date": "2026-04-28",
+      "author": "doc-feature-agent",
+      "changes": [
+        "initial draft — sourced from src/analytics/youbora/index.jsx, src/analytics/youbora/tracker.js, src/plugins/index.js, package.json, constants.cjs"
+      ]
+    },
+    {
+      "version": "1.1",
+      "date": "2026-04-28",
+      "author": "doc-feature-agent",
+      "triggered_by": "user",
+      "changes": [
+        "added feature-spec.md (was missing)",
+        "renamed test-briefs.md to test-strategy.md (wrong filename)",
+        "updated files.required to reflect correct filenames"
+      ]
+    }
+  ]
+}

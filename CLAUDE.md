@@ -30,7 +30,7 @@ Para una feature concreta, usar primero su carpeta en `docs/02-features/`.
 | **Tipo** | Proyecto independiente — no es parte del repo del player |
 | **Stack** | Playwright 1.59 · TypeScript · axe-core · Express (mock VAST) |
 | **Repo QA** | `D:\Dev\Repos\jurrego1771\lightning-player-qa` |
-| **Repo Player (SUT)** | `D:\Dev\Repos\mediastream\lightning-player` |
+| **Repo Player (SUT)** | `$PLAYER_LOCAL_REPO` (configurar en `.env`) |
 | **Git user** | jurrego1771 |
 
 ---
@@ -563,7 +563,7 @@ Los directorios `agents/` y `skills/` existen con sus READMEs.
 
 ## 11. Importante: Lo que NO está en scope aquí
 
-- **Unit tests** → van en el repo del player (`D:\Dev\Repos\mediastream\lightning-player`)
+- **Unit tests** → van en el repo del player (`$PLAYER_LOCAL_REPO`)
   Usar Vitest. Candidatos: `src/ads/manager/`, `src/helper/`, `src/events/`
 
 - **Tests del backend/plataforma** → otro repo

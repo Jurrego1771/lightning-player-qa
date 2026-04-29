@@ -7,7 +7,7 @@ type: reference
 # Arquitectura Interna del Player — Guía para QA
 
 **Propósito:** Entender el "por qué" detrás de comportamientos del player que afectan cómo escribimos tests.
-**Fuente:** Análisis directo del código en `D:\repos\mediastream\lightning-player` (v1.0.58)
+**Fuente:** Análisis directo del código en `$PLAYER_LOCAL_REPO` (v1.0.58)
 
 ---
 
