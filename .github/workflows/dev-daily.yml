@@ -1,21 +1,25 @@
 name: Dev — Suite Completa (Diario + Push)
 
-# ─── Cuándo corre ──────────────────────────────────────────────────────────
+# ─── Cuándo corre y qué jobs ───────────────────────────────────────────────
 #
-#  1. Diariamente a las 07:00 AM Colombia (UTC-5 = 12:00 UTC)
-#     → Suite completa contra develop branch del player
+#  TRIGGER            smoke  integration  e2e  a11y  visual  perf
+#  ─────────────────────────────────────────────────────────────────
+#  PR → main          ✅     ✅            —    —     —       —
+#  push → main        ✅     —             —    —     —       —
+#  schedule (L-V)     ✅     ✅            ✅   ✅    ✅      lunes
+#  workflow_dispatch  ✅     full          full full  full    —
 #
-#  2. En cada push a main de ESTE repo QA
-#     → Suite E2E rápida para validar que los tests en sí no están rotos
-#
-#  3. Manual via workflow_dispatch
-#     → Útil para correr a demanda sin esperar el cron
+#  PR: smoke + integration dan feedback pre-merge en ~5-7 min.
+#  push a main: solo smoke (la suite completa ya validó el PR).
+#  schedule: suite completa diaria contra develop del player.
 
 on:
+  pull_request:
+    branches: [main]        # Smoke + integration en cada PR (feedback pre-merge)
   schedule:
-    - cron: '0 12 * * 1-5'   # 7 AM Colombia, Lunes a Viernes
+    - cron: '0 12 * * 1-5'  # 7 AM Colombia, Lunes a Viernes
   push:
-    branches: [main]
+    branches: [main]        # Solo smoke post-merge (ya validado en PR)
   workflow_dispatch:
     inputs:
       suite:
@@ -96,7 +100,9 @@ jobs:
     name: Integration — Chromium
     runs-on: ubuntu-latest
     needs: smoke
-    if: ${{ github.event_name == 'schedule' || github.event.inputs.suite == 'full' }}
+    # Corre en PRs (feedback pre-merge) y en schedule completo.
+    # No en push a main: ya fue validado en el PR correspondiente.
+    if: ${{ github.event_name == 'pull_request' || github.event_name == 'schedule' || github.event.inputs.suite == 'full' }}
 
     steps:
       - uses: actions/checkout@v4
