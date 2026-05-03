@@ -243,3 +243,15 @@ Save only when new:
 - Player behaviors that cause false positives
 - Streams frequently unavailable
 - GitHub issue numbers for filed bugs
+
+### Bubbling a memoria principal
+
+Si durante el triage descubres un comportamiento del player que NO está documentado
+en `.claude/memory/player_system.md` (ej: evento que se emite en orden distinto al
+esperado, propiedad API con comportamiento no obvio, edge case de inicialización):
+
+1. Escribir en `.claude/memory/player_system.md` — agregar al final de la sección relevante
+2. No crear archivo nuevo — actualizar el existente
+3. Solo comportamientos verificados por MCP observation, no hipótesis
+
+No bubbling para: patrones de test defects, streams caídos, issues de GitHub — esos van solo en agent-memory.

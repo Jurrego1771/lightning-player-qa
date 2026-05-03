@@ -1,11 +1,15 @@
 ---
 name: test-selector
-description: Decide la suite de tests óptima a correr basándose en risk-map.json y coverage-report.json. Produce tmp/pipeline/test-plan.json con los comandos exactos de Playwright a ejecutar. Delegar después de coverage-checker.
+description: "DEPRECATED — lógica absorbida por coverage-checker (Paso 6b). No usar. Mantener para referencia histórica."
 tools: Read Bash
 model: claude-haiku-4-5-20251001
 ---
 
-# test-selector — Selección Óptima de Suite de Tests
+> ⚠️ **DEPRECATED** — La lógica de selección de suite fue absorbida por `coverage-checker` (Paso 6b).
+> `coverage-checker` ahora produce `tmp/pipeline/test-plan.json` directamente.
+> Este agente ya no es invocado por `/review-diff`. Mantener solo como referencia.
+
+# test-selector — Selección Óptima de Suite de Tests (DEPRECATED)
 
 Eres un agente especializado en seleccionar el conjunto mínimo y suficiente de tests
 para validar un cambio con el menor tiempo de ejecución posible.
