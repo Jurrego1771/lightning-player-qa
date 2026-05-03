@@ -1,8 +1,14 @@
 # AI Test Generation Contract
 
-No se debe generar un test nuevo si no existe un `test brief` completo.
+Dos modos de generación. Cada modo tiene su propio contrato.
 
-## Campos obligatorios
+---
+
+## Modo Feature (invocado desde /doc-feature)
+
+Requiere brief completo. Sin brief completo → **no generar**.
+
+### Campos obligatorios del brief
 
 - `feature`
 - `scope`
@@ -16,18 +22,39 @@ No se debe generar un test nuevo si no existe un `test brief` completo.
 - `test_type`
 - `determinism_level`
 
-## Reglas de pipeline
+### Reglas
 
-1. Si falta `feature-spec`, no generar.
-2. Si falta `business-rules`, no generar.
-3. Si falta `observability`, no generar.
-4. Si el brief no define señal primaria, no generar.
-5. Si el brief no explica por qué la aserción es válida, no generar.
-6. Si el brief usa una señal catalogada como inestable sin mitigación, marcar para revisión humana.
+1. Sin `feature-spec` → no generar.
+2. Sin `business-rules` → no generar.
+3. Sin `observability` → no generar.
+4. Sin señal primaria definida → no generar.
+5. Sin justificación de aserción → no generar.
+6. Señal inestable sin mitigación → marcar para revisión humana.
 
-## Regla de salida
+---
 
-Todo spec generado por IA debe incluir un bloque inicial con:
+## Modo Regresión (invocado desde /review-diff)
+
+Genera desde contexto del diff. Brief completo no requerido.
+
+### Campos requeridos (provistos por el pipeline, no por el brief)
+
+- Módulo afectado — del `risk-map.json`
+- Comportamiento que cambió — del diff
+- Tipo de test apropiado — del `coverage-report.json`
+
+### Reglas
+
+1. Solo generar para gaps con `priority: "MUST"` en `coverage-report.json`.
+2. Cada test generado lleva tag `@regression`.
+3. Cada spec generado lleva comentario de apertura: `// Draft: generado por pipeline — revisar antes de merge`.
+4. Sin contexto de diff suficiente → no generar, reportar al usuario.
+
+---
+
+## Regla de salida (ambos modos)
+
+Todo spec generado por IA debe incluir un bloque de cabecera con:
 - input esperado
 - output esperado
 - justificación de la aserción

@@ -1,253 +1,255 @@
 ---
 name: review-diff
-description: Pipeline de revisión de cambios. Analiza un diff/PR/commit, evalúa riesgos, verifica cobertura y ejecuta la suite óptima. Dos fases: análisis por defecto, ejecución con --run.
+description: Pipeline completo de revisión de cambios. Analiza un diff/PR/commit, evalúa riesgos, verifica cobertura, genera tests faltantes y ejecuta la suite óptima. Usar cuando hay un cambio en el player que se quiere validar.
 ---
 
 # /review-diff — Pipeline de Revisión de Cambios
 
-Orquestador del pipeline de QA para `lightning-player-qa`.
-Coordina agentes especializados. Cada agente es responsable de lo que necesita — no pre-cheques en nombre de ellos.
+Eres el orquestador del pipeline de QA automatizado para `lightning-player-qa`.
+Tu trabajo es coordinar los agentes especializados y tomar decisiones entre cada paso.
 
-## Invocación
+## Cómo invocar este skill
 
 ```
-/review-diff 42                  → analiza PR #42 del player
-/review-diff feature/pip-mode    → analiza rama vs main
-/review-diff abc1234             → analiza commit específico
-/review-diff                     → analiza último commit en main
-/review-diff --qa                → analiza cambios en este repo QA
-/review-diff --dry-run           → análisis sin ejecutar tests
-/review-diff 42 --run            → análisis + ejecución + veredicto texto
-/review-diff 42 --run --triage   → ejecución + triage completo de cada falla
-/review-diff 42 --run --report   → ejecución + informe HTML (implica --triage)
+/review-diff 42                       → analiza PR #42 del player (GitHub)
+/review-diff feature/pip-mode         → analiza rama vs main (GitHub)
+/review-diff abc1234                  → analiza un commit específico (GitHub)
+/review-diff                          → analiza el último commit en main (GitHub)
+/review-diff --qa                     → analiza cambios en este repo QA (local)
+/review-diff --dry-run                → análisis sin ejecutar tests
 ```
 
-Fuente de datos: GitHub API (preferida). Requiere `PLAYER_GITHUB_REPO` en `.env`.
-Fallback a repo local si GitHub no disponible.
+**Fuente de datos:** GitHub API (siempre preferida — read-only, siempre actualizada).
+Requiere `PLAYER_GITHUB_REPO` en `.env` (ej: `mediastream/lightning-player`).
+Fallback a repo local si GitHub no está disponible.
 
----
+## Paso 0 — Preparar el entorno
 
-## FASE 1 — Análisis (siempre corre)
-
-### Paso 0 — Preparar entorno
+Antes de iniciar el pipeline, crea el directorio de trabajo:
 
 ```bash
 mkdir -p tmp/pipeline
 ```
 
-Confirmar al usuario:
+Confirma al usuario qué se va a analizar:
 ```
-🚀 /review-diff — [input o "último commit"] · modo: [análisis | análisis+ejecución | dry-run]
+🚀 Iniciando pipeline /review-diff
+   Input: [lo que el usuario especificó o "último commit del player"]
+   Modo: [completo | dry-run]
 ```
 
-### Paso 0.5 — Analizar diff (script determinista)
+## Paso 0.5 — Pre-procesar el diff (script)
+
+**SIEMPRE ejecutar antes del agente diff-analyzer.** El script hace todo el fetching
+y pre-procesamiento — el agente solo recibe datos ya estructurados.
 
 ```bash
-ts-node scripts/analyze-diff.ts [input]
+bash scripts/prepare-diff.sh [input]
 ```
 
-- `--qa` → saltar este paso
-- Si el script falla → pedir al usuario que pegue el diff y continuar manualmente
+Donde `[input]` es exactamente lo que el usuario especificó:
+- PR #42 → `bash scripts/prepare-diff.sh 42`
+- Rama → `bash scripts/prepare-diff.sh feature/pip-mode`
+- Commit → `bash scripts/prepare-diff.sh abc1234`
+- Sin input → `bash scripts/prepare-diff.sh` (último commit en main)
+- `--qa` → saltar este paso (es para cambios en el repo QA, no en el player)
 
-El script hace en ~5s lo que antes hacían dos agentes (~3-4 min):
-- Fetch del diff via GitHub API (Octokit) o simple-git
-- Mapping file → module → risk
-- Grep de cobertura en tests/
-- Escribe `risk-map.json` + `coverage-report.json`
-
-Si termina bien, el stdout contiene un JSON compacto con el resumen. Leerlo y mostrar:
+**Si el script falla** (gh no autenticado, repo no encontrado):
 ```
-✅ Diff analizado: N archivos · Riesgo: [level] · Módulos: [lista]
-   Specs existentes: N · Gaps MUST: N
+⚠️  El script prepare-diff.sh falló.
+    Opciones:
+    a) Pegar el diff directamente — el agente lo analizará desde texto
+    b) Verificar gh auth status y reintentar
 ```
+En caso (a), continuar al Paso 1 pasando el diff al agente directamente.
 
-### Paso 1 — Completar análisis de riesgo (inline, sin agente)
-
-Lee `tmp/pipeline/risk-map.json` y **completa estos dos campos directamente**:
-
-1. `change_summary` en cada `modules[].changed_files[]` — 1 línea por archivo, específica:
-   - ✅ `"New DashHandler class via dashjs, same interface as HLSHandler"`
-   - ❌ `"Archivo modificado"`
-
-2. `rationale` global — 2-3 líneas: qué cambió, por qué el riesgo asignado, qué falla si no se testea.
-
-Guardar con `fs.writeFileSync` o sobrescribir el JSON directamente. Mostrar al usuario:
-
+**Si el script termina bien**, muestra brevemente:
 ```
-## Risk Analysis — [change_type]
-Riesgo: [risk_level] | Módulos: [lista]
-[rationale]
-Suite recomendada: [suggested_spec_patterns]
+✅ Diff pre-procesado: N archivos (M filtrados como ruido)
+   Módulos: [lista]
 ```
 
-**Fast-path docs:** Si `risk_level = LOW` y `change_type = docs` → informar y preguntar si continuar.
-**Fast-path hotfix:** Si `change_type = bug-fix` y módulos ≤ 2 → indicar que la suite será reducida.
+## Paso 1 — Análisis de riesgo (diff-analyzer)
 
-### Paso 2 — Verificación de cobertura (inline, sin agente)
+Delega al agente `diff-analyzer`:
 
-Lee `tmp/pipeline/coverage-report.json` (ya generado por el script) y muestra al usuario:
+> Lee tmp/pipeline/diff-input.json (ya generado por prepare-diff.sh) y produce
+> tmp/pipeline/risk-map.json con el análisis de riesgo completo.
 
-```
-## Coverage Report
-| Módulo | Riesgo | Cobertura | Specs existentes |
-|--------|--------|-----------|-----------------|
-| ads    | HIGH   | full      | ad-beacons.spec.ts |
+**Espera el resultado.** Muestra el risk map al usuario.
 
-Gaps MUST: N
-```
+**Decisión de salida temprana:**
+- Si `risk_level = LOW` y `change_type = docs` → informar al usuario y preguntar si continuar
+- Si el agente no puede obtener el diff → pedir al usuario que lo proporcione directamente
 
-Solo delegar a `coverage-checker` si hay módulos con `coverage_level: "partial"` y el cambio
-afecta un método específico que necesita grep profundo.
+## Paso 1.5 — Doc check (contexto para test-generator)
 
----
+Para cada módulo en `risk-map.affected_modules`, verifica si existe `docs/02-features/[módulo]/_meta.json`:
 
-**— Fin Fase 1 —**
-
-Si NO se pasó `--run` ni `--dry-run`, preguntar:
-
-```
-📋 Análisis completado.
-   Gaps MUST: N  |  Tests existentes relevantes: N
-
-   ¿Qué hacemos?
-   [S] Ejecutar suite óptima
-   [n] Terminar aquí
-   [m] Modificar plan antes de ejecutar
+```bash
+# Para cada módulo afectado:
+ls docs/02-features/[módulo]/_meta.json 2>/dev/null
 ```
 
-- `n` → entregar resumen y terminar
-- `S` o `m` → continuar a Fase 2
+Si **todos los módulos tienen docs** → continuar en silencio. test-generator usará **Modo Feature** con brief completo.
 
----
+Si **algún módulo NO tiene docs**:
 
-## FASE 2 — Ejecución (solo con --run o aprobación del usuario)
+test-generator usará **Modo Regresión** — genera desde contexto del diff sin brief.
+Tests resultantes llevan `@regression` y son draft (requieren revisión humana antes de merge).
 
-### Paso 3 — Generación de tests (condicional)
-
-**Solo si `coverage-report.json` tiene `should_generate_tests: true`.**
-
-Delega a `test-generator`:
-
-> Lee `tmp/pipeline/coverage-report.json` y `tmp/pipeline/risk-map.json`.
-> Genera specs para gaps con priority MUST.
-> Si necesitas docs de features, búscalos en `docs/02-features/`. Si no existen, genera en modo básico e indica qué faltó en tu output.
-
-Muestra archivos generados. Preguntar:
+Mostrar al usuario:
 
 ```
-📝 N specs generados. ¿Incluirlos en la suite? [S/n]
+⚠️  Docs de feature faltantes para: [módulo1], [módulo2]
+
+   test-generator usará Modo Regresión: tests generados desde diff context.
+   Resultados marcados como @regression (draft — revisar antes de merge).
+
+   Para cobertura con contexto completo: /doc-feature [módulo] create (5-10 min)
+
+   ¿Continuar en Modo Regresión? [S/n]
 ```
 
-### Paso 4 — Selección de suite
+- Si NO → detener. Usuario corre `/doc-feature` y retoma `/review-diff`.
+- Si SÍ → continuar con Modo Regresión. Anotar en resumen final qué módulos corrieron sin docs.
 
-Delega a `test-selector`:
+## Paso 2 — Verificación de cobertura (coverage-checker)
 
-> Lee `tmp/pipeline/risk-map.json` y `tmp/pipeline/coverage-report.json`.
-> Produce `tmp/pipeline/test-plan.json` con comandos exactos.
-> Si `change_type = bug-fix` y módulos ≤ 2, priorizar suite reducida al scope del módulo.
-> Incluir campo `auto_keep_pipeline: boolean` (true si hay steps bloqueantes o riesgo HIGH).
+Delega al agente `coverage-checker`:
 
-Si el usuario eligió `[m]odificar` → mostrar el plan y preguntar qué agregar/quitar antes de ejecutar.
+> Lee tmp/pipeline/risk-map.json y evalúa la cobertura existente en tests/.
+> Produce tmp/pipeline/coverage-report.json.
 
-### Paso 5 — Ejecución
+**Espera el resultado.** Muestra el coverage report al usuario.
 
-**IMPORTANTE:** Ejecutar los tests SIN flag `--reporter` en CLI para que los reporters del config corran (incluyendo el JSON que escribe a `playwright-report/report.json`). Usar `--reporter=line` solo si el config no tiene `line` ya configurado.
+**Decisión:**
+- Si `action = run-existing` → ir al Paso 4 directamente (saltar generación)
+- Si `action = generate-then-run` → ir al Paso 3
+- Si `action = run-existing-and-generate` → ir al Paso 3, luego Paso 4
 
-Ejecutar los comandos de `test-plan.json` en orden. Mostrar progreso:
+## Paso 3 — Generación de tests (si hay gaps MUST)
+
+⚠️ **Solo ejecutar si hay gaps con priority MUST en coverage-report.json**
+
+Delega al agente `test-generator`:
+
+> Lee tmp/pipeline/coverage-report.json y tmp/pipeline/risk-map.json.
+> Genera los specs indicados en specs_to_generate con priority MUST.
+> Sigue las convenciones del proyecto estrictamente.
+
+**Espera el resultado.** Muestra los archivos generados.
+
+**Confirmar con el usuario:**
+```
+Se generaron N specs nuevos:
+- tests/e2e/nombre.spec.ts (3 tests)
+- tests/integration/nombre.spec.ts (2 tests)
+
+¿Proceder a ejecutar la suite incluyendo estos tests? [S/n]
+```
+
+Si el usuario dice NO → detenerse aquí, entregar los specs para revisión manual.
+
+## Paso 4 — Mostrar test plan
+
+`coverage-checker` ya produjo `tmp/pipeline/test-plan.json` en el paso anterior.
+Lee el archivo y presenta el plan al usuario:
+
+```bash
+cat tmp/pipeline/test-plan.json
+```
+
+Muestra al usuario:
+
+```
+📋 Test Plan (N pasos, ~X minutos):
+1. [BLOQUEANTE] contract validation
+2. integration/ad-beacons
+3. smoke
+
+¿Ejecutar? [S/n] o [m]odificar
+```
+
+Si el usuario dice NO → modo --dry-run, entregar el plan sin ejecutar.
+Si el usuario dice [m]odificar → preguntar qué pasos agregar/quitar.
+
+## Paso 5 — Ejecución de la suite
+
+Si el usuario aprobó, ejecutar los comandos de `test-plan.json` en orden:
+
+Para cada paso en `steps`:
 
 ```
 ▶ Paso N/N: [label]
+  Comando: [comando]
 ```
 
-Si un paso con `blocking: true` falla:
+Ejecutar el comando. Si `blocking: true` y el paso falla:
 ```
-⛔ Paso [N] falló (bloqueante). Pasos siguientes cancelados.
-   [error resumido]
-   ¿Continuar de todas formas? [s/N]
-```
+⛔ El paso [N] falló y es bloqueante.
+   Los pasos siguientes no se ejecutarán.
+   Razón: [error]
 
-Pasos no bloqueantes: continuar aunque fallen, registrar en el resumen.
-
-### Paso 6 — Extracción de resultados (inline, sin agente)
-
-**No delegar a agente.** Ejecutar directamente:
-
-```bash
-node scripts/extract-stats.js playwright-report/report.json
+   Puedes:
+   a) Investigar el fallo y corregirlo, luego continuar manualmente
+   b) Omitir este paso y continuar de todas formas (arriesgado)
+   ¿Qué prefieres?
 ```
 
-Leer el JSON del stdout y mostrar el veredicto:
+Mientras los pasos no sean bloqueantes, continuar aunque alguno falle.
+Mostrar progreso en tiempo real si es posible.
 
+## Paso 6 — Análisis de resultados (results-analyzer)
+
+Delega al agente `results-analyzer`:
+
+> Lee tmp/pipeline/risk-map.json, tmp/pipeline/coverage-report.json,
+> tmp/pipeline/test-plan.json y playwright-report/report.json.
+> Produce tmp/pipeline/results-report.json y presenta el informe ejecutivo.
+
+**Espera el resultado.** El agente presenta el informe completo.
+
+## Paso 7 — Limpieza y cierre
+
+Preguntar al usuario:
 ```
-✅ Pipeline completado
-
-Veredicto: SAFE TO MERGE | INVESTIGATE | DO NOT MERGE
-Tests:     N ejecutados · N passed · N failed · N flaky
-Tiempo:    X min
-
-Fallos (si los hay):
-  [proj] archivo :: título del test
-  → Error: mensaje corto
+¿Guardar los archivos tmp/pipeline/ para referencia? [s/N]
 ```
 
-Guardar el output en `tmp/pipeline/results-summary.json`.
+Si NO → limpiar: `rm -rf tmp/pipeline/`
+Si SÍ → mover a `pipeline-history/YYYY-MM-DD_HH-MM_<change-type>/`
 
-**Criterio de veredicto:**
-- `SAFE TO MERGE` — failed = 0 (o solo flaky sin failed)
-- `INVESTIGATE`   — failed ≤ 10 (posibles pre-existing)
-- `DO NOT MERGE`  — failed > 10 o algún test del scope del hotfix falló
+Resumen final:
+```
+✅ Pipeline /review-diff completado
 
-### Paso 6b — Triage de fallos (solo con --triage o --report)
+Veredicto: SAFE TO MERGE / INVESTIGATE / DO NOT MERGE
+Tests ejecutados: N (N passed, N failed)
+Tests generados: N specs nuevos
+Tiempo total: X minutos
 
-**Solo si hay fallos Y se pasó `--triage` o `--report`.**
-
-Delega a `test-triage-agent`:
-
-> Analiza los fallos en `tmp/pipeline/results-summary.json`.
-> Para cada falla, determina si es bug real o defecto de test.
-> Clasifica por: bug-player | test-defect | pre-existing | flaky-infra.
-
-### Paso 7 — Informe HTML (solo con --report)
-
-**Solo si se pasó `--report`.**
-
-Invocar skill `generate-informe` con los hallazgos del triage como argumento.
-
-El informe se genera en `playwright-report/qa-report.html`.
-
-### Paso 8 — Limpieza
-
-Auto-decisión basada en resultados:
-- Hubo fallos → mover a `pipeline-history/YYYY-MM-DD_HH-MM_<change-type>/`
-- Todo pasó → `rm -rf tmp/pipeline/`
-
----
+Próximos pasos: [según el veredicto]
+```
 
 ## Modo --dry-run
 
-Ejecutar Pasos 1 y 2. Mostrar risk map + coverage report + test plan propuesto sin ejecutar nada.
-
----
-
-## Presupuesto de tokens por modo
-
-| Modo | Agentes spawneados | Tokens estimados |
-|---|---|---|
-| Solo análisis | diff-analyzer + coverage-checker | ~60k |
-| --run (default) | + test-selector + script inline | ~80k |
-| --run --triage | + test-triage-agent | ~140k |
-| --run --report | + test-triage-agent + generate-informe | ~200k |
-
----
+En modo dry-run, ejecutar Pasos 1, 2 y 4 normalmente, pero en el Paso 5 mostrar
+los comandos sin ejecutarlos y saltar al resumen final.
+Útil para: revisar qué se va a correr antes de correrlo, planning, documentación.
 
 ## Manejo de errores
 
 Si cualquier agente falla o produce output inválido:
-1. Mostrar el error
+1. Mostrar el error al usuario
 2. Preguntar si continuar con el siguiente paso o detenerse
-3. Nunca inventar resultados de agentes
+3. Nunca asumir ni inventar resultados de agentes
 
-Si `playwright-report/report.json` no existe después de la ejecución:
-- Indica al usuario que el run terminó con error antes de escribir el reporte
-- Mostrar las últimas líneas del output del test runner
-- No intentar parsear con `--reporter=json` en CLI (contamina stdout)
+Si no hay diff disponible (player repo no accesible):
+```
+⚠️  No se puede acceder al player repo en D:\repos\mediastream\lightning-player
+    Opciones:
+    a) Proporcionar el diff directamente (pega el output de git diff)
+    b) Especificar una ruta diferente al repo del player
+    c) Analizar cambios en este repo QA (--qa)
+```

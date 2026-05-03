@@ -120,15 +120,9 @@ tests/integration/multi-instance.spec.ts:
 
 **Evento:** `contentFirstPlay` se emite cuando el contenido (no el ad) inicia por primera vez.
 **Relevancia:** Analytics crítico — distingue impresión de ad de impresión de contenido.
-**Tests necesarios:**
 
-```
-- contentFirstPlay se emite exactamente una vez por load()
-- contentFirstPlay se emite DESPUÉS de adsAllAdsCompleted (si hay pre-roll)
-- contentFirstPlay NO se emite durante playback del ad
-```
-
-**Estado:** ⬜ Sin implementar
+**Estado:** ✅ Cubierto 2026-05-01 — `tests/integration/ad-beacons.spec.ts`
+- `pre-roll: contentFirstPlay se emite DESPUÉS de adsAllAdsCompleted` — verifica orden via indexOf en __qa.events
 
 ---
 
@@ -153,19 +147,33 @@ tests/e2e/live-playback.spec.ts (agregar):
 
 ### 9. Error types específicos
 
-**Problema:** Los tests solo verifican "hay un error" (`getErrors().length > 0`).
+**Problema original:** Los tests solo verifican "hay un error" (`getErrors().length > 0`).
 El player define un enum completo de error types en `constants.cjs`.
-**Tests necesarios:**
 
-```
-tests/e2e/error-handling.spec.ts (agregar):
-  - error de red → type: 'NETWORK_ERROR', fatal: true
-  - stream no soportado → type: 'MEDIA_ERROR'
-  - DRM error → type: 'DRM_ERROR'
-  - 404 del stream → player hace retry y emite error si falla
-```
+**Estado:** ✅ Parcialmente cubierto 2026-05-01 — `tests/integration/error-recovery.spec.ts`
+Cubre: content 403 → error event, fallo persistente de segmentos → error fatal, recovery de 3 segmentos.
+**Pendiente:** verificar tipos específicos (`NETWORK_ERROR`, `MEDIA_ERROR`, `DRM_ERROR`) contra el enum real del player — requiere acceso a `constants.cjs` para validar los valores exactos.
 
-**Estado:** ⬜ Sin implementar
+---
+
+### G-C: Mid-roll cue point — RESUELTO
+
+**Estado:** ✅ Implementado 2026-05-01 — `tests/integration/ad-beacons.spec.ts`, describe "Mid-roll Cue Point"
+- `mid-roll dispara adsStarted cuando contenido alcanza el cue point (5s)` — verifica orden playing→adsStarted + adsContentPauseRequested
+- `mid-roll: contenido pausa → ad completa → contenido resume` — full cycle
+- Fixture nueva: `mock-vast/responses/vmap-midroll-only.xml` — VMAP mid-roll at 5s (sin pre-roll)
+- Ruta nueva: `GET /vmap/midroll-only` en mock-vast/server.ts
+
+### G-D: destroy() memory leak — RESUELTO
+
+**Estado:** ✅ Implementado 2026-05-01
+- `tests/e2e/vod-playback.spec.ts` — 2 tests nuevos en "Ciclo de vida":
+  - `destroy() + reinicialización: 3 ciclos consecutivos sin estado residual`
+  - `destroy() no emite eventos al llamar play() en instancia destruida`
+- `tests/performance/memory-leak.spec.ts` — heap test SPA-pattern con CDP:
+  - 4 ciclos init-play-destroy en MISMO DOM (sin navegación)
+  - Mide heap post-GC con `HeapProfiler.collectGarbage` + `performance.memory`
+  - Threshold: crecimiento < 20% de ciclo 1 a ciclo 4
 
 ---
 
