@@ -176,6 +176,32 @@ test.describe('VOD Playback', { tag: ['@regression'] }, () => {
 
       await expect(page.locator('video')).toHaveCount(0)
     })
+
+    test('destroy() + reinicialización: 3 ciclos consecutivos sin estado residual', async ({ player, page }) => {
+      // Each full cycle navigates the harness fresh — catches accumulated state
+      // in the browser context (listeners, cached globals, hls.js registry).
+      for (let i = 0; i < 3; i++) {
+        await player.goto({ type: 'media', id: ContentIds.vodShort, autoplay: true })
+        await player.waitForEvent('playing', 20_000)
+        await player.destroy()
+        await expect(page.locator('video')).toHaveCount(0)
+      }
+    })
+
+    test('destroy() no emite eventos al llamar play() en instancia destruida', async ({ player, page }) => {
+      await player.goto({ type: 'media', id: ContentIds.vodShort, autoplay: false })
+      await player.waitForReady()
+      await player.destroy()
+      await expect(page.locator('video')).toHaveCount(0)
+
+      // Snapshot events before attempting to interact with destroyed instance
+      const eventsBefore = await page.evaluate<string[]>(() => [...((window as any).__qa.events ?? [])])
+      await page.evaluate(() => { (window as any).__player?.play?.() })
+      // 500ms: negative assertion — wait for any zombie event that should NOT fire
+      await page.waitForTimeout(500)
+      const eventsAfter = await page.evaluate<string[]>(() => [...((window as any).__qa.events ?? [])])
+      expect(eventsAfter).toEqual(eventsBefore)
+    })
   })
 
   test.describe('Propiedades de Calidad (HLS.js)', () => {

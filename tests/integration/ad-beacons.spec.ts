@@ -37,6 +37,9 @@ test.describe('Ad Lifecycle — Eventos del Player', { tag: ['@integration', '@a
     await player.waitForAllAdsComplete(60_000)
 
     expect(await player.page.evaluate(() => (window as any).__qa.events.includes('adsComplete'))).toBe(true)
+
+    // El evento llegando ≠ content plays — verificar que el player retomó reproducción
+    await player.assertIsPlaying()
   })
 
   test('pre-roll: adsContentPauseRequested → adsContentResumeRequested', async ({ isolatedPlayer: player }) => {
@@ -50,6 +53,32 @@ test.describe('Ad Lifecycle — Eventos del Player', { tag: ['@integration', '@a
     await player.waitForEvent('adsContentPauseRequested', 20_000)
     await player.waitForEvent('adsContentResumeRequested', 60_000)
     await player.assertIsPlaying()
+  })
+
+  test('pre-roll: contentFirstPlay se emite DESPUÉS de adsAllAdsCompleted', async ({ isolatedPlayer: player, page }) => {
+    // contentFirstPlay es analytics crítico — debe marcar el inicio real del contenido,
+    // no el inicio del ad. Si se emite durante el ad, las métricas de contenido se inflan.
+    // __qa.events preserva orden de emisión — indexOf da posición relativa correcta.
+    await player.goto({
+      type: 'media',
+      id: MockContentIds.vod,
+      autoplay: true,
+      adsMap: `${MOCK_VAST_URL}/vast/preroll`,
+    })
+
+    await player.waitForAllAdsComplete(60_000)
+    await player.waitForEvent('contentFirstPlay', 15_000)
+
+    const events: string[] = await page.evaluate(() => (window as any).__qa.events ?? [])
+    expect(events, 'adsAllAdsCompleted debe haberse emitido').toContain('adsAllAdsCompleted')
+    expect(events, 'contentFirstPlay debe haberse emitido').toContain('contentFirstPlay')
+
+    const adsIdx = events.indexOf('adsAllAdsCompleted')
+    const firstPlayIdx = events.indexOf('contentFirstPlay')
+    expect(
+      adsIdx,
+      'adsAllAdsCompleted debe preceder a contentFirstPlay — si falla, el player emite contentFirstPlay durante el ad',
+    ).toBeLessThan(firstPlayIdx)
   })
 
   test('ad info disponible durante playback del ad', async ({ isolatedPlayer: player }) => {
@@ -119,6 +148,51 @@ test.describe('Ad Lifecycle — Beacons HTTP', { tag: ['@integration', '@ads'] }
     expect(adBeaconInterceptor.wasFired('/track/impression')).toBe(true)
     expect(adBeaconInterceptor.wasFired('/track/complete')).toBe(true)
   })
+})
+
+test.describe('Mid-roll Cue Point', { tag: ['@integration', '@ads'] }, () => {
+
+  test('mid-roll dispara adsStarted cuando contenido alcanza el cue point (5s)', async ({ isolatedPlayer: player, page }) => {
+    await player.goto({
+      type: 'media',
+      id: MockContentIds.vod,
+      autoplay: true,
+      adsMap: `${MOCK_VAST_URL}/vmap/midroll-only`,
+    })
+
+    // Content starts immediately (no pre-roll). IMA watches currentTime.
+    await player.waitForEvent('playing', 15_000)
+
+    // Mid-roll fires at 5s — fixture VOD is ~8s so the cue point is reachable.
+    await player.waitForAdStart(25_000)
+
+    const events: string[] = await page.evaluate(() => (window as any).__qa.events ?? [])
+    const firstPlayingIdx = events.indexOf('playing')
+    const adsStartedIdx   = events.indexOf('adsStarted')
+
+    // playing must precede adsStarted: mid-roll cannot fire before content starts
+    expect(
+      firstPlayingIdx,
+      'playing debe preceder a adsStarted — el mid-roll no puede dispararse antes de que el contenido inicie',
+    ).toBeLessThan(adsStartedIdx)
+    expect(events).toContain('adsContentPauseRequested')
+  })
+
+  test('mid-roll: contenido pausa → ad completa → contenido resume y player sigue playing', async ({ isolatedPlayer: player }) => {
+    await player.goto({
+      type: 'media',
+      id: MockContentIds.vod,
+      autoplay: true,
+      adsMap: `${MOCK_VAST_URL}/vmap/midroll-only`,
+    })
+
+    await player.waitForEvent('playing', 15_000)
+    await player.waitForEvent('adsContentPauseRequested', 25_000)
+    await player.waitForAllAdsComplete(60_000)
+    await player.waitForEvent('adsContentResumeRequested', 15_000)
+    await player.assertIsPlaying()
+  })
+
 })
 
 test.describe('Ad Skip', { tag: ['@integration', '@ads'] }, () => {
