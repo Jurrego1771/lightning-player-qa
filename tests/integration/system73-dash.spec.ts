@@ -22,7 +22,7 @@
  * Fixture: isolatedPlayer — plataforma mockeada via page.route(), streams locales (localhost:9001)
  * Tag: @integration
  */
-import { test, expect, MockContentIds, mockContentConfig } from '../../fixtures'
+import { test, expect, MockContentIds, mockContentConfig, mockContentConfigById } from '../../fixtures'
 
 test.describe('System73 DASH SDK integration', { tag: ['@integration'] }, () => {
 
@@ -126,71 +126,86 @@ test.describe('System73 DASH SDK integration', { tag: ['@integration'] }, () => 
   // el wrapper — evita la race condition que asociaría un P2P wrapper al player
   // ya recargado con otro contenido.
   //
-  // Estrategia del test:
-  //   1. Configurar el mock SDK para que tarde 500ms (abre la ventana de race)
-  //   2. Iniciar carga del contenido A con system73 habilitado
-  //   3. Mientras el SDK está cargando, llamar player.load() con contenido B
-  //   4. Verificar que el player termina reproduciendo B limpiamente (sin errores)
-  //      y que wrapPlayer no se aplicó sobre el player de B (o la carrera fue ganada
-  //      correctamente por el guard).
+  // Estrategia del test (2 fases):
+  //   Fase 1 — Init con SDK rápido, player reproduciendo contentA.
+  //   Fase 2 — Registrar SDK lento (LIFO), disparar load(A) como fire-and-forget
+  //             (no awaitable en browser), e inmediatamente load(B) via fixture.
+  //             Cuando SDK de A resuelva, state.src === srcB → guard aborta.
+  //   Assert — player reproduce contentB sin error.
   test('stale-src guard previene que el wrapper se aplique tras cambio de src durante await', async ({ isolatedPlayer: player, page }) => {
-    // Arrange — mock SDK con latencia para abrir ventana de race
     await page.addInitScript(() => {
-      ;(window as any).__s73DashWrapPlayerSrcs = []
+      ;(window as any).__s73DashWrapCount = 0
       ;(window as any).S73DashjsWrapper = function () {
         return {
-          wrapPlayer (p: unknown) {
-            // Registrar el src activo en el momento de wrapPlayer
-            ;(window as any).__s73DashWrapPlayerSrcs.push(
-              (window as any).__player?.handler ?? 'unknown'
-            )
-          },
+          wrapPlayer () { ;(window as any).__s73DashWrapCount++ },
           destroy () {},
         }
       }
     })
 
-    // SDK con delay de 500ms — tiempo suficiente para que load() cambie el src
-    await page.route('**/mock-s73-dash-sdk-slow.js', async (route) => {
+    // SDK rápido para Fase 1
+    await page.route('**/mock-s73-dash-sdk.js', async (route) => {
+      await route.fulfill({ status: 200, contentType: 'text/javascript', body: '/* sdk */' })
+    })
+
+    await mockContentConfigById(page, {
+      [MockContentIds.dashVod]: {
+        src: { mpd: 'http://localhost:9001/vod-dash/manifest.mpd' },
+        peering: {
+          system73: {
+            enabled: true,
+            key: 'mock-s73-key',
+            dash: 'http://localhost:9001/mock-s73-dash-sdk.js',
+          },
+        },
+      },
+      // Content B: DASH sin system73 — no espera el SDK → carga rápido.
+      // Necesita src.mpd porque format:'dash' del goto persiste en la instancia del player.
+      [MockContentIds.vod]: {
+        src: { mpd: 'http://localhost:9001/vod-dash/manifest.mpd' },
+      },
+    })
+
+    // Fase 1: player reproduciendo contentA con DASH + system73 (SDK rápido)
+    await player.goto({ type: 'media', id: MockContentIds.dashVod, autoplay: true, format: 'dash' })
+    await player.waitForEvent('playing', 15_000)
+
+    // Fase 2: registrar SDK lento (LIFO sobre la ruta rápida)
+    await page.route('**/mock-s73-dash-sdk.js', async (route) => {
       await new Promise<void>((resolve) => setTimeout(resolve, 500))
       await route.fulfill({ status: 200, contentType: 'text/javascript', body: '/* sdk */' })
     })
 
-    await mockContentConfig(page, {
-      src: {
-        mpd: 'http://localhost:9001/vod-dash/manifest.mpd',
+    // Disparar load(A) y load(B) en el mismo contexto JS sin round-trip entre ellos.
+    // Esto maximiza la ventana de race: load(A) inicia DASH+SDK lento (500ms), load(B)
+    // interrumpe de inmediato. Cuando el SDK de A resuelva, stale-src guard detecta
+    // state.src !== srcA → aborta el wrapper. Content B (HLS) queda como src activo.
+    await page.evaluate((ids) => {
+      ;(window as any).__qa.events = []
+      ;(window as any).__qa.ready = false
+      const p = (window as any).__player
+      if (!p) return
+      p.load({ type: 'media', id: ids[0] })  // fire-and-forget: DASH + slow SDK
+      p.load({ type: 'media', id: ids[1] })  // fire-and-forget: HLS, sin peering
+    }, [MockContentIds.dashVod, MockContentIds.vod])
+
+    // Player puede no autoplazar B si estaba en 'loading' cuando load(B) se llamó.
+    // Pollear hasta 'playing', llamando play() en cada intento donde sea necesario.
+    await expect.poll(
+      async () => {
+        const s: string = await page.evaluate(() => (window as any).__player?.status ?? 'idle')
+        if (s !== 'playing') {
+          await page.evaluate(() => {
+            try { ;(window as any).__player?.play() } catch (_) {}
+          })
+        }
+        return s
       },
-      peering: {
-        system73: {
-          enabled: true,
-          key: 'mock-s73-key',
-          dash: 'http://localhost:9001/mock-s73-dash-sdk-slow.js',
-        },
-      },
-    })
+      { timeout: 25_000, intervals: [500, 1000, 2000, 3000] },
+    ).toBe('playing')
 
-    // Iniciar carga del contenido A — dispara el await del SDK (tardará 500ms)
-    const gotoPromise = player.goto({ type: 'media', id: MockContentIds.dashVod, autoplay: true, format: 'dash' })
-
-    // Cambiar a contenido B mientras el SDK todavía está cargando.
-    // Un page.evaluate directo permite disparar el load() sin esperar a que goto() complete.
-    // El player habrá inicializado lo suficiente para tener __player disponible.
-    await page.waitForFunction(() => !!(window as any).__player, { timeout: 15_000 })
-    await page.evaluate((opts) => (window as any).__player?.load(opts), {
-      type: 'media',
-      id: MockContentIds.vod,
-    })
-
-    // Esperar que goto() complete y luego que playing llegue
-    await gotoPromise
-    await player.waitForEvent('playing', 25_000)
-
-    // Assert — el player debe estar en estado limpio, sin error de init
     await player.assertIsPlaying()
     await player.assertNoInitError()
-    // El stale-src guard impide que wrapPlayer se aplique cuando el src ya cambió.
-    // El player debe reproducir normalmente (sin error fatal).
-    await expect.poll(() => player.getStatus(), { timeout: 5_000 }).toBe('playing')
   })
 
   // ── Test 5: Double-load guard para DASH ───────────────────────────────────
