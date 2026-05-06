@@ -31,6 +31,7 @@
     '<div id="ov-time">time: <span id="ov-time-val">0.0s</span></div>',
     '<div id="ov-event">event: <span id="ov-event-val">—</span></div>',
     '<div id="ov-key">key: <span id="ov-key-val">—</span></div>',
+    '<div id="ov-konodrac">kdrc: <span id="ov-konodrac-val" style="color:#888">—</span></div>',
     '<div id="ov-cdp" style="color:#ff0;margin-top:8px">CDP: localhost:9222</div>',
   ].join('')
 
@@ -62,6 +63,13 @@
     onEvent: function(eventName) {
       var el = document.getElementById('ov-event-val')
       if (el) el.textContent = eventName
+    },
+    logKonodrac: function(eventName) {
+      var el = document.getElementById('ov-konodrac-val')
+      if (el) {
+        el.textContent = eventName + ' (' + (window.__qa.konodracBeacons.length) + ')'
+        el.style.color = '#0ff'
+      }
     },
   }
 })()

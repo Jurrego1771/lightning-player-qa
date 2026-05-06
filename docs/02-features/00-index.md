@@ -83,6 +83,7 @@
 | **Comscore** | `src/analytics/comscore/` | Comscore StreamSense analytics |
 | **Google Analytics 4** | `src/analytics/googletracker.jsx` | GA4 vía react-ga4 |
 | **Live Reactions** | `src/analytics/reactions/` | Reacciones en vivo vía Firebase: scheduling, validación, transport |
+| **Konodrac** | `src/analytics/konodrac/` | Konodrac Mark Collector API — pixel tracking para CARTV OTT |
 | **Analytics Tracker** | `src/analytics/tracker.jsx` | Coordinador principal de todos los plugins de analytics |
 
 ---
@@ -288,4 +289,4 @@
 | Eventos públicos | 100+ |
 | Métodos API | 17 |
 | Propiedades API | 23 |
-| QA Test Features Documentadas | 4 (reels v1.0 draft) |
+| QA Test Features Documentadas | 5 (konodrac v1.0 draft) |

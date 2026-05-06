@@ -3,7 +3,7 @@ type: test-briefs
 feature: youbora
 version: "1.0"
 status: draft
-last_verified: 2026-04-28
+last_verified: 2026-04-29
 ---
 
 # Test Briefs — Youbora (NPAW Analytics)
@@ -366,10 +366,22 @@ expect(beacons.length).toBeGreaterThan(0)
 await page.route('https://a-specific-account.npaw.com/specific-path', ...)
 // El dominio puede variar por cuenta y versión de SDK
 
-// Bien: usar wildcard amplio
-await page.route('**/*.npaw.com/**', ...)
-// o también cubrir el dominio youbora.com por si el SDK usa ambos
-await page.route('**/*.youbora.com/**', ...)
+// Mal: glob para youboranqs01.com — ROTO en Playwright
+// ** adyacente a un literal sin separador / no matchea correctamente
+await page.route('**youboranqs01.com/**', ...)  // ← NO intercepta nada
+
+// Bien: usar regex para youboranqs01.com (dominio NQS real de los beacons)
+await page.route(/youboranqs01\.com\//, captureBeacon)
+// El glob sí funciona para lma.npaw.com (LMA, no NQS)
+await page.route('**/*.npaw.com/**', captureBeacon)
+// Preservar fallback legacy
+await page.route(/\.youbora\.com\//, captureBeacon)
+
+// IMPORTANTE: npaw-plugin@7.3.28 usa DOS dominios distintos:
+//   lma.npaw.com        — LMA init (configuration + data), dispara al instanciar el plugin
+//   *.youboranqs01.com  — NQS beacons reales (start, pause, ping, ads, error, etc.)
+// Si solo interceptas *.npaw.com, capturas LMA pero NO los beacons de sesión.
+// Ver observability.md para la lista completa de endpoints NQS confirmados.
 ```
 
 ```typescript

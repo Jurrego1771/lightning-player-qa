@@ -54,7 +54,37 @@ window.__qa = {
 
   // Extras TV: log de teclas presionadas
   keyLog: [],          // [{keyCode, name, timestamp}]
+
+  // Konodrac: URLs completas de beacons capturadas via Image patch
+  // Poblado ANTES de que el request salga a la red — funciona sin network
+  konodracBeacons: [], // string[]
 }
+
+// ── Konodrac beacon capture — patch HTMLImageElement.prototype.src ────────────
+// El tracker usa getImage() que hace new Image(); img.src = url
+// Interceptamos el setter a nivel de prototipo para capturar URLs de konograma.com
+// ANTES de que el browser haga el request. Funciona sin page.route() y sin red.
+;(function() {
+  var origDescriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src')
+  if (!origDescriptor || !origDescriptor.set) return
+
+  Object.defineProperty(HTMLImageElement.prototype, 'src', {
+    get: origDescriptor.get,
+    set: function(url) {
+      if (url && url.indexOf('konograma.com') !== -1) {
+        window.__qa.konodracBeacons.push(url)
+        if (window.__debugOverlay && window.__debugOverlay.logKonodrac) {
+          try {
+            var event = new URL(url).searchParams.get('event') || '?'
+            window.__debugOverlay.logKonodrac(event)
+          } catch (e) { /* URL parse error — ignorar */ }
+        }
+      }
+      origDescriptor.set.call(this, url)
+    },
+    configurable: true,
+  })
+})()
 
 // ── Key logger — registra todas las teclas presionadas ───────────────────────
 

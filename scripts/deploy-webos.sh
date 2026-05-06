@@ -115,7 +115,7 @@ package_app() {
   # Limpiar IPK anterior
   rm -f "${APP_ID}"_*.ipk
 
-  ares-package --no-minify "$APP_DIR" \
+  ares-package --no-minify "$APP_DIR" >&2 \
     || err "Error en ares-package. Verificar appinfo.json."
 
   IPK_FILE=$(ls "${APP_ID}"_*.ipk 2>/dev/null | head -1)

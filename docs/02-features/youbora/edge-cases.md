@@ -3,7 +3,7 @@ type: edge-cases
 feature: youbora
 version: "1.0"
 status: draft
-last_verified: 2026-04-28
+last_verified: 2026-04-29
 ---
 
 # Edge Cases — Youbora (NPAW Analytics)
@@ -78,14 +78,25 @@ Coverage: ❌ Sin test
 
 ---
 
-## EC-07 — Instancia de NpawPlugin antes de cualquier beacon: ¿init-request?
+## EC-07 — Instancia de NpawPlugin antes de cualquier beacon: ¿init-request? — RESUELTO
 
-Es una incógnita si el paquete `npaw-plugin@7.3.28` realiza algún request HTTP al instanciarse con `new NpawPlugin(accountCode, options)`, antes de que se llame a cualquier `fireXxx`. Esto afectaría el TB-08 (destruir antes de contentFirstPlay).
+**Confirmado empíricamente (2026-04-29):** `npaw-plugin@7.3.28` SÍ realiza requests HTTP al instanciarse con `new NpawPlugin(accountCode, options)`, antes de cualquier `fireXxx`. Específicamente emite dos requests LMA:
 
-El código del player no hace ningún request de red propio al instanciar el plugin. Pero el SDK puede tener comportamiento propio. Este comportamiento debe verificarse empíricamente en un test exploratorio.
+```
+GET lma.npaw.com/configuration?system=...&pluginVersion=7.3.28-js-sdk&...
+GET lma.npaw.com/data?system=...&pluginVersion=7.3.28-js-sdk&...
+```
+
+Estos requests se emiten en el momento de montar `YouboraTracker` (al resolver `loadMSPlayer`), **antes de `contentFirstPlay`** y antes de cualquier `fireStart/fireJoin`.
+
+**Impacto en TB-08** (destroy antes de contentFirstPlay): el test que verifica "0 beacons tras destroy() sin play" puede capturar 2 beacons LMA aunque el plugin nunca llegue a `fireStart`. El test debe decidir qué verificar:
+- Opción A: verificar 0 beacons de NQS (`youboranqs01.com`) — estos sí son 0 si no hay play
+- Opción B: aceptar que `beacons.length` puede ser 2 (LMA init) y solo verificar ausencia de `/start`/`/joinTime`
+
+Los tests en `youbora.spec.ts` TB-08 usan interceptores separados para LMA y NQS, por lo que si se filtra por NQS (`youboranqs01.com`) la aserción de 0 beacons sigue siendo válida.
 
 [CODE: src/analytics/youbora/tracker.js:62]  
-Coverage: ❌ Sin test — requiere verificación empírica del SDK
+Coverage: ❌ Sin test — comportamiento SDK ahora documentado
 
 ---
 

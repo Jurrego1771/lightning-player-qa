@@ -19,3 +19,19 @@ type: feedback
 **False positive risk:** Tests that expect 0 beacons will PASS whether the config path is right or wrong, because Youbora never mounts either way. Only tests expecting beacons > 0 will catch the mis-path.
 
 **Seen in:** youbora.spec.ts (2026-04-28), comscore tests (2026-04-25).
+
+---
+
+## Variant 2: loadConfig rest-spread trap (content config)
+
+**Rule:** When passing data that should reach `context.metadata.*` via `mockContentConfig()`, pass the key at the **top level of the override**, NOT wrapped inside a `metadata: {}` envelope.
+
+**Why:** `loadConfig.js` (~line 226) destructures only known fields from the content config response (`src`, `drm`, `poster`, `title`, `description`, `ads`, `account`, `dvr`, `subtitles`, `ad_insertion_google`, `ad_insertion`, `reactions`). Everything else lands in the rest-spread `...metadata` which becomes `context.metadata`. If you wrap your data in `{ metadata: { peering: {...} } }`, the `metadata` key is unknown and goes through the spread → `context.metadata.metadata.peering` — one level too deep.
+
+**Wrong:** `mockContentConfig(page, { metadata: { peering: { system73: { enabled: true, ... } } } })`
+→ context.metadata.metadata.peering.system73 (wrong)
+
+**Correct:** `mockContentConfig(page, { peering: { system73: { enabled: true, ... } } })`
+→ context.metadata.peering.system73 (correct)
+
+**Seen in:** system73-hls.spec.ts (2026-05-06).

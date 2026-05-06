@@ -24,7 +24,11 @@
     "perf:update-baseline": "ts-node scripts/update-perf-baseline.ts",
     "test:performance:full": "playwright test tests/performance/ && npm run perf:compare",
     "flaky:analyze": "ts-node scripts/analyze-flakiness.ts",
-    "flaky:update-quarantine": "ts-node scripts/analyze-flakiness.ts --update"
+    "flaky:update-quarantine": "ts-node scripts/analyze-flakiness.ts --update",
+    "notify:test-battery": "ts-node scripts/notify-test-battery.ts",
+    "report:pdf": "node scripts/pdf-from-html.js",
+    "triage:generate": "node scripts/generate-triage.js",
+    "triage:generate:tv": "node scripts/generate-triage.js --report playwright-report-tv/report.json"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.10.0",

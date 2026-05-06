@@ -1,0 +1,19 @@
+{
+  "test": "tests/integration/system73-dash.spec.ts :: System73 DASH SDK integration :: [todos los tests]",
+  "category": "wrong_fixture",
+  "status": "BLOCKER — no se puede corregir sin cambio de build y stream fixture",
+  "root_cause": "El player build activo (rama develop / feature/issue-662) no incluye soporte DASH funcional para los content IDs de mock. Adicionalmente, no existe un stream DASH real en localhost:9001/vod-dash/manifest.mpd — el webServer sirve solo fixtures HLS.",
+  "secondary_fix_applied": "El defecto de path en mockContentConfig ({ metadata: { peering: {...} } } → { peering: {...} }) fue corregido en ambos specs (system73-hls.spec.ts y system73-dash.spec.ts) el 2026-05-06. Los tests HLS (6/6) pasan. Los tests DASH fallan por la causa raíz de entorno, no por el path del mock.",
+  "explanation": "Test 1 del DASH spec ('sin peering config el player reproduce DASH normalmente') falla con TimeoutError en waitForEvent('playing', 25_000) — el evento 'playing' nunca llega. La plataforma mock sirve dash.json con src.mpd = 'http://localhost:9001/vod/fake.mpd', que es una URL inexistente. Los tests 2-7 también fallan porque DASH playback no funciona en ningún escenario. El build del player en develop no tiene soporte DASH operativo en este entorno de test, o el player config sirve un view type que no activa el handler DASH.",
+  "blocker_requirements": [
+    "1. Crear fixture DASH real: fixtures/streams/vod-dash/ con manifest.mpd y segmentos válidos (generar con ffmpeg + dash packager), servir en localhost:9001/vod-dash/",
+    "2. Actualizar fixtures/platform-responses/content/dash.json: src.mpd → http://localhost:9001/vod-dash/manifest.mpd (eliminar src.hls del fixture DASH para forzar handler DASH)",
+    "3. Verificar que el player build activo activa dash.js cuando src solo tiene mpd y no hls",
+    "4. Si feature/system73 es una rama separada: hacer checkout y correr los tests en ese build para validar los tests de wrapPlayer/destroy"
+  ],
+  "references": [
+    "docs/01-sut/observability-model.md",
+    "D:/repos/mediastream/lightning-player/src/platform/loadConfig.js",
+    "D:/repos/mediastream/lightning-player/src/player/handler/dash/handler.js"
+  ]
+}

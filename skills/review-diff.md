@@ -43,7 +43,7 @@ Confirma al usuario qué se va a analizar:
 Delega al agente `diff-analyzer`:
 
 > Analiza el siguiente cambio y produce tmp/pipeline/risk-map.json:
-> [input del usuario — rama, commit, o "último commit de D:\repos\mediastream\lightning-player"]
+> [input del usuario — rama, commit, o "último commit de $PLAYER_LOCAL_REPO (leer desde .env)"]
 
 **Espera el resultado.** Muestra el risk map al usuario.
 
@@ -276,7 +276,7 @@ Si cualquier agente falla o produce output inválido:
 
 Si no hay diff disponible (player repo no accesible):
 ```
-⚠️  No se puede acceder al player repo en D:\repos\mediastream\lightning-player
+⚠️  No se puede acceder al player repo en $PLAYER_LOCAL_REPO (ver .env)
     Opciones:
     a) Proporcionar el diff directamente (pega el output de git diff)
     b) Especificar una ruta diferente al repo del player

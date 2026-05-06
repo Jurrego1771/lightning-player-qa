@@ -297,6 +297,18 @@ export class LightningPlayerPage {
     )
   }
 
+  async clearTrackedEvents(): Promise<void> {
+    await this.page.evaluate(() => {
+      ;(window as any).__qa.events = []
+      ;(window as any).__qa.eventData = {}
+      ;(window as any).__qa.ready = false
+    })
+  }
+
+  async getEventData<T = unknown>(eventName: string): Promise<T | undefined> {
+    return this.page.evaluate((name) => (window as any).__qa?.eventData?.[name], eventName)
+  }
+
   async getStatus(): Promise<PlayerStatus> {
     return this.page.evaluate(() => (window as any).__player?.status ?? 'idle')
   }
@@ -370,6 +382,20 @@ export class LightningPlayerPage {
 
   async setPlaybackRate(rate: number): Promise<void> {
     await this.page.evaluate((r) => { (window as any).__player.playbackRate = r }, rate)
+  }
+
+  async updateNextEpisode(data: Record<string, unknown>): Promise<void> {
+    await this.page.evaluate((payload) => {
+      ;(window as any).__player?.updateNextEpisode?.(payload)
+    }, data)
+  }
+
+  async playNext(): Promise<unknown> {
+    return this.page.evaluate(() => (window as any).__player?.playNext?.())
+  }
+
+  async keepWatching(): Promise<unknown> {
+    return this.page.evaluate(() => (window as any).__player?.keepWatching?.())
   }
 
   async getReadyState(): Promise<number> {

@@ -76,10 +76,19 @@ export default defineConfig({
       testMatch: [
         'tests/e2e/tv-*.spec.ts',
         'tests/e2e/*-tv-*.spec.ts',
+        'tests/integration/*-tv-*.spec.ts',
+        'tests/integration/konodrac-tv-*.spec.ts',
       ],
     },
   ],
 
-  // No lanzar webServers locales — la app ya está en el TV
-  // El player script se carga desde CDN directamente en el TV
+  // Servir la app webOS desde el PC para que el TV la cargue vía HTTP.
+  // El TV accede a http://HOST_IP:3001/index.html (HOST_IP = IP del PC en la LAN).
+  // Necesario porque page.goto('file:///...') falla en contextos sin permisos al sandbox.
+  webServer: {
+    command: 'npx serve apps/webos-test-app -p 3001 --cors',
+    url: 'http://localhost:3001',
+    reuseExistingServer: true,
+    timeout: 15_000,
+  },
 })

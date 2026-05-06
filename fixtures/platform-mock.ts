@@ -34,6 +34,7 @@ function readFixture(relativePath: string): string {
 const FIXTURES = {
   content: {
     vod: readFixture('content/vod.json'),
+    episode: readFixture('content/episode.json'),
     live: readFixture('content/live.json'),
     audio: readFixture('content/audio.json'),
     dash: readFixture('content/dash.json'),
@@ -105,9 +106,14 @@ export async function setupPlatformMocks(page: Page): Promise<void> {
 
     // Video content config: /video/{id}.json
     if (parsedPath.includes('/video/') && parsedPath.endsWith('.json')) {
-      const body = parsedPath.includes('mock-dash')
-        ? FIXTURES.content.dash
-        : FIXTURES.content.vod
+      let body: string
+      if (parsedPath.includes('mock-dash')) {
+        body = FIXTURES.content.dash
+      } else if (parsedPath.includes('mock-episode')) {
+        body = FIXTURES.content.episode
+      } else {
+        body = FIXTURES.content.vod
+      }
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -126,8 +132,10 @@ export async function setupPlatformMocks(page: Page): Promise<void> {
       return
     }
 
-    // Cualquier otra request al dominio de la plataforma: continuar (no bloquear)
-    await route.continue()
+    // Cualquier otra request al dominio de la plataforma: responder vacío.
+    // route.continue() hacia la red real con mock IDs cuelga (el servidor real
+    // no conoce IDs como 'mock-vod-1') y bloquea la inicialización del player.
+    await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' })
   })
 }
 
@@ -151,6 +159,37 @@ export async function mockContentConfig(
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify(merged),
+    })
+  })
+}
+
+export async function mockContentConfigById(
+  page: Page,
+  configsById: Record<string, Record<string, unknown>>
+): Promise<void> {
+  const base = JSON.parse(FIXTURES.content.vod)
+  const { platformDomain } = getEnvironmentConfig()
+
+  await page.route(`**/${platformDomain}/**`, async (route) => {
+    const parsedPath = new URL(route.request().url()).pathname
+    if (parsedPath.includes('/player')) {
+      await route.fallback()
+      return
+    }
+
+    const contentMatch = parsedPath.match(/\/(?:video|episode|audio)\/([^/]+)\.json$/)
+    const contentId = contentMatch?.[1]
+    const overrides = contentId ? configsById[contentId] : undefined
+
+    if (!overrides) {
+      await route.fallback()
+      return
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ ...base, ...overrides }),
     })
   })
 }

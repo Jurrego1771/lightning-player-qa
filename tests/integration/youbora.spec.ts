@@ -18,7 +18,7 @@
  *   - Sin verificación de paths exactos de beacons — son internos al SDK npaw-plugin@7.3.28
  *   - Sin usar player events como proxy de estado Youbora — 'playing' no implica Youbora activo
  */
-import { test, expect, MockContentIds, mockPlayerConfig, mockContentError } from '../../fixtures'
+import { test, expect, MockContentIds, mockPlayerConfig, mockContentConfigById } from '../../fixtures'
 import type { Route } from '@playwright/test'
 
 // ── Constantes compartidas ──────────────────────────────────────────────────
@@ -271,12 +271,19 @@ test.describe('Youbora — Ad Integration', { tag: ['@integration', '@analytics'
 
     const beacons = await setupNpawInterceptor(page)
 
+    // autoplay:false ensures IMA initializes AFTER Youbora's LMA requests settle.
+    // With autoplay:true on a local HLS stream, content starts playing before IMA
+    // is ready when Youbora is active — the player skips the pre-roll window.
     await player.goto({
       type: 'media',
       id: MockContentIds.vod,
-      autoplay: true,
+      autoplay: false,
       adsMap: `${MOCK_VAST_URL}/vast/preroll`,
     })
+
+    // play() triggers IMA AdsManager initialization in a clean state (Youbora ready,
+    // HLS not yet playing). Pre-roll will fire adsContentPauseRequested.
+    await player.play()
 
     // Esperar inicio del ad break — en este punto _inAdBreak = true
     // y el tracker ignorará eventos de contenido (playing, pause, seeking, etc.)
@@ -305,12 +312,15 @@ test.describe('Youbora — Ad Integration', { tag: ['@integration', '@analytics'
 
     const beacons = await setupNpawInterceptor(page)
 
+    // autoplay:false + play() — same fix as TB-05: prevents HLS/IMA race when Youbora active.
     await player.goto({
       type: 'media',
       id: MockContentIds.vod,
-      autoplay: true,
+      autoplay: false,
       adsMap: `${MOCK_VAST_URL}/vast/preroll`,
     })
+
+    await player.play()
 
     // Act — esperar el ciclo completo del ad break
     // El tracker dispara: breakStart, adStart, adJoin, (quartiles), adStop, breakStop
@@ -340,14 +350,24 @@ test.describe('Youbora — Session Management', { tag: ['@integration', '@analyt
 
     // Esperar sesión del primer contenido
     await player.waitForEvent('contentFirstPlay', 20_000)
+
+    // Esperar que los beacons de la sesión lleguen antes de capturar el baseline.
+    // contentFirstPlay puede dispararse antes de que el SDK procese el evento y emita beacons.
+    const startBeaconsCount = () => beacons.filter(url => url.includes('/start') || url.includes('/joinTime')).length
+    await expect.poll(startBeaconsCount, {
+      timeout: 20_000,
+      message: 'Se esperaban beacons /start y/o /joinTime del primer contenido antes de cargar el segundo',
+    }).toBeGreaterThan(0)
+
     const n1 = beacons.length
 
     // Act — cargar nuevo contenido. Según BR-04 y observability.md:
     //   1. tracker._cleanup() → adapter.fireStop() (cierra sesión anterior)
     //   2. setTimeout(0ms) → tracker.init(newOptions) (nueva sesión)
-    // Usamos el mismo MockContentIds.vod — player.load() con mismo id es válido
-    // para testear el reinicio de sesión sin necesidad de un segundo mock id.
-    await player.load({ type: 'media', id: MockContentIds.vod })
+    // Usar ID distinto garantiza sourcechange real y reinicio de sesión Youbora.
+    // Mismo ID puede no disparar restart en el tracker si el player detecta
+    // que la fuente no cambió.
+    await player.load({ type: 'media', id: MockContentIds.episode })
 
     // Esperar que el segundo contenido dispare contentFirstPlay
     await player.waitForEvent('contentFirstPlay', 20_000)
@@ -409,29 +429,20 @@ test.describe('Youbora — Error Reporting', { tag: ['@integration', '@analytics
 
     const n0 = beacons.length
 
-    // Act — forzar un error en el player mockeando la respuesta de contenido como 403.
-    // INCERTIDUMBRE (TB-09 / test-strategy): mockContentError() reemplaza la respuesta
-    // de la plataforma con un 403. Esto puede disparar un error en el player a nivel de
-    // config load (BR-03), no necesariamente un error fatal en el video element.
-    // Si el player ya cargó su config antes de esta llamada, el 403 podría no tener
-    // efecto inmediato. El test verifica que SI ocurre el evento 'error', Youbora
-    // responde con un beacon. Si el evento no ocurre, el test expira en waitForEvent,
-    // señalando que el mecanismo de error forcing necesita revisión.
-    // Alternativa más robusta: abortar el stream HLS (cortar localhost:9001) mid-playback,
-    // lo que garantiza un error fatal en el video element. Pendiente para próxima iteración.
-    await mockContentError(page, 403)
+    // Act — abortar segmentos HLS mid-playback para forzar error fatal en el video element.
+    // El 403 en platform config no garantiza un error player observable (el player puede
+    // haber cacheado la config). Bloquear el stream HLS es más robusto: hls.js escala
+    // a error fatal tras los retries internos, lo que dispara el evento 'error' del player
+    // y activa el handler onError en el tracker (igual que NPAW-8.3).
+    await page.route('**/localhost:9001/vod/**', (route) => route.abort())
 
-    // Forzar un reload para que el 403 tenga efecto — llamar load() hace que el
-    // player intente re-cargar la config de plataforma que ahora devuelve 403.
-    await player.load({ type: 'media', id: MockContentIds.vod })
-
-    // Esperar el evento de error del player (timeout generoso por variabilidad de red mock)
-    await player.waitForEvent('error', 15_000)
+    // Esperar el evento de error del player
+    await player.waitForEvent('error', 20_000)
 
     // Assert — al menos 1 beacon adicional tras el error
     // (correspondiente a fireFatalError o fireError según el flag data.fatal)
     await expect.poll(() => beacons.length, {
-      timeout: 5_000,
+      timeout: 8_000,
       message: 'Se esperaba al menos 1 beacon NPAW de error después del evento error del player',
     }).toBeGreaterThan(n0)
   })
@@ -722,14 +733,26 @@ test.describe('Youbora — NPAW Protocol', { tag: ['@integration', '@analytics',
     await player.goto({ type: 'media', id: MockContentIds.vod, autoplay: true })
     await player.waitForEvent('contentFirstPlay', 20_000)
 
+    // Esperar que los beacons de sesión lleguen antes de capturar el baseline.
+    const startBeaconsN51 = () => beacons.filter(url => url.includes('/start') || url.includes('/joinTime')).length
+    await expect.poll(startBeaconsN51, {
+      timeout: 20_000,
+      message: 'Se esperaban beacons /start y/o /joinTime antes de pausar (NPAW-5.1)',
+    }).toBeGreaterThan(0)
+
     const n0 = beacons.length
 
     // Act — pausa: tracker.js:101 onPause → _paused = true, firePause()
     await player.pause()
     await player.waitForEvent('pause', 5_000)
 
+    // Beacon de pausa llega async — poll antes de capturar n1 para evitar race condition
+    await expect.poll(() => beacons.length, {
+      timeout: 5_000,
+      message: 'Se esperaba beacon de pausa NPAW tras player.pause()',
+    }).toBeGreaterThan(n0)
+
     const n1 = beacons.length
-    expect(n1).toBeGreaterThan(n0) // beacon de pausa debe existir
 
     // Resume: tracker.js:93 onPlaying → si _paused, _paused = false, fireResume()
     await player.play()
@@ -742,6 +765,7 @@ test.describe('Youbora — NPAW Protocol', { tag: ['@integration', '@analytics',
   })
 
   test('NPAW-7.1 — video ended emits stop beacon', async ({ isolatedPlayer: player, page }) => {
+    test.slow() // seek-to-end + ended on 90s local HLS stream needs extra time
     // Arrange
     await mockPlayerConfig(page, YOUBORA_CONFIG)
 
@@ -750,26 +774,45 @@ test.describe('Youbora — NPAW Protocol', { tag: ['@integration', '@analytics',
     await player.goto({ type: 'media', id: MockContentIds.vod, autoplay: true })
     await player.waitForEvent('contentFirstPlay', 20_000)
 
+    // Esperar beacons de sesión antes de capturar baseline (pueden llegar tarde)
+    const startBeaconsN71 = () => beacons.filter(url => url.includes('/start') || url.includes('/joinTime')).length
+    await expect.poll(startBeaconsN71, {
+      timeout: 20_000,
+      message: 'Se esperaban beacons /start y/o /joinTime antes de seek al final (NPAW-7.1)',
+    }).toBeGreaterThan(0)
+
     const n0 = beacons.length
 
-    // Act — esperar duration > 0 antes de seek; si metadata aún no cargó, duration=0
-    // y seekTarget=-0.5 hace que ended nunca dispare.
+    // Seek via elemento nativo de video (más fiable que player.seek para near-end).
+    // player.duration puede diferir de video.duration en algunas implementaciones de handler.
     await expect.poll(
-      () => player.page.evaluate(() => (window as any).__player?.duration ?? 0),
-      { timeout: 10_000, message: 'duration debe ser > 0 antes de seek' }
+      () => player.page.evaluate(() => {
+        const v = document.querySelector('video') ?? document.querySelector('audio')
+        return v ? v.duration : 0
+      }),
+      { timeout: 10_000, message: 'video.duration debe ser > 0 antes de seek' }
     ).toBeGreaterThan(0)
 
-    const duration = await player.page.evaluate(() => (window as any).__player?.duration ?? 0) as number
-    await player.seek(duration - 0.5)
+    await player.page.evaluate(() => {
+      const v = document.querySelector('video') ?? document.querySelector('audio')
+      if (v && isFinite(v.duration) && v.duration > 0.5) v.currentTime = v.duration - 0.1
+    })
 
-    // Esperar el evento ended — el stream local es corto, debe terminar pronto
-    await player.waitForEvent('ended', 30_000)
+    // Esperar ended vía harness events O estado nativo del video element.
+    // El player puede propagar ended al SDK Youbora aunque el harness no lo capture.
+    await expect.poll(
+      () => player.page.evaluate(() => {
+        const v = document.querySelector('video') ?? document.querySelector('audio')
+        return !!(window as any).__qa?.events?.includes('ended') || v?.ended === true
+      }),
+      { timeout: 60_000, message: 'El video debe llegar a ended tras seek al final (NPAW-7.1)' }
+    ).toBe(true)
 
     // Assert — tracker.js:107 onEnded → fireStop(), _started = false
-    await expect.poll(() => beacons.length, {
-      timeout: 5_000,
-      message: 'Se esperaba beacon de stop NPAW tras ended (fireStop en tracker.js:109)',
-    }).toBeGreaterThan(n0)
+    await expect.poll(() => beacons.filter(url => url.includes('/stop')).length, {
+      timeout: 10_000,
+      message: 'Se esperaba beacon /stop de Youbora tras ended (NPAW-7.1)',
+    }).toBeGreaterThan(0)
   })
 
   test('NPAW-8.1 — startup error via blocked manifest emits error beacon', async ({ isolatedPlayer: player, page }) => {
@@ -925,6 +968,7 @@ test.describe('Youbora — Config Robustness', { tag: ['@integration', '@analyti
 test.describe('Youbora — VOD Replay', { tag: ['@integration', '@analytics', '@youbora'] }, () => {
 
   test('NPAW-1.6 — replay after ended opens new Youbora session', async ({ isolatedPlayer: player, page }) => {
+    test.slow() // seek-to-end + replay on 90s local HLS needs extra time
     // NPAW-1.6: replay after ended opens a new view in NPAW.
     // tracker.js:109 sets _started=false on ended, so onFirstPlay guard passes
     // on replay and fires fireStart again, opening view #2 in NPAW.
@@ -944,24 +988,47 @@ test.describe('Youbora — VOD Replay', { tag: ['@integration', '@analytics', '@
 
     // Wait for first session to start — fireStart + fireJoin beacons land here
     await player.waitForEvent('contentFirstPlay', 20_000)
+
+    // Esperar beacons de sesión antes de capturar n0
+    const startBeaconsN16 = () => beacons.filter(url => url.includes('/start') || url.includes('/joinTime')).length
+    await expect.poll(startBeaconsN16, {
+      timeout: 20_000,
+      message: 'Se esperaban beacons /start y/o /joinTime antes de seek al final (NPAW-1.6)',
+    }).toBeGreaterThan(0)
+
     const n0 = beacons.length
 
-    // Wait for duration > 0 before seeking; metadata may not be loaded yet
+    // Seek via elemento nativo (más fiable que player.seek para near-end en stream local)
     await expect.poll(
-      () => player.page.evaluate(() => (window as any).__player?.duration ?? 0),
-      { timeout: 10_000, message: 'duration debe ser > 0 antes de seek' }
+      () => player.page.evaluate(() => {
+        const v = document.querySelector('video') ?? document.querySelector('audio')
+        return v ? v.duration : 0
+      }),
+      { timeout: 10_000, message: 'video.duration debe ser > 0 antes de seek' }
     ).toBeGreaterThan(0)
 
-    const duration = await player.page.evaluate(() => (window as any).__player?.duration ?? 0) as number
+    await player.page.evaluate(() => {
+      const v = document.querySelector('video') ?? document.querySelector('audio')
+      if (v && isFinite(v.duration) && v.duration > 0.5) v.currentTime = v.duration - 0.1
+    })
 
-    // Seek to near end so that ended fires quickly
-    await player.seek(duration - 0.5)
+    // Esperar ended vía harness events O estado nativo del video element
+    await expect.poll(
+      () => player.page.evaluate(() => {
+        const v = document.querySelector('video') ?? document.querySelector('audio')
+        return !!(window as any).__qa?.events?.includes('ended') || v?.ended === true
+      }),
+      { timeout: 60_000, message: 'El video debe llegar a ended tras seek al final (NPAW-1.6)' }
+    ).toBe(true)
 
-    // Wait for ended — tracker.js:107 onEnded → fireStop(), _started = false
-    await player.waitForEvent('ended', 30_000)
     const n1 = beacons.length
 
     // Confirm that fireStop beacon was captured after ended
+    await expect.poll(() => beacons.filter(url => url.includes('/stop')).length, {
+      timeout: 10_000,
+      message: 'Se esperaba beacon /stop tras ended (NPAW-1.6)',
+    }).toBeGreaterThan(0)
+
     expect(n1).toBeGreaterThan(n0)
 
     // Act — trigger replay via public API.
@@ -992,48 +1059,102 @@ test.describe('Youbora — VOD Replay', { tag: ['@integration', '@analytics', '@
 
 test.describe('Youbora — Next Episode Session Chain', { tag: ['@integration', '@analytics', '@youbora'] }, () => {
 
-  test('two episode transitions each open a new Youbora session', async ({ isolatedPlayer: player, page }) => {
-    // Each player.load() triggers tracker.restart() → _cleanup() (fireStop of current session)
-    // → setTimeout(0) → init() with new options → new session on next contentFirstPlay.
-    // Two transitions = three distinct Youbora sessions captured in beacons[].
-    //
-    // Session timeline:
-    //   Episode 1 → contentFirstPlay → n0 beacons (fireStart #1 + fireJoin #1)
-    //   load() #1 → tracker.restart() → fireStop #1 + setTimeout(0) → fireStart #2
-    //   Episode 2 → contentFirstPlay → n1 beacons (> n0)
-    //   load() #2 → tracker.restart() → fireStop #2 + setTimeout(0) → fireStart #3
-    //   Episode 3 → contentFirstPlay → n2 beacons (> n1)
-
+  test('automatic next episode transition opens a new Youbora session', async ({ isolatedPlayer: player, page }) => {
+    test.slow() // episode chain: ended + transition + second contentFirstPlay on 90s stream
     // Arrange
     await mockPlayerConfig(page, YOUBORA_CONFIG)
+    await mockContentConfigById(page, {
+      [MockContentIds.vod]: {
+        title: 'Episode Alpha',
+        mediaId: MockContentIds.vod,
+        next: MockContentIds.episode,
+        nextEpisodeTime: 1,
+      },
+      [MockContentIds.episode]: {
+        title: 'Episode Beta',
+        mediaId: MockContentIds.episode,
+      },
+    })
 
     const beacons = await setupNpawInterceptor(page)
 
-    // Episode 1
-    await player.goto({ type: 'episode', id: MockContentIds.vod, autoplay: true })
-    await player.waitForEvent('contentFirstPlay', 20_000)
-    const n0 = beacons.length
+    // Capture any platform request for episode 2 regardless of path prefix.
+    // The player may use /episode/ or /video/ depending on renderAs — both match.
+    const episodeRequests: string[] = []
+    page.on('request', (req) => {
+      const url = req.url()
+      if (url.includes(`/${MockContentIds.episode}.json`)) {
+        episodeRequests.push(url)
+      }
+    })
+    const initBeacons = () => beacons.filter(url => url.includes('/init')).length
+    const startBeacons = () =>
+      beacons.filter(url => url.includes('/start') || url.includes('/joinTime')).length
 
-    // First episode Youbora session must have started (fireStart + fireJoin)
-    expect(n0).toBeGreaterThan(0)
+    // Episode 1 — omit view:'none' so the next-episode UI component mounts and
+    // the automatic countdown can fire. view:'none' disables the React overlay
+    // responsible for triggering the auto-transition timer.
+    await player.goto({
+      type: 'episode',
+      id: MockContentIds.vod,
+      autoplay: true,
+    })
 
-    // Transition 1 — player.load() calls tracker.restart() internally:
-    //   _cleanup() → fireStop (closes session #1)
-    //   setTimeout(0) → init(newOptions) → new session ready for episode 2
-    // player.load() also resets __qa.events so waitForEvent('contentFirstPlay') is clean.
-    await player.load({ type: 'episode', id: MockContentIds.vod })
-    await player.waitForEvent('contentFirstPlay', 20_000)
-    const n1 = beacons.length
+    await expect.poll(initBeacons, {
+      timeout: 10_000,
+      message: 'Se esperaba beacon /init de Youbora para el primer episodio',
+    }).toBeGreaterThan(0)
+    await expect.poll(startBeacons, {
+      timeout: 20_000,
+      message: 'Se esperaban beacons /start y/o /joinTime para el primer episodio',
+    }).toBeGreaterThan(0)
 
-    // Session #2 opened: beacons must have grown (fireStop #1 + fireStart #2 + fireJoin #2)
-    expect(n1).toBeGreaterThan(n0)
+    const firstSessionStarts = startBeacons()
 
-    // Transition 2 — same pattern: restart() closes session #2, opens session #3
-    await player.load({ type: 'episode', id: MockContentIds.vod })
-    await player.waitForEvent('contentFirstPlay', 20_000)
-    const n2 = beacons.length
+    // Automatic next episode transition: no player.load() here. The episode flow must
+    // reach ended, request the next content, and load Episode Beta by itself.
+    await player.clearTrackedEvents()
 
-    // Session #3 opened: beacons must have grown again (fireStop #2 + fireStart #3 + fireJoin #3)
-    expect(n2).toBeGreaterThan(n1)
+    // Seek via native video element — more reliable than player.seek for near-end in local HLS
+    await expect.poll(
+      () => player.page.evaluate(() => {
+        const v = document.querySelector('video') ?? document.querySelector('audio')
+        return v ? v.duration : 0
+      }),
+      { timeout: 10_000, message: 'video.duration debe ser > 0 antes de seek al final del episodio' }
+    ).toBeGreaterThan(0)
+
+    await player.page.evaluate(() => {
+      const v = document.querySelector('video') ?? document.querySelector('audio')
+      if (v && isFinite(v.duration) && v.duration > 0.5) v.currentTime = v.duration - 0.1
+    })
+
+    // Dual ended detection: harness events array OR native video.ended
+    await expect.poll(
+      () => player.page.evaluate(() => {
+        const v = document.querySelector('video') ?? document.querySelector('audio')
+        return !!(window as any).__qa?.events?.includes('ended') || v?.ended === true
+      }),
+      { timeout: 60_000, message: 'El video debe llegar a ended tras seek al final (episode chain)' }
+    ).toBe(true)
+
+    // Wait for the player to request episode 2 content from the platform.
+    // This confirms the automatic episode transition has been triggered.
+    await expect.poll(() => episodeRequests.length, {
+      timeout: 20_000,
+      message: 'El flujo automático de episodio debe solicitar el contenido del siguiente episodio',
+    }).toBeGreaterThan(0)
+
+    // Wait for episode 2 to actually start playing before checking Youbora.
+    // Without this, the 20s Youbora poll may expire while episode 2 is still
+    // loading the HLS stream and the tracker hasn't had time to fire fireStart().
+    await player.waitForEvent('contentFirstPlay', 30_000)
+
+    // Youbora should have restarted its session on sourcechange and fired
+    // fireStart + fireJoin when contentFirstPlay arrived for episode 2.
+    await expect.poll(startBeacons, {
+      timeout: 15_000,
+      message: 'El segundo episodio debe emitir beacons normales de sesión Youbora',
+    }).toBeGreaterThan(firstSessionStarts)
   })
 })

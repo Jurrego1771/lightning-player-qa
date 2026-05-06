@@ -1,6 +1,6 @@
 ---
 name: doc-feature
-description: Genera y actualiza documentación estructurada de features del Lightning Player. Infiere reglas desde código fuente del player + investigación de industria. Alerta y para cuando hay contradicciones. Alimenta el Documentation Gate del test-triage-agent.
+description: Genera y actualiza documentación estructurada de features del Lightning Player. Infiere reglas desde código fuente del player + investigación de industria. Alerta y para cuando hay contradicciones. Alimenta al test-generator como fuente de verdad para generación de specs.
 ---
 
 # /doc-feature — Documentación de Features
@@ -75,11 +75,41 @@ next-episode             approved  2.1.0    2026-04-20
 on-next-prev             approved  1.3.0    2026-04-15
 ```
 
-## Paso 3 — Delegar al agente doc-feature-agent
+## Paso 3 — Modo APPROVE (sin delegación)
 
-Para modos create, update, approve, delega con este prompt:
+Si mode es `approve`, ejecutar directamente:
 
-> Modo: [create | update | approve]
+1. Leer todos los archivos del feature: `business-rules.md`, `observability.md`, `test-briefs.md`, `edge-cases.md`.
+2. Contar claims marcados como `[PENDIENTE]` o sin fuente documentada.
+3. Mostrar resumen al usuario:
+
+```
+📋 Resumen de docs/02-features/[feature]/
+
+business-rules.md — [N] reglas:
+  BR-01: [descripción] [USER: fecha]
+  BR-02: [descripción] [PENDIENTE — sin confirmar]
+
+observability.md — [N] eventos documentados
+test-briefs.md — [N] casos de test
+edge-cases.md — [N] edge cases ([N] sin coverage)
+
+⚠️  [N] claims sin confirmar. Recomiendo resolverlos antes de aprobar.
+
+¿Aprobar? [s/N]
+```
+
+4. Si usuario aprueba → escribir en `_meta.json`:
+```json
+{ "status": "approved", "approved_by": "jurrego1771", "approved_at": "YYYY-MM-DD" }
+```
+5. Si hay claims `[PENDIENTE]` y usuario aprueba → marcar con `⚠️ UNCONFIRMED` inline en los docs.
+
+## Paso 4 — Delegar al agente doc-feature-agent
+
+Para modos create y update, delega con este prompt:
+
+> Modo: [create | update]
 > Feature: [feature-name]
 > Target file (solo update): [archivo]
 > 
@@ -93,7 +123,7 @@ Para modos create, update, approve, delega con este prompt:
 
 **Espera el resultado.** El agente puede hacer preguntas durante la ejecución — relaylas al usuario y pasa las respuestas de vuelta.
 
-## Paso 4 — Confirmar resultado
+## Paso 5 — Confirmar resultado
 
 Al terminar, muestra al usuario:
 
@@ -112,18 +142,18 @@ Claims sin confirmar: [N]
 Próximo paso:
   → Revisa los docs generados
   → Cuando estés listo: /doc-feature [feature] --approve
-  → El test-triage-agent los aceptará solo después de --approve
+  → test-generator los usará solo después de --approve
 ```
 
-## Regla de integración con test-triage-agent
+## Regla de integración con test-generator
 
-El triage-agent rechaza docs con `status !== "approved"`. El flujo correcto es:
+`test-generator` lee `docs/02-features/[feature]/` en Step 2. Si `_meta.json` tiene `status !== "approved"`, genera en modo básico con advertencia ⚠️. El flujo correcto es:
 
 ```
 /doc-feature [feature]           # genera draft
   → revisas los docs
 /doc-feature [feature] --approve # aprueba
-  → test-triage-agent puede proceder
+  → test-generator usa los docs como fuente de verdad
 ```
 
 No saltar el --approve aunque el contexto sea claro. Es la firma humana en el contrato.

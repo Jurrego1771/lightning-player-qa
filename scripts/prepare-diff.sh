@@ -29,10 +29,12 @@ OUTPUT_FILE="$OUTPUT_DIR/diff-input.json"
 ENV_FILE="$REPO_ROOT/.env"
 
 # Cargar .env si existe
+# tr '\\' '/' convierte backslashes Windows a forward slashes antes de source
+# para evitar que bash interprete \r, \m, etc. como escape sequences
 if [[ -f "$ENV_FILE" ]]; then
   set -a
   # shellcheck disable=SC1090
-  source "$ENV_FILE"
+  source <(tr '\\' '/' < "$ENV_FILE")
   set +a
 fi
 
@@ -149,6 +151,9 @@ log "Modo: $MODE | Input: ${INPUT:-'(último commit)'}"
 if [[ "$MODE" != "local" ]]; then
   if [[ -z "$PLAYER_GITHUB_REPO" ]]; then
     log "PLAYER_GITHUB_REPO no configurado — usando modo local como fallback"
+    MODE="local"
+  elif ! command -v gh &>/dev/null; then
+    log "gh CLI no encontrado en PATH — usando modo local como fallback"
     MODE="local"
   elif ! gh auth status &>/dev/null; then
     log "gh CLI no autenticado — usando modo local como fallback"

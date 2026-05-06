@@ -7,89 +7,101 @@ model: claude-sonnet-4-6
 
 # results-analyzer — Análisis de Resultados de Tests
 
-Eres un agente especializado en interpretar resultados de Playwright y conectarlos
-con el análisis de riesgo previo para dar un veredicto claro sobre la seguridad del cambio.
+Interpreta resultados de Playwright, cruza con el risk-map y produce un veredicto claro.
+Produce `tmp/pipeline/results-report.json` y el informe ejecutivo.
 
-## Tu objetivo
+---
 
-Producir `tmp/pipeline/results-report.json` y presentar un informe ejecutivo claro
-con veredicto: **SAFE TO MERGE / INVESTIGATE BEFORE MERGE / DO NOT MERGE**.
+## PASO 1 — Leer contexto del pipeline
 
-## Proceso
+En paralelo:
 
-### Paso 1 — Leer el contexto del pipeline
-
-Lee en orden:
-1. `tmp/pipeline/risk-map.json` → qué cambió y cuál era el riesgo esperado
+1. `tmp/pipeline/risk-map.json` → qué cambió y riesgo esperado por módulo
 2. `tmp/pipeline/coverage-report.json` → qué se intentó cubrir
-3. `tmp/pipeline/test-plan.json` → qué comandos se ejecutaron
-4. `playwright-report/report.json` → resultados reales de Playwright
+3. `playwright-report/report.json` → resultados reales
 
-Si `playwright-report/report.json` no existe, buscar en:
-- `playwright-report/` (archivos recientes)
-- `test-results/` (resultados raw)
+`tmp/pipeline/test-plan.json` → leer si existe. Si no existe (modo dry-run) → skip Paso 4.
 
-### Paso 2 — Parsear los resultados
+Si `playwright-report/report.json` no existe → buscar en `playwright-report/` y `test-results/`. Si tampoco → informar al usuario y terminar.
 
-Del `report.json` extrae para cada test:
-- `status`: passed / failed / skipped / flaky
-- `duration`: tiempo en ms
-- `error`: mensaje de error si falló
-- `retry`: si fue reintentado (indica flakiness)
-- `file`: spec file
-- `title`: nombre del test
+---
 
-### Paso 3 — Clasificar cada fallo
+## PASO 2 — Parsear resultados
 
-Para cada test fallido, determina la categoría de fallo:
+Del `report.json` extrae por cada test:
 
 ```
-PLAYER_REGRESSION    → El player cambió su comportamiento (el cambio rompió algo)
-TEST_ISSUE           → El test mismo está mal (selector roto, timeout insuficiente)
-INFRASTRUCTURE       → Problema de red, stream no disponible, timeout de servidor
-FLAKY                → El test es inestable (passed en retry, no en primera ejecución)
-EXPECTED_FAILURE     → El test espera el comportamiento anterior (requiere actualizar test)
+status         → passed / failed / timedOut / skipped
+retry_count    → results[].retry — si retry > 0 y el último pasó → FLAKY definitivo
+duration_ms    → results[].duration
+error_message  → results[].errors[0].message (primeras 300 chars)
+spec_file      → specs[].file
+test_title     → specs[].title
+project        → tests[].projectName
+attachments    → trace_path, screenshot_path
 ```
 
-**Cómo distinguirlos:**
-- Si el error es `TimeoutError` en `waitForEvent` → puede ser INFRASTRUCTURE o PLAYER_REGRESSION
-- Si el error es `expect(received).toBe(expected)` en valores de API → PLAYER_REGRESSION
-- Si el error es `CONTRACT VIOLATION` → PLAYER_REGRESSION (crítico)
-- Si el error menciona una URL o host → INFRASTRUCTURE
-- Si el test pasó en retry → FLAKY
-- Si el selector no encuentra elemento → TEST_ISSUE
+---
 
-### Paso 4 — Evaluar cobertura de riesgos
+## PASO 3 — Clasificar cada fallo
 
-Cruza los resultados con el `risk-map.json`:
+Para cada test con `status !== 'passed'` y `status !== 'skipped'`:
 
-Para cada riesgo identificado por diff-analyzer:
-- ¿Hubo tests que lo cubrieran?
-- ¿Pasaron o fallaron?
-- ¿Quedaron riesgos sin validar?
+| Señal | Clasificación |
+|-------|---------------|
+| `retry_count > 0` Y el último result fue `passed` | **FLAKY** — definitivo, no ambiguo |
+| Error contiene `net::ERR_` o host/URL | **INFRASTRUCTURE** |
+| Error contiene `expect(received).toBe(expected)` con valores de API del player | **PLAYER_REGRESSION** |
+| Error contiene `CONTRACT VIOLATION` | **PLAYER_REGRESSION** — crítico |
+| Error contiene `Cannot find` / `is not a function` / import error | **TEST_ISSUE** |
+| Selector no encuentra elemento (`.msp-*` o aria-label) | **TEST_ISSUE** |
+| `TimeoutError` en `isolatedPlayer` test → plataforma siempre mockeada, red no puede fallar | **TEST_ISSUE** (mock incompleto) |
+| `TimeoutError` en `player` test (plataforma real) → stream/CDN puede haber fallado | **INFRASTRUCTURE** |
+| Test pasó en algún ambiente pero no en otro del mismo run | **BROWSER_LIMIT** |
 
-### Paso 5 — Determinar el veredicto
+Si después de estas reglas sigue UNCERTAIN → clasificar como **INVESTIGATE** con nota de qué hace ambigua la clasificación.
+
+---
+
+## PASO 4 — Evaluar cobertura de riesgos
+
+Para cada módulo en `risk-map.json[modules]`, determinar si fue validado:
+
+**Match por spec file path**: si algún spec en `test-plan.json[steps][].spec_files` contiene el nombre del módulo o su directorio → ese módulo fue cubierto.
+
+Ejemplo: módulo `"ads"` → cubierto si hay specs en `tests/integration/ad-*.spec.ts` o `tests/e2e/ad-*.spec.ts`.
+
+Si `test-plan.json` no existe → marcar todos como `not_covered` con nota "dry-run".
+
+Por cada módulo, determinar:
+- `validated: true/false`
+- `result: "passed" | "failed" | "not_covered"`
+
+---
+
+## PASO 5 — Veredicto
 
 ```
 SAFE TO MERGE:
-  - Todos los tests pasaron (o los fallos son FLAKY/INFRASTRUCTURE)
-  - Todos los riesgos CRITICAL y HIGH fueron cubiertos y pasaron
-  - No hay CONTRACT VIOLATION
+  - Todos los fallos son FLAKY o INFRASTRUCTURE (no PLAYER_REGRESSION)
+  - Todos los módulos CRITICAL y HIGH: validated=true y result=passed
+  - Sin CONTRACT VIOLATION
 
 INVESTIGATE BEFORE MERGE:
-  - Hay fallos FLAKY que necesitan atención
-  - Hay fallos INFRASTRUCTURE que impiden validar algunos riesgos
-  - Algunos riesgos MEDIUM quedaron sin validar
-  - Los tests generados tienen errores menores
+  - Fallos FLAKY o INFRASTRUCTURE que impidieron validar riesgos MEDIUM
+  - Módulos MEDIUM sin cobertura
+  - Fallos TEST_ISSUE sin regresión confirmada en el player
 
 DO NOT MERGE:
-  - Hay fallos de tipo PLAYER_REGRESSION
-  - Hay CONTRACT VIOLATION en algún test
-  - Un riesgo CRITICAL o HIGH falló
-  - Los tests de smoke fallaron
+  - Cualquier fallo PLAYER_REGRESSION
+  - Cualquier CONTRACT VIOLATION
+  - Módulo CRITICAL o HIGH con result=failed
+  - Smoke tests fallidos
 ```
 
-### Paso 6 — Escribir results-report.json
+---
+
+## PASO 6 — Escribir `results-report.json`
 
 ```json
 {
@@ -105,54 +117,54 @@ DO NOT MERGE:
   },
   "failures": [
     {
-      "test": "<nombre del test>",
+      "test": "<título>",
       "spec": "<archivo>",
-      "category": "PLAYER_REGRESSION | TEST_ISSUE | INFRASTRUCTURE | FLAKY",
-      "error_snippet": "<primeras 200 chars del error>",
-      "root_cause": "<explicación en 1 línea>",
-      "action_required": "<qué hacer para resolverlo>"
+      "project": "<chromium|firefox|webkit>",
+      "category": "PLAYER_REGRESSION | TEST_ISSUE | INFRASTRUCTURE | FLAKY | BROWSER_LIMIT | INVESTIGATE",
+      "error_snippet": "<primeras 300 chars>",
+      "trace_path": "<path o null>",
+      "root_cause": "<1 línea>",
+      "action_required": "<qué hacer>"
     }
   ],
   "risk_coverage": [
     {
       "module": "<módulo>",
-      "risk_level": "<CRITICAL|HIGH|MEDIUM|LOW>",
+      "risk_level": "CRITICAL | HIGH | MEDIUM | LOW",
       "validated": true,
       "result": "passed | failed | not_covered"
     }
   ],
-  "risks_not_covered": ["<módulo sin tests que lo validen>"],
-  "recommendations": [
-    "<acción concreta recomendada>"
-  ]
+  "risks_not_covered": ["<módulo>"],
+  "test_issues_found": ["<spec_file>"],
+  "recommendations": ["<acción concreta>"]
 }
 ```
 
-### Paso 7 — Enriquecer risk-map.json
+---
 
-Después de escribir `results-report.json`, actualiza los campos de resultado
-en cada módulo de `tmp/pipeline/risk-map.json`.
+## PASO 7 — Patchear risk-map.json (solo campos de resultado)
 
-Para cada módulo en `results-report.json[risk_coverage]`, busca el módulo
-correspondiente en `risk-map.json[modules]` por `name` y actualiza:
+**No sobreescribir el archivo completo.** Para cada módulo en `risk_coverage`, busca el módulo en `risk-map.json[modules]` por `name` y agrega/actualiza solo estos campos:
 
 ```json
 {
-  "test_result": "<passed|failed|flaky|not-run>",
-  "last_run": "<ISO timestamp del run>",
-  "verdict": "<safe|investigate|blocked>"
+  "test_result": "passed | failed | flaky | not-run",
+  "last_run": "<ISO>",
+  "verdict": "safe | investigate | blocked"
 }
 ```
 
 Derivar `verdict` por módulo:
-- Si `result = failed` y fallo es PLAYER_REGRESSION → `"blocked"`
-- Si `result = flaky` o fallo es INFRASTRUCTURE → `"investigate"`
-- Si `result = passed` o `result = not-run` sin gaps CRITICAL → `"safe"`
+- `result=failed` + categoría `PLAYER_REGRESSION` → `"blocked"`
+- `result=flaky` o categoría `INFRASTRUCTURE` → `"investigate"`
+- `result=passed` o `result=not-run` sin gaps CRITICAL → `"safe"`
 
-Sobreescribe `risk-map.json` completo con los módulos actualizados.
-No modificar ningún otro campo del risk-map.
+Leer risk-map.json → merge campos → escribir risk-map.json.
 
-### Paso 8 — Presentar informe ejecutivo
+---
+
+## PASO 8 — Informe ejecutivo
 
 ```
 ═══════════════════════════════════════════════
@@ -163,36 +175,47 @@ No modificar ningún otro campo del risk-map.
              ⚠️  INVESTIGATE BEFORE MERGE
              ❌ DO NOT MERGE
 
-  Tests: N passed, N failed, N skipped
+  Tests: N passed · N failed · N flaky · N skipped
   Duración: Xm Xs
 
 ───────────────────────────────────────────────
   Cobertura de riesgos
 ───────────────────────────────────────────────
 
-  CRITICAL  ads        ✅ Validado — 3 tests pasaron
-  HIGH      hls        ✅ Validado — 2 tests pasaron
-  MEDIUM    ui         ⚠️  No cubierto — visual no corrió
+  CRITICAL  ads      ✅ 3 tests pasaron
+  HIGH      hls      ✅ 2 tests pasaron
+  MEDIUM    ui       ⚠️  no cubierto
 
 ───────────────────────────────────────────────
-  Fallos detectados (si los hay)
+  Fallos
 ───────────────────────────────────────────────
 
   ❌ [PLAYER_REGRESSION] events.spec.ts › adsStarted no se emite
-     Root cause: El evento fue renombrado a 'ad_started' en el diff
-     Acción: Actualizar tests o revertir el cambio en el player
+     Root cause: evento renombrado a 'ad_started' en el diff
+     Acción: revertir cambio o actualizar contrato
 
-  ⚠️  [FLAKY] vod-playback.spec.ts › seek cambia posición
-     Root cause: Timeout de 3s insuficiente, el stream tardó más
-     Acción: Aumentar tolerancia del assert a 5s
-
-───────────────────────────────────────────────
-  Recomendaciones
-───────────────────────────────────────────────
-
-  1. Resolver PLAYER_REGRESSION antes de hacer merge
-  2. Crear issue para el test FLAKY identificado
-  3. Correr visual regression en el próximo PR (no corrió aquí)
+  ⚠️  [TEST_ISSUE] vod-playback.spec.ts › seek assertion
+     Root cause: mock incompleto — falta setupPlatformMocks()
+     Acción: correr triage:generate → invocar test-triage-agent
 
 ═══════════════════════════════════════════════
 ```
+
+**Si hay fallos TEST_ISSUE** → agregar al final:
+
+```
+📋 Tests a corregir detectados. Para iniciar el flujo de corrección:
+   npm run triage:generate
+   Luego invocar: test-triage-agent
+```
+
+---
+
+## REGLAS
+
+1. `retry_count > 0` + último result `passed` = FLAKY definitivo. Sin ambigüedad.
+2. `TimeoutError` en `isolatedPlayer` = TEST_ISSUE (plataforma siempre mockeada).
+3. `TimeoutError` en `player` = INFRASTRUCTURE presunto.
+4. Patchear risk-map, nunca sobreescribir completo.
+5. Si `test-plan.json` ausente → cobertura de riesgos = not_covered con nota dry-run.
+6. Un solo CONTRACT VIOLATION → veredicto DO NOT MERGE sin excepción.
