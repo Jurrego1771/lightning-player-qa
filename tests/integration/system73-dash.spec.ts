@@ -30,7 +30,7 @@ test.describe('System73 DASH SDK integration', { tag: ['@integration'] }, () => 
   test('sin peering config el player reproduce DASH normalmente', async ({ isolatedPlayer: player }) => {
     // Arrange — content config por defecto no incluye metadata.peering
     // El mock content id 'mock-dash-vod-1' hace que platform-mock.ts sirva content/dash.json
-    await player.goto({ type: 'media', id: MockContentIds.dashVod, autoplay: true })
+    await player.goto({ type: 'media', id: MockContentIds.dashVod, autoplay: true, format: 'dash' })
     await player.waitForEvent('playing', 25_000)
 
     // Assert
@@ -65,8 +65,7 @@ test.describe('System73 DASH SDK integration', { tag: ['@integration'] }, () => 
 
     await mockContentConfig(page, {
       src: {
-        hls: null,
-        dash: 'http://localhost:9001/vod-dash/manifest.mpd',
+        mpd: 'http://localhost:9001/vod-dash/manifest.mpd',
       },
       peering: {
         system73: {
@@ -77,7 +76,7 @@ test.describe('System73 DASH SDK integration', { tag: ['@integration'] }, () => 
       },
     })
 
-    await player.goto({ type: 'media', id: MockContentIds.dashVod, autoplay: true })
+    await player.goto({ type: 'media', id: MockContentIds.dashVod, autoplay: true, format: 'dash' })
     await player.waitForEvent('playing', 25_000)
 
     // Assert — playback con wrapper activo
@@ -101,8 +100,7 @@ test.describe('System73 DASH SDK integration', { tag: ['@integration'] }, () => 
 
     await mockContentConfig(page, {
       src: {
-        hls: null,
-        dash: 'http://localhost:9001/vod-dash/manifest.mpd',
+        mpd: 'http://localhost:9001/vod-dash/manifest.mpd',
       },
       peering: {
         system73: {
@@ -113,7 +111,7 @@ test.describe('System73 DASH SDK integration', { tag: ['@integration'] }, () => 
       },
     })
 
-    await player.goto({ type: 'media', id: MockContentIds.dashVod, autoplay: true })
+    await player.goto({ type: 'media', id: MockContentIds.dashVod, autoplay: true, format: 'dash' })
     await player.waitForEvent('playing', 25_000)
 
     // Assert — degradación suave: sin wrapper pero playback normal
@@ -160,8 +158,7 @@ test.describe('System73 DASH SDK integration', { tag: ['@integration'] }, () => 
 
     await mockContentConfig(page, {
       src: {
-        hls: null,
-        dash: 'http://localhost:9001/vod-dash/manifest.mpd',
+        mpd: 'http://localhost:9001/vod-dash/manifest.mpd',
       },
       peering: {
         system73: {
@@ -173,7 +170,7 @@ test.describe('System73 DASH SDK integration', { tag: ['@integration'] }, () => 
     })
 
     // Iniciar carga del contenido A — dispara el await del SDK (tardará 500ms)
-    const gotoPromise = player.goto({ type: 'media', id: MockContentIds.dashVod, autoplay: false })
+    const gotoPromise = player.goto({ type: 'media', id: MockContentIds.dashVod, autoplay: true, format: 'dash' })
 
     // Cambiar a contenido B mientras el SDK todavía está cargando.
     // Un page.evaluate directo permite disparar el load() sin esperar a que goto() complete.
@@ -218,8 +215,7 @@ test.describe('System73 DASH SDK integration', { tag: ['@integration'] }, () => 
 
     await mockContentConfig(page, {
       src: {
-        hls: null,
-        dash: 'http://localhost:9001/vod-dash/manifest.mpd',
+        mpd: 'http://localhost:9001/vod-dash/manifest.mpd',
       },
       peering: {
         system73: {
@@ -230,7 +226,7 @@ test.describe('System73 DASH SDK integration', { tag: ['@integration'] }, () => 
       },
     })
 
-    await player.goto({ type: 'media', id: MockContentIds.dashVod, autoplay: true })
+    await player.goto({ type: 'media', id: MockContentIds.dashVod, autoplay: true, format: 'dash' })
     await player.waitForEvent('playing', 25_000)
 
     await player.assertIsPlaying()
@@ -265,8 +261,7 @@ test.describe('System73 DASH SDK integration', { tag: ['@integration'] }, () => 
 
     await mockContentConfig(page, {
       src: {
-        hls: null,
-        dash: 'http://localhost:9001/vod-dash/manifest.mpd',
+        mpd: 'http://localhost:9001/vod-dash/manifest.mpd',
       },
       peering: {
         system73: {
@@ -278,7 +273,7 @@ test.describe('System73 DASH SDK integration', { tag: ['@integration'] }, () => 
     })
 
     // Carga inicial con DASH + system73
-    await player.goto({ type: 'media', id: MockContentIds.dashVod, autoplay: true })
+    await player.goto({ type: 'media', id: MockContentIds.dashVod, autoplay: true, format: 'dash' })
     await player.waitForEvent('playing', 25_000)
     await player.assertIsPlaying()
 
@@ -314,8 +309,7 @@ test.describe('System73 DASH SDK integration', { tag: ['@integration'] }, () => 
 
     await mockContentConfig(page, {
       src: {
-        hls: null,
-        dash: 'http://localhost:9001/vod-dash/manifest.mpd',
+        mpd: 'http://localhost:9001/vod-dash/manifest.mpd',
       },
       peering: {
         system73: {
@@ -326,7 +320,7 @@ test.describe('System73 DASH SDK integration', { tag: ['@integration'] }, () => 
       },
     })
 
-    await player.goto({ type: 'media', id: MockContentIds.dashVod, autoplay: true })
+    await player.goto({ type: 'media', id: MockContentIds.dashVod, autoplay: true, format: 'dash' })
     await player.waitForEvent('playing', 25_000)
     await player.assertIsPlaying()
 

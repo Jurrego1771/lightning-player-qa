@@ -1,7 +1,6 @@
 {
   "src": {
-    "hls": "http://localhost:9001/vod/fake.mpd",
-    "mpd": "http://localhost:9001/vod/fake.mpd"
+    "mpd": "http://localhost:9001/vod-dash/manifest.mpd"
   },
   "drm": null,
   "poster": "",
