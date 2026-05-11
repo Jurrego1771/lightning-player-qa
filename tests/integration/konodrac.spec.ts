@@ -445,7 +445,6 @@ test.describe('Konodrac — Parámetros obligatorios', () => {
   })
 
   test('F9: gdpr=1 y gdpr_consent presentes con TCF mock', async ({ page, isolatedPlayer }) => {
-    test.skip(true, 'tracker gap: _buildParams no lee __tcfapi ni incluye gdpr/gdpr_consent')
 
     await installTCFStub(page)
     const beacons = await setupKonodracInterceptor(page)
@@ -455,6 +454,33 @@ test.describe('Konodrac — Parámetros obligatorios', () => {
 
     expect(beacons[0].gdpr).toBe('1')
     expect(beacons[0].gdpr_consent).toBe(MOCK_TC_STRING)
+  })
+
+  test('F9b: sin CMP en la página → gdpr ausente en los beacons', async ({ page, isolatedPlayer }) => {
+
+    const beacons = await setupKonodracInterceptor(page)
+    await mockPlayerConfig(page, KONODRAC_CONFIG)
+    // Sin installTCFStub → window.__tcfapi no existe
+    await isolatedPlayer.goto({ type: 'media', id: MockContentIds.vod, autoplay: false })
+    await waitForBeacon(beacons, 'mloaded')
+
+    expect(beacons[0].gdpr).toBe('')
+    expect(beacons[0].gdpr_consent).toBe('')
+  })
+
+  test('F12: cb (cache buster) presente y numérico en todos los beacons', async ({ page, isolatedPlayer }) => {
+
+    const beacons = await setupKonodracInterceptor(page)
+    await mockPlayerConfig(page, KONODRAC_CONFIG)
+    await isolatedPlayer.goto({ type: 'media', id: MockContentIds.vod, autoplay: true })
+    await isolatedPlayer.waitForEvent('contentFirstPlay')
+    await page.waitForTimeout(500)
+
+    expect(beacons.length).toBeGreaterThan(0)
+    for (const b of beacons) {
+      expect(b.cb, `cb vacío en beacon "${b.event}"`).not.toBe('')
+      expect(Number(b.cb), `cb no numérico en beacon "${b.event}"`).toBeGreaterThan(0)
+    }
   })
 
   test('F10: playerStatus=PLAYING en beacons de reproducción activa', async ({ page, isolatedPlayer }) => {
