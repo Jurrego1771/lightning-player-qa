@@ -53,7 +53,7 @@ export default defineConfig({
   expect: { timeout: 15_000 },
 
   reporter: [
-    ['list'],
+    ['line'],
     ['html', { outputFolder: 'playwright-report', open: 'never' }],
     ['json', { outputFile: 'playwright-report/report.json' }],
     ['./reporters/flakiness-reporter.ts'],

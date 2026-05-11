@@ -11,6 +11,7 @@
  *   GET /vast/empty            → VAST vacío (no ads)
  *   GET /vast/error-303        → VAST error redirect (code 303)
  *   GET /vast/pod              → VAST con 3 ads en pod
+ *   GET /vast/pausead          → VAST con nonLinear static image (pause ad)
  *   GET /vmap/preroll-midroll  → VMAP con pre-roll + mid-roll
  *   GET /health                → health check
  */
@@ -44,6 +45,7 @@ app.get('/vast/midroll', serve('midroll.xml'))
 app.get('/vast/empty', serve('empty.xml'))
 app.get('/vast/error-303', serve('error-303.xml'))
 app.get('/vast/pod', serve('pod.xml'))
+app.get('/vast/pausead', serve('pausead.xml'))
 app.get('/vmap/preroll-midroll', serve('vmap-preroll-midroll.xml'))
 
 app.get('/health', (_, res) => {

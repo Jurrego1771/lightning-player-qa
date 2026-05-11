@@ -28,7 +28,14 @@
     "notify:test-battery": "ts-node scripts/notify-test-battery.ts",
     "report:pdf": "node scripts/pdf-from-html.js",
     "triage:generate": "node scripts/generate-triage.js",
-    "triage:generate:tv": "node scripts/generate-triage.js --report playwright-report-tv/report.json"
+    "triage:generate:tv": "node scripts/generate-triage.js --report playwright-report-tv/report.json",
+    "test:tizen": "wdio run wdio.tizen.conf.ts",
+    "tizen:setup": "npx appium driver install --source=npm appium-tizen-tv-driver",
+    "tizen:pair": "npx appium driver run tizentv pair-remote --host $TIZEN_DEVICE_IP",
+    "deploy:tizen": "bash scripts/deploy-tizen.sh",
+    "deploy:tizen:launch": "bash scripts/deploy-tizen.sh --launch-only",
+    "deploy:tizen:forward": "bash scripts/deploy-tizen.sh --forward-only",
+    "deploy:tizen:close": "bash scripts/deploy-tizen.sh --close"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.10.0",
@@ -43,6 +50,16 @@
     "serve": "^14.2.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.7.0",
-    "ws": "^8.20.0"
+    "ws": "^8.20.0",
+    "appium": "^2.5.0",
+    "appium-tizen-tv-driver": "^0.18.1",
+    "@wdio/appium-service": "^8.41.0",
+    "@wdio/cli": "^8.41.0",
+    "@wdio/globals": "^8.41.0",
+    "@wdio/local-runner": "^8.41.0",
+    "@wdio/mocha-framework": "^8.41.0",
+    "@wdio/spec-reporter": "^8.41.0",
+    "@wdio/types": "^8.41.0",
+    "webdriverio": "^8.41.0"
   }
 }

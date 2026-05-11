@@ -1,4 +1,4 @@
-Genera un informe QA profesional en HTML/PDF combinando los resultados automáticos de Playwright con hallazgos manuales adicionales.
+Genera un informe QA profesional en HTML combinando los resultados automáticos de Playwright con hallazgos manuales adicionales.
 
 ## Argumentos
 
@@ -378,15 +378,7 @@ Usar EXACTAMENTE este HTML base, reemplazando los valores dinámicos indicados c
 - Optimización recomendada → `<span class="badge badge-obs">Optimización recomendada</span>`
 - Test pasado → `<span class="badge badge-ok">✅ Correcto</span>`
 
-### 5. Generar el PDF
+### 5. Confirmar al usuario
 
-Después de escribir el HTML, ejecuta:
-```bash
-node scripts/pdf-from-html.js
-```
-
-Confirma al usuario:
+Confirma que el informe fue generado:
 - HTML: `playwright-report/qa-report.html`
-- PDF: `playwright-report/qa-report.pdf`
-
-Si el script falla, indicar alternativa: abrir HTML en browser → Ctrl+P → Guardar como PDF.

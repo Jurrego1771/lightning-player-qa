@@ -267,9 +267,13 @@ export class LightningPlayerPage {
       ;(window as any).__qa.events = []
       ;(window as any).__qa.ready = false
     })
-    await this.page.evaluate((opts) => {
-      return (window as any).__player?.load(opts)
-    }, options as unknown as Record<string, unknown>)
+    // Retry: player puede lanzar "Player is not ready" si load() se llama
+    // inmediatamente después de ready event, antes de que el estado interno se estabilice.
+    await expect(async () => {
+      await this.page.evaluate((opts) => {
+        return (window as any).__player?.load(opts)
+      }, options as unknown as Record<string, unknown>)
+    }).toPass({ timeout: 5_000 })
   }
 
   // ── Estado del Player ─────────────────────────────────────────────────────
@@ -328,7 +332,13 @@ export class LightningPlayerPage {
   // ── Controles de Playback ─────────────────────────────────────────────────
 
   async play(): Promise<void> {
-    await this.page.evaluate(() => (window as any).__player?.play())
+    // Retry hasta que el player esté listo internamente.
+    // El player puede lanzar "Player is not ready" si play() se llama
+    // antes de que su estado interno esté completamente inicializado,
+    // incluso después de que el evento 'ready' se emita.
+    await expect(async () => {
+      await this.page.evaluate(() => (window as any).__player?.play())
+    }).toPass({ timeout: 5_000 })
   }
 
   async pause(): Promise<void> {
@@ -345,7 +355,10 @@ export class LightningPlayerPage {
   }
 
   async getDuration(): Promise<number> {
-    return this.page.evaluate(() => (window as any).__player?.duration ?? 0)
+    return this.page.evaluate(() => {
+      const d = (window as any).__player?.duration
+      return (d != null && !isNaN(d)) ? d : 0
+    })
   }
 
   async seek(seconds: number): Promise<void> {
