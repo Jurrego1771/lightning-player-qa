@@ -6,6 +6,8 @@
  */
 import { test, expect, ContentIds } from '../../fixtures'
 
+const HAS_EPISODE_WITH_NEXT = !ContentIds.episodeWithNext.startsWith('TODO_')
+
 test.describe('VOD Playback', { tag: ['@regression'] }, () => {
 
   test.describe('Inicialización', () => {
@@ -211,6 +213,78 @@ test.describe('VOD Playback', { tag: ['@regression'] }, () => {
 
       const levels = await player.getLevels()
       expect(levels.length).toBeGreaterThan(0)
+    })
+  })
+
+  test.describe('Next Episode Flow (Gap #10)', () => {
+
+    test('nextEpisodeIncoming se emite antes del final cuando hay siguiente episodio', async ({ player }) => {
+      test.skip(!HAS_EPISODE_WITH_NEXT, 'Requiere ContentIds.episodeWithNext configurado — ver fixtures/streams.ts')
+
+      await player.goto({ type: 'media', id: ContentIds.episodeWithNext, autoplay: true })
+      await player.waitForEvent('playing', 30_000)
+
+      // Seek cerca del final para triggear nextEpisodeIncoming
+      const duration = await player.getDuration()
+      expect(duration, 'contenido debe tener duración conocida').toBeGreaterThan(0)
+
+      // El player emite nextEpisodeIncoming cuando currentTime >= (duration - nextEpisodeTime)
+      // nextEpisodeTime es configurado por la plataforma (típicamente 30-60s antes del final)
+      await player.seek(Math.max(0, duration - 10))
+
+      await player.waitForEvent('nextEpisodeIncoming', 15_000)
+
+      const events: string[] = await player.page.evaluate(() => (window as any).__qa.events ?? [])
+      expect(events).toContain('nextEpisodeIncoming')
+    })
+
+    test('nextEpisodeConfirmed se emite al aceptar el siguiente episodio via updateNextEpisode', async ({ player }) => {
+      test.skip(!HAS_EPISODE_WITH_NEXT, 'Requiere ContentIds.episodeWithNext configurado — ver fixtures/streams.ts')
+
+      await player.goto({ type: 'media', id: ContentIds.episodeWithNext, autoplay: true })
+      await player.waitForEvent('playing', 30_000)
+
+      const duration = await player.getDuration()
+      await player.seek(Math.max(0, duration - 10))
+      await player.waitForEvent('nextEpisodeIncoming', 15_000)
+
+      // Confirmar el siguiente episodio — el player emite nextEpisodeConfirmed
+      // La data que llega en nextEpisodeIncoming contiene el id del siguiente episodio
+      const incomingData = await player.getEventData<{ id: string; type: string }>('nextEpisodeIncoming')
+      if (!incomingData?.id) {
+        test.skip(true, 'nextEpisodeIncoming no incluye id del siguiente episodio')
+        return
+      }
+
+      await player.updateNextEpisode({
+        id: incomingData.id,
+        type: incomingData.type ?? 'episode',
+        nextEpisodeTime: 5,
+      })
+
+      await player.waitForEvent('nextEpisodeConfirmed', 10_000)
+      const events: string[] = await player.page.evaluate(() => (window as any).__qa.events ?? [])
+      expect(events).toContain('nextEpisodeConfirmed')
+    })
+
+    test('playNext() desde nextEpisodeIncoming carga el siguiente contenido', async ({ player }) => {
+      test.skip(!HAS_EPISODE_WITH_NEXT, 'Requiere ContentIds.episodeWithNext configurado — ver fixtures/streams.ts')
+
+      await player.goto({ type: 'media', id: ContentIds.episodeWithNext, autoplay: true })
+      await player.waitForEvent('playing', 30_000)
+
+      const duration = await player.getDuration()
+      await player.seek(Math.max(0, duration - 10))
+      await player.waitForEvent('nextEpisodeIncoming', 15_000)
+
+      // Disparar la carga del siguiente episodio manualmente
+      await player.clearTrackedEvents()
+      const result = await player.playNext()
+      expect(result).toEqual({ success: true })
+
+      await player.waitForEvent('sourcechange', 15_000)
+      await player.waitForEvent('ready', 20_000)
+      await player.assertNoInitError()
     })
   })
 })

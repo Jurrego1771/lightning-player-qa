@@ -44,6 +44,14 @@ export const ContentIds = {
   /** VOD con ads: pre-roll + mid-roll a los 10s + post-roll */
   vodWithAds: '6900fffb6ddf33fd39a5288e',
 
+  /**
+   * Episodio VOD con "siguiente episodio" configurado en la plataforma.
+   * Cuando el contenido llega a nextEpisodeTime, el player emite nextEpisodeIncoming.
+   * Configurar en la plataforma DEV y actualizar este ID.
+   * Tests E2E de next episode se saltean si este ID tiene el prefijo TODO_.
+   */
+  episodeWithNext: 'TODO_EPISODE_WITH_NEXT_ID',
+
   /** VOD DASH — stream VOD con manifiesto MPD (type: 'media') */
   dashVod: '69b0918a741d2bbba0cacf78',
 
