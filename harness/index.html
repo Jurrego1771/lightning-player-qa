@@ -98,7 +98,16 @@
             'audiotrackchange', 'audiotrackaddtrack', 'audiotrackremovetrack',
           ]
 
-          var ALL_EVENTS = CUSTOM_EVENTS.concat(HTML5_EVENTS, AD_EVENTS, TRACK_EVENTS)
+          var NEXT_EPISODE_EVENTS = [
+            'nextEpisodeIncoming', 'nextEpisodeConfirmed', 'nextEpisodePlayNext',
+            'nextEpisodeKeepWatching', 'nextEpisodeLoadRequested',
+          ]
+
+          var FULLSCREEN_EVENTS = [
+            'fullscreenchange', 'enterpictureinpicture', 'leavepictureinpicture',
+          ]
+
+          var ALL_EVENTS = CUSTOM_EVENTS.concat(HTML5_EVENTS, AD_EVENTS, TRACK_EVENTS, NEXT_EPISODE_EVENTS, FULLSCREEN_EVENTS)
 
           ALL_EVENTS.forEach(function (eventName) {
             player.on(eventName, function (data) {

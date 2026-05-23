@@ -39,7 +39,21 @@ const _store: PerfRunData = {
 
 function _persist(): void {
   fs.mkdirSync(RESULTS_DIR, { recursive: true })
-  fs.writeFileSync(RESULTS_FILE, JSON.stringify(_store, null, 2))
+
+  // Read-merge-write so parallel workers don't overwrite each other's metrics.
+  // Each worker has its own in-memory _store; merging on disk accumulates all results.
+  let existing: PerfRunData = { ..._store, metrics: {} }
+  try {
+    if (fs.existsSync(RESULTS_FILE)) {
+      existing = JSON.parse(fs.readFileSync(RESULTS_FILE, 'utf-8'))
+    }
+  } catch { /* start fresh */ }
+
+  const merged: PerfRunData = {
+    ...existing,
+    metrics: { ...existing.metrics, ..._store.metrics },
+  }
+  fs.writeFileSync(RESULTS_FILE, JSON.stringify(merged, null, 2))
 }
 
 export const PerfStorage = {

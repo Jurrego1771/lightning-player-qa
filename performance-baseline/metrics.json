@@ -1,9 +1,36 @@
 {
   "_info": "Baseline de performance del Lightning Player. Actualizar con: npm run perf:update-baseline",
   "_howto": "1) Corre npm run test:performance en condiciones normales. 2) Si los resultados son buenos, corre npm run perf:update-baseline. 3) Commitea este archivo.",
-  "_updated": null,
-  "_playerVersion": null,
+  "_updated": "2026-05-23T05:13:20.466Z",
+  "_playerVersion": "unknown",
   "_environment": "dev",
   "_browser": "chromium",
-  "metrics": {}
+  "metrics": {
+    "buffer_health": {
+      "bufferedAhead_sec": 30.000681
+    },
+    "next_episode_transition": {
+      "transition_ms": 29
+    },
+    "startup_hls": {
+      "timeToFirstFrame_ms": 3659,
+      "timeToLoadedMetadata_ms": -1,
+      "timeToCanPlay_ms": -1
+    },
+    "startup_dash_native": {
+      "timeToFirstFrame_ms": 2281
+    },
+    "buffer_health_degraded_3g": {
+      "bufferedAhead_sec": 3.981611
+    },
+    "session_30s": {
+      "bufferingRatio": 0,
+      "droppedFrameRatio": 0,
+      "qualitySwitches": 2,
+      "averageBitrate": 0
+    },
+    "seek_latency": {
+      "seekLatency_ms": 10640
+    }
+  }
 }

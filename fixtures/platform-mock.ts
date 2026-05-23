@@ -243,6 +243,49 @@ export async function mockAudioPlayerConfig(page: Page): Promise<void> {
   })
 }
 
+/**
+ * Routes each content ID to a distinct content config.
+ * LIFO — must be called after isolatedPlayer fixture is set up (i.e. inside test body).
+ * For IDs not in the map, falls back to the previous route handler.
+ *
+ * Usage:
+ *   await mockContentConfigById(page, {
+ *     'mock-vod-1':     { title: 'Episode A', next: 'mock-episode-1', nextEpisodeTime: 1 },
+ *     'mock-episode-1': { title: 'Episode B' },
+ *   })
+ */
+export async function mockContentConfigById(
+  page: Page,
+  configs: Record<string, Record<string, unknown>>
+): Promise<void> {
+  const base = JSON.parse(FIXTURES.content.vod)
+  const { platformDomain } = getEnvironmentConfig()
+
+  await page.route(`**/${platformDomain}/**`, async (route) => {
+    const parsedPath = new URL(route.request().url()).pathname
+
+    if (parsedPath.includes('/player')) {
+      await route.fallback()
+      return
+    }
+
+    // Extract ID from /video/{id}.json, /audio/{id}.json, /episode/{id}.json, /live-stream/{id}.json
+    const idMatch = parsedPath.match(/\/(?:video|audio|episode|live-stream)\/([^/?]+?)(?:\.json)?$/)
+    const id = idMatch?.[1]
+
+    if (id && configs[id]) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ...base, ...configs[id] }),
+      })
+      return
+    }
+
+    await route.fallback()
+  })
+}
+
 export async function mockContentError(
   page: Page,
   status: number = 403
