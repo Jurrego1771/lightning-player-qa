@@ -53,7 +53,14 @@
         return Promise.reject(new Error(msg))
       }
 
-      return loadMSPlayer('player-container', config)
+      // Normalizar config: remapear adsMap → ads.map (player acepta ads.map, no adsMap raíz)
+      var normalizedConfig = Object.assign({}, config)
+      if (normalizedConfig.adsMap && !normalizedConfig.ads) {
+        normalizedConfig.ads = { map: normalizedConfig.adsMap }
+        delete normalizedConfig.adsMap
+      }
+
+      return loadMSPlayer('player-container', normalizedConfig)
         .then(function (player) {
           // ── Exponer instancia al Page Object ──────────────────────────────
           window.__player = player

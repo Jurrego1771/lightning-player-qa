@@ -34,6 +34,44 @@ test.describe('Error Recovery — Content Config', { tag: ['@integration', '@err
 
 })
 
+test.describe('Error Recovery — Error Types', { tag: ['@integration', '@error'] }, () => {
+
+  test('error 403 expone type NETWORK_ERROR o mensaje de error legible', async ({ isolatedPlayer: player, page }) => {
+    await mockContentError(page, 403)
+    await player.goto({ type: 'media', id: MockContentIds.vod, autoplay: false })
+    await player.waitForEvent('error', 15_000)
+
+    const errors = await player.getErrors()
+    expect(errors.length, 'debe haber al menos un error registrado').toBeGreaterThan(0)
+
+    const firstError = errors[0] as Record<string, unknown>
+    // El player debe exponer el error con un campo identificable (type, code, o message)
+    const hasIdentifiableField =
+      firstError?.type != null ||
+      firstError?.code != null ||
+      (typeof firstError?.message === 'string' && firstError.message.length > 0)
+
+    expect(
+      hasIdentifiableField,
+      `Error debe tener campo identificable (type/code/message). Recibido: ${JSON.stringify(firstError)}`
+    ).toBe(true)
+  })
+
+  test('error de segmento expone información del fallo en getErrors()', async ({ isolatedPlayer: player, page }) => {
+    await page.route('**/segment*.ts', async (route) => route.abort('failed'))
+    await player.goto({ type: 'media', id: MockContentIds.vod, autoplay: true })
+    await player.waitForEvent('error', 30_000)
+
+    const errors = await player.getErrors()
+    expect(errors.length).toBeGreaterThan(0)
+
+    const firstError = errors[0] as Record<string, unknown>
+    // Verificar que el error no es un objeto vacío — el player debe incluir info del fallo
+    expect(Object.keys(firstError).length, 'error no debe ser objeto vacío').toBeGreaterThan(0)
+  })
+
+})
+
 test.describe('Error Recovery — HLS Segments', { tag: ['@integration', '@error'] }, () => {
 
   test('fallo persistente: player emite error tras agotar retries de hls.js', async ({ isolatedPlayer: player, page }) => {

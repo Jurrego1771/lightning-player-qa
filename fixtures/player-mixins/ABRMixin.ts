@@ -19,7 +19,16 @@ export class PlayerWithABR extends PlayerWithNextEpisode {
     return this.page.evaluate(() => (window as any).__player?.bandwidth ?? 0)
   }
 
+  /** Nivel solicitado (puede diferir de level durante un cambio de calidad). -1 = auto */
+  async getNextLevel(): Promise<number> {
+    return this.page.evaluate(() => (window as any).__player?.nextLevel ?? -1)
+  }
+
   async setLevel(level: number): Promise<void> {
     await this.page.evaluate((l) => { (window as any).__player.level = l }, level)
+  }
+
+  async setNextLevel(level: number): Promise<void> {
+    await this.page.evaluate((l) => { (window as any).__player.nextLevel = l }, level)
   }
 }

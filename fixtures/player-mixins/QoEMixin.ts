@@ -22,6 +22,22 @@ export class PlayerWithQoE extends PlayerWithAds {
     })
   }
 
+  /**
+   * Polls the actual HTML video element's readyState until it reaches minState.
+   * Bypasses __qa.events backfill (which may resolve canplay before the video element
+   * actually has data), providing a real readiness signal for performance tests.
+   */
+  async waitForVideoReadyState(minState = 1, timeout = 20_000): Promise<void> {
+    await this.page.waitForFunction(
+      (n) => {
+        const v = document.querySelector('video') ?? document.querySelector('audio')
+        return (v?.readyState ?? 0) >= n
+      },
+      minState,
+      { timeout }
+    )
+  }
+
   async measureStartupTime(): Promise<number> {
     const start = Date.now()
     await this.waitForEvent('playing')
