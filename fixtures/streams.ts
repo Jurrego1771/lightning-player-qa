@@ -18,13 +18,13 @@ export const ContentIds = {
   vodLong: '6900ffde6ddf33fd39a523ee',
 
   /** Stream en vivo activo — requiere accessToken (ver fixture contentAccess) */
-  live: '664fb7b7e0e386591c300106',
+  live: '697a340765be0f0974e5af55',
 
   /**
    * Stream DVR activo — mismo ID que live, mismo accessToken.
    * Pasarlo como type: 'dvr' en goto().
    */
-  dvr: '664fb7b7e0e386591c300106',
+  dvr: '697a340765be0f0974e5af55',
 
   /** Audio */
   audio: '698b4a88d9cc56fe7a404079',

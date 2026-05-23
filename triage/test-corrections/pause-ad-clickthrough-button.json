@@ -1,0 +1,19 @@
+{
+  "test_file": "tests/integration/pause-ad-vast.spec.ts",
+  "test_title": "VAST con nonLinear retorna clickThrough correcto para el botón View More",
+  "suite_title": "Pause Ad VAST — Parseo de respuesta válida",
+  "project": "chromium",
+  "status": "failed",
+  "retry_count": 1,
+  "duration_ms": 16105,
+  "error_message": "expect(received).toBeGreaterThanOrEqual(expected)\n\nExpected: >= 1\nReceived:    0\n\nCall Log:\n- Timeout 10000ms exceeded while waiting on the predicate",
+  "error_line": "tests/integration/pause-ad-vast.spec.ts:102",
+  "trace_path": "test-results/integration-pause-ad-vast--45355-cto-para-el-botón-View-More-chromium-retry1/trace.zip",
+  "screenshot_path": "test-results/integration-pause-ad-vast--45355-cto-para-el-botón-View-More-chromium-retry1/test-failed-1.png",
+  "generated_at": "2026-05-07T14:30:00.000Z",
+  "classification": "ENVIRONMENT",
+  "defect_type": null,
+  "root_cause": "Same root cause as sibling failures: the PauseAd component only exists on feature/issue-586-pausead-implementation (not merged to develop). The develop build served at the test URL has no button.pause-ad__more-info in its render tree.",
+  "suspected_cause": "Test expects button.pause-ad__more-info to appear after pausing; player at develop branch renders no PauseAd subtree.",
+  "github_issue": null
+}

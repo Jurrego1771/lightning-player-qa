@@ -1,18 +1,13 @@
 # Docs Vault
 
-Este directorio está pensado para abrirse como vault de Obsidian.
-
-## Recomendación
-
-- Abrir `docs/` como vault si tu foco es conocimiento, cobertura y estrategia.
-- Abrir la raíz del repo solo si quieres navegar documentación y código al mismo tiempo.
+Fuente de verdad documental del proyecto. Puede abrirse como vault de Obsidian.
 
 ## Punto de entrada
 
-Ir a [00-index/README.md](D:\Dev\Repos\jurrego1771\lightning-player-qa\docs\00-index\README.md:1).
+- [core.md](core.md) — filosofía, reglas, glosario, anti-patrones globales
+- [02-features/00-index.md](02-features/00-index.md) — inventario completo de features y API del player
+- `02-features/{feature}.md` — un archivo por feature con todo lo necesario para escribir tests
 
 ## Regla
 
-Obsidian no reemplaza el versionado:
-- la verdad vive en estos archivos Markdown
-- `.obsidian/` solo configura la experiencia de navegación
+Obsidian no reemplaza el versionado: la verdad vive en estos archivos Markdown.

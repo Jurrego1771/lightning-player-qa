@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- VAST 3.0 - NonLinear pause ad con static image -->
+<!-- Usado para tests de pause-ad: overlay, impression beacon, click-through -->
+<VAST version="3.0">
+  <Ad id="pausead-test-001">
+    <InLine>
+      <AdSystem>MockVAST QA Server</AdSystem>
+      <AdTitle>QA Pause Ad</AdTitle>
+      <Impression id="impression"><![CDATA[http://localhost:9999/track/pausead-impression]]></Impression>
+      <Creatives>
+        <Creative id="pausead-creative-001" sequence="1">
+          <NonLinearAds>
+            <NonLinear id="nonlinear-001" width="300" height="250" minSuggestedDuration="00:00:15">
+              <StaticResource creativeType="image/jpeg"><![CDATA[http://localhost:9999/track/pausead-image.jpg]]></StaticResource>
+              <NonLinearClickThrough><![CDATA[https://example.com/pause-ad-click]]></NonLinearClickThrough>
+              <NonLinearClickTracking id="click-tracking"><![CDATA[http://localhost:9999/track/pausead-click]]></NonLinearClickTracking>
+            </NonLinear>
+          </NonLinearAds>
+        </Creative>
+      </Creatives>
+    </InLine>
+  </Ad>
+</VAST>

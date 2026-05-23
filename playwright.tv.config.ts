@@ -70,9 +70,12 @@ export default defineConfig({
   projects: [
     {
       name: 'webos-tv',
-      // No usamos devices[] porque nos conectamos a un browser ya corriendo
-      // El TV reporta su propio UA — no necesitamos emularlo
-      use: {},
+      use: {
+        // UA real del TV (obtenido via CDP del tab instalado).
+        // Necesario para que isTVAtom = true y useTVNavigation active los media key handlers.
+        // detectTVFromUserAgent() busca 'smarttv' → presente en 'Linux/SmartTV'.
+        userAgent: 'Mozilla/5.0 (Web0S; Linux/SmartTV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36 WebAppManager',
+      },
       testMatch: [
         'tests/e2e/tv-*.spec.ts',
         'tests/e2e/*-tv-*.spec.ts',

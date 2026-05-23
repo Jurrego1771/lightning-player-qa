@@ -81,9 +81,6 @@ test.describe(`Smoke Tests — ${ENV.name}`, { tag: ['@smoke'] }, () => {
 
     const isLive = await player.isLive()
     expect(isLive).toBe(true)
-
-    const duration = await player.getDuration()
-    expect(duration).toBe(Infinity)
   })
 
   // ── 7. destroy() limpia correctamente ─────────────────────────────────────

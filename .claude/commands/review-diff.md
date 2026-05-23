@@ -40,42 +40,64 @@ Confirmar al usuario:
 🚀 /review-diff — [input o "último commit"] · modo: [análisis | análisis+ejecución | dry-run]
 ```
 
-### Paso 0.5 — Pre-procesar diff
+### Paso 0.5 — Analizar diff (script determinista)
 
 ```bash
-bash scripts/prepare-diff.sh [input]
+ts-node scripts/analyze-diff.ts [input]
 ```
 
 - `--qa` → saltar este paso
-- Si el script falla → pedir al usuario que pegue el diff directamente y continuar
+- Si el script falla → pedir al usuario que pegue el diff y continuar manualmente
 
-Si termina bien:
+El script hace en ~5s lo que antes hacían dos agentes (~3-4 min):
+- Fetch del diff via GitHub API (Octokit) o simple-git
+- Mapping file → module → risk
+- Grep de cobertura en tests/
+- Escribe `risk-map.json` + `coverage-report.json`
+
+Si termina bien, el stdout contiene un JSON compacto con el resumen. Leerlo y mostrar:
 ```
-✅ Diff pre-procesado: N archivos · Módulos: [lista]
+✅ Diff analizado: N archivos · Riesgo: [level] · Módulos: [lista]
+   Specs existentes: N · Gaps MUST: N
 ```
 
-### Paso 1 — Análisis de riesgo
+### Paso 1 — Completar análisis de riesgo (inline, sin agente)
 
-Delega a `diff-analyzer`:
+Lee `tmp/pipeline/risk-map.json` y **completa estos dos campos directamente**:
 
-> Lee `tmp/pipeline/diff-input.json` y produce `tmp/pipeline/risk-map.json`.
-> Si necesita contexto adicional (docs, código fuente), búscalo tú mismo.
+1. `change_summary` en cada `modules[].changed_files[]` — 1 línea por archivo, específica:
+   - ✅ `"New DashHandler class via dashjs, same interface as HLSHandler"`
+   - ❌ `"Archivo modificado"`
 
-Muestra el risk map al usuario.
+2. `rationale` global — 2-3 líneas: qué cambió, por qué el riesgo asignado, qué falla si no se testea.
 
-**Fast-path:** Si `risk_level = LOW` y `change_type = docs` → informar y preguntar si continuar.
+Guardar con `fs.writeFileSync` o sobrescribir el JSON directamente. Mostrar al usuario:
 
-**Fast-path hotfix:** Si `change_type = bug-fix` y los módulos afectados son ≤ 2, indicar al usuario que la suite se reducirá al scope del módulo. El test-selector lo aplica automáticamente.
+```
+## Risk Analysis — [change_type]
+Riesgo: [risk_level] | Módulos: [lista]
+[rationale]
+Suite recomendada: [suggested_spec_patterns]
+```
 
-### Paso 2 — Verificación de cobertura
+**Fast-path docs:** Si `risk_level = LOW` y `change_type = docs` → informar y preguntar si continuar.
+**Fast-path hotfix:** Si `change_type = bug-fix` y módulos ≤ 2 → indicar que la suite será reducida.
 
-Delega a `coverage-checker`:
+### Paso 2 — Verificación de cobertura (inline, sin agente)
 
-> Lee `tmp/pipeline/risk-map.json` y evalúa cobertura en `tests/`.
-> Produce `tmp/pipeline/coverage-report.json`.
-> Incluir campo `should_generate_tests: boolean` en el output.
+Lee `tmp/pipeline/coverage-report.json` (ya generado por el script) y muestra al usuario:
 
-Muestra el coverage report al usuario.
+```
+## Coverage Report
+| Módulo | Riesgo | Cobertura | Specs existentes |
+|--------|--------|-----------|-----------------|
+| ads    | HIGH   | full      | ad-beacons.spec.ts |
+
+Gaps MUST: N
+```
+
+Solo delegar a `coverage-checker` si hay módulos con `coverage_level: "partial"` y el cambio
+afecta un método específico que necesita grep profundo.
 
 ---
 

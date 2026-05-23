@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<widget xmlns:tizen="http://tizen.org/ns/widgets"
+        xmlns="http://www.w3.org/ns/widgets"
+        id="http://mediastream.com/lightningqa-tizen"
+        version="1.0.0"
+        viewmodes="maximized">
+
+  <tizen:application id="com.mediastream.lightningqa"
+                     package="com.mediastream.lightningqa"
+                     required_version="8.0"/>
+
+  <content src="index.html"/>
+  <name>Lightning QA</name>
+  <icon src="icon.png"/>
+
+  <tizen:profile name="tv"/>
+
+  <tizen:setting background-support="disable"
+                 encryption="disable"
+                 install-location="auto"
+                 hwkey-event="enable"/>
+
+  <!-- Capturar teclas del control remoto (media keys, colores, etc.) -->
+  <tizen:privilege name="http://tizen.org/privilege/tv.inputdevice"/>
+  <!-- Leer parámetros de lanzamiento via getRequestedAppControl -->
+  <tizen:privilege name="http://tizen.org/privilege/application.info"/>
+</widget>

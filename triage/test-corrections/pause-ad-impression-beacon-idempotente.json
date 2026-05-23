@@ -1,0 +1,19 @@
+{
+  "test_file": "tests/integration/pause-ad-vast.spec.ts",
+  "test_title": "impression beacon se envía solo una vez por display (idempotente)",
+  "suite_title": "Pause Ad VAST — Beacons de tracking",
+  "project": "chromium",
+  "status": "failed",
+  "retry_count": 1,
+  "duration_ms": 20833,
+  "error_message": "expect(received).toBeGreaterThanOrEqual(expected)\n\nExpected: >= 1\nReceived:    0\n\nCall Log:\n- Timeout 10000ms exceeded while waiting on the predicate",
+  "error_line": "tests/integration/pause-ad-vast.spec.ts:308",
+  "trace_path": "test-results/integration-pause-ad-vast--c91bc-ez-por-display-idempotente--chromium-retry1/trace.zip",
+  "screenshot_path": "test-results/integration-pause-ad-vast--c91bc-ez-por-display-idempotente--chromium-retry1/test-failed-1.png",
+  "generated_at": "2026-05-07T14:30:00.000Z",
+  "classification": "ENVIRONMENT",
+  "defect_type": null,
+  "root_cause": "Same root cause as impression-beacon-fired failure. The develop build has no pauseAd state machine; the first expect.poll() on impressionBeacons.length times out at 10 s because no beacon is ever fired, halting the test before the idempotency assertion is even reached.",
+  "suspected_cause": "Test assumes the overlay and beacon firing occur; neither happens because the feature branch is unmerged.",
+  "github_issue": null
+}

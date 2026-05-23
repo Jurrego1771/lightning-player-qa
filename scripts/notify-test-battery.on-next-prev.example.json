@@ -1,0 +1,149 @@
+{
+  "feature": "on-next-prev",
+  "file": "tests/integration/on-next-prev-*.spec.ts",
+  "files": [
+    "tests/integration/on-next-prev-api.spec.ts",
+    "tests/integration/on-next-prev-views.spec.ts",
+    "tests/integration/on-next-prev-radio-live-dvr-regression.spec.ts"
+  ],
+  "type": "integration",
+  "summary": [
+    "Contrato API setter/getter de onNext y onPrev",
+    "Override por view con supresion de sourcechange",
+    "Null-restore del comportamiento default",
+    "Validaciones especificas de compact, podcast y radio-vod",
+    "Regresion para radio live y DVR fuera de la rama VOD"
+  ],
+  "smoke": [
+    "onNext getter devuelve la misma referencia",
+    "compact onNext override invoca callback y suprime sourcechange",
+    "compact onPrev override invoca callback y suprime sourcechange",
+    "radio live no renderiza botones Next/Prev",
+    "radio DVR no renderiza botones Next/Prev"
+  ],
+  "regression": [
+    "Setter/getter API completo",
+    "Views compact podcast podcast2 y radio-vod",
+    "Null-restore de onNext",
+    "Independencia de setters",
+    "Regresion live y DVR"
+  ],
+  "cases": [
+    {
+      "name": "Valida que onNext getter devuelva la misma referencia de funcion asignada",
+      "tags": ["smoke", "integration"]
+    },
+    {
+      "name": "Valida que onPrev getter devuelva la misma referencia de funcion asignada",
+      "tags": ["regression", "integration"]
+    },
+    {
+      "name": "Valida que onNext acepte null y devuelva null sin lanzar error",
+      "tags": ["regression", "integration"]
+    },
+    {
+      "name": "Valida que onPrev acepte null y devuelva null sin lanzar error",
+      "tags": ["regression", "integration"]
+    },
+    {
+      "name": "Valida que onNext con string se coercione a null sin lanzar error",
+      "tags": ["regression", "integration"]
+    },
+    {
+      "name": "Valida que onPrev con numero se coercione a null sin lanzar error",
+      "tags": ["regression", "integration"]
+    },
+    {
+      "name": "Valida en compact que onNext override invoque callback y suprima sourcechange",
+      "tags": ["smoke", "integration"]
+    },
+    {
+      "name": "Valida en compact que onPrev override invoque callback y suprima sourcechange",
+      "tags": ["smoke", "integration"]
+    },
+    {
+      "name": "Valida en compact que null-restore de onNext reactive el sourcechange",
+      "tags": ["regression", "integration"]
+    },
+    {
+      "name": "Valida en podcast que onNext override invoque callback y suprima sourcechange",
+      "tags": ["regression", "integration"]
+    },
+    {
+      "name": "Valida en podcast que onPrev override invoque callback y suprima sourcechange",
+      "tags": ["regression", "integration"]
+    },
+    {
+      "name": "Valida en podcast que null-restore de onNext reactive el sourcechange",
+      "tags": ["regression", "integration"]
+    },
+    {
+      "name": "Valida en podcast2 que onNext override invoque callback y suprima sourcechange",
+      "tags": ["regression", "integration"]
+    },
+    {
+      "name": "Valida en podcast2 que onPrev override invoque callback y suprima sourcechange",
+      "tags": ["regression", "integration"]
+    },
+    {
+      "name": "Valida en podcast2 que null-restore de onNext reactive el sourcechange",
+      "tags": ["regression", "integration"]
+    },
+    {
+      "name": "Valida en radio-vod que onNext override invoque callback y suprima sourcechange",
+      "tags": ["regression", "integration"]
+    },
+    {
+      "name": "Valida en radio-vod que onPrev override invoque callback y suprima sourcechange",
+      "tags": ["regression", "integration"]
+    },
+    {
+      "name": "Valida en radio-vod que null-restore de onNext reactive el sourcechange",
+      "tags": ["regression", "integration"]
+    },
+    {
+      "name": "Valida en compact que onNext y onPrev sean setters independientes",
+      "tags": ["regression", "integration"]
+    },
+    {
+      "name": "Valida en podcast que PureComponent use el valor actual del setter entre clicks",
+      "tags": ["regression", "integration"]
+    },
+    {
+      "name": "Valida en radio-vod que player.isLive sea false para confirmar rama VOD activa",
+      "tags": ["regression", "integration"]
+    },
+    {
+      "name": "Valida en radio-vod que sin nextEpisode no exista boton Next en DOM",
+      "tags": ["regression", "integration"]
+    },
+    {
+      "name": "Valida en radio live que player.isLive sea true y no VOD",
+      "tags": ["regression", "integration"]
+    },
+    {
+      "name": "Valida en radio live que no existan botones Next y Prev en DOM",
+      "tags": ["smoke", "integration"]
+    },
+    {
+      "name": "Valida en radio live que setear onNext no dispare callback si no hay boton Next",
+      "tags": ["regression", "integration"]
+    },
+    {
+      "name": "Valida en radio DVR que player.isDVR sea true y no VOD",
+      "tags": ["regression", "integration"]
+    },
+    {
+      "name": "Valida en radio DVR que no existan botones Next y Prev en DOM",
+      "tags": ["smoke", "integration"]
+    },
+    {
+      "name": "Valida en radio DVR que setear onPrev no dispare callback si no hay boton Prev",
+      "tags": ["regression", "integration"]
+    },
+    {
+      "name": "Valida en radio live que onNext y onPrev sigan siendo propiedades writable",
+      "tags": ["regression", "integration"]
+    }
+  ]
+}

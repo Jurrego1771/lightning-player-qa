@@ -41,3 +41,15 @@ pipeline-history/
 *.log
 *.tmp
 .claude/settings.local.json
+tmp_b64.json
+
+# Playwright MCP session files (snapshots, screenshots de sesión)
+.playwright-mcp/
+
+# Screenshots de debug en raíz
+[0-9][0-9]-*.png
+
+# Reportes generados
+qa-report*.html
+playwright-report-tv/
+reports/

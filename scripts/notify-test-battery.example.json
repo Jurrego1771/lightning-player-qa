@@ -1,0 +1,128 @@
+{
+  "feature": "youbora",
+  "file": "tests/integration/youbora.spec.ts",
+  "type": "integration",
+  "summary": [
+    "Activation guards de Youbora",
+    "Content tracking y lifecycle de sesion",
+    "Ad integration",
+    "Error handling y recovery",
+    "Replay y transiciones de contenido"
+  ],
+  "smoke": [
+    "emits start beacon after contentFirstPlay",
+    "emits pause beacon after player.pause()",
+    "NPAW-4.2 seek emits seek beacons",
+    "NPAW-7.1 video ended emits stop beacon",
+    "NPAW-8.1 startup error emits error beacon"
+  ],
+  "regression": [
+    "Activation guards",
+    "Ad integration",
+    "Session management",
+    "Error recovery",
+    "Replay y next episode chain"
+  ],
+  "cases": [
+    {
+      "name": "Valida que no se emitan beacons cuando tracking.youbora no existe en la configuracion del player",
+      "tags": ["regression", "integration"]
+    },
+    {
+      "name": "Valida que no se emitan beacons cuando enabled=true pero falta account_code",
+      "tags": ["regression", "integration"]
+    },
+    {
+      "name": "Valida emision de start beacon despues de contentFirstPlay",
+      "tags": ["smoke", "integration"]
+    },
+    {
+      "name": "Valida emision de pause beacon despues de player.pause()",
+      "tags": ["smoke", "integration"]
+    },
+    {
+      "name": "Valida que el tracking de contenido quede enmascarado durante ad break",
+      "tags": ["regression", "integration"]
+    },
+    {
+      "name": "Valida emision de beacons del ciclo de vida de ads durante pre-roll",
+      "tags": ["regression", "integration"]
+    },
+    {
+      "name": "Valida reinicio de sesion de tracking despues de player.load() con nuevo contenido",
+      "tags": ["regression", "integration"]
+    },
+    {
+      "name": "Valida que no se emitan beacons de inicio si player.destroy() ocurre antes de contentFirstPlay",
+      "tags": ["regression", "integration"]
+    },
+    {
+      "name": "Valida emision de beacon de error despues de un fatal playback error",
+      "tags": ["regression", "integration"]
+    },
+    {
+      "name": "Valida que no se emitan beacons cuando enabled=false explicitamente",
+      "tags": ["regression", "integration"]
+    },
+    {
+      "name": "Valida que double pause emita solo un beacon firePause",
+      "tags": ["regression", "integration"]
+    },
+    {
+      "name": "Valida que no exista fireStart antes de contentFirstPlay cuando autoplay=false",
+      "tags": ["regression", "integration"]
+    },
+    {
+      "name": "Valida que contenido tipo DVR active Youbora y emita beacons",
+      "tags": ["regression", "integration"]
+    },
+    {
+      "name": "Valida que episode sin metadata de show/season no rompa el plugin",
+      "tags": ["regression", "integration"]
+    },
+    {
+      "name": "Valida que _pendingInit se limpie si destroy() ocurre durante restart()",
+      "tags": ["regression", "integration"]
+    },
+    {
+      "name": "Valida que seek emita beacons sin cerrar la vista de forma espuria",
+      "tags": ["smoke", "integration"]
+    },
+    {
+      "name": "Valida que pause y resume emitan ambos beacons",
+      "tags": ["regression", "integration"]
+    },
+    {
+      "name": "Valida que ended emita beacon de stop",
+      "tags": ["smoke", "integration"]
+    },
+    {
+      "name": "Valida que startup error por manifest bloqueado emita beacon de error",
+      "tags": ["smoke", "integration"]
+    },
+    {
+      "name": "Valida que error mid-playback por chunks bloqueados emita beacon de error",
+      "tags": ["regression", "integration"]
+    },
+    {
+      "name": "Valida que despues de recovery se inicie una nueva sesion",
+      "tags": ["regression", "integration"]
+    },
+    {
+      "name": "Valida que un contexto con options null no rompa el player",
+      "tags": ["regression", "integration"]
+    },
+    {
+      "name": "Valida que account_code vacio no inicialice Youbora pero no afecte al player",
+      "tags": ["regression", "integration"]
+    },
+    {
+      "name": "Valida que replay despues de ended abra una nueva sesion de Youbora",
+      "tags": ["regression", "integration"]
+    },
+    {
+      "name": "Valida que dos transiciones de episodio abran nuevas sesiones de Youbora",
+      "tags": ["regression", "integration"]
+    }
+  ]
+}
