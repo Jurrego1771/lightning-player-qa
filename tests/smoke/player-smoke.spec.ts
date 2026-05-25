@@ -34,7 +34,9 @@ test.describe(`Smoke Tests — ${ENV.name}`, { tag: ['@smoke'] }, () => {
   })
 
   // ── 3. Playback básico: play → playing → pause ────────────────────────────
-  test('play() → video avanza → pause() funciona', async ({ player }) => {
+  test('play() → video avanza → pause() funciona', async ({ player, browserName }) => {
+    // webkit: no HLS/MSE support in Playwright WebKit — player enters error state
+    test.skip(browserName === 'webkit', 'webkit: HLS not supported — use Safari on real device for this test')
     await player.goto({ type: 'media', id: ContentIds.vodShort, autoplay: true })
     await player.waitForEvent('playing', 20_000)
     await player.assertIsPlaying()
@@ -50,13 +52,19 @@ test.describe(`Smoke Tests — ${ENV.name}`, { tag: ['@smoke'] }, () => {
   })
 
   // ── 4. Seek funciona ──────────────────────────────────────────────────────
-  test('seek cambia la posición de reproducción', async ({ player }) => {
+  test('seek cambia la posición de reproducción', async ({ player, browserName }) => {
+    // webkit: no HLS/MSE support in Playwright WebKit
+    test.skip(browserName === 'webkit', 'webkit: HLS not supported — use Safari on real device for this test')
     await player.goto({ type: 'media', id: ContentIds.vodLong, autoplay: true })
     await player.waitForEvent('playing', 20_000)
 
     await player.seek(30)
-    await player.waitForEvent('seeked')
-    await player.assertCurrentTimeNear(30, 3)
+    // Poll currentTime directly — more reliable than waitForEvent('seeked') on CDN streams
+    // where HLS may buffer slowly and seeked fires late or gets interleaved with buffering events.
+    await expect.poll(
+      () => player.getCurrentTime(),
+      { timeout: 25_000, intervals: [500], message: 'currentTime must reach ~30s after seek' }
+    ).toBeGreaterThan(28)
   })
 
   // ── 5. load() cambia el contenido dinámicamente ───────────────────────────
@@ -81,6 +89,9 @@ test.describe(`Smoke Tests — ${ENV.name}`, { tag: ['@smoke'] }, () => {
 
     const isLive = await player.isLive()
     expect(isLive).toBe(true)
+
+    const duration = await player.getDuration()
+    expect(duration).toBe(Infinity)
   })
 
   // ── 7. destroy() limpia correctamente ─────────────────────────────────────

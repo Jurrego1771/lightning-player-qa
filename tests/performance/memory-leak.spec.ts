@@ -8,22 +8,23 @@
  * Usa CDP HeapProfiler.collectGarbage + performance.memory (Chromium only).
  * Corre en el proyecto "performance" de playwright.config.ts.
  */
-import { test, expect, ContentIds } from '../../fixtures'
+import { test, expect, MockContentIds } from '../../fixtures'
 import { createCDPSession } from '../../helpers/qoe-metrics'
-import { getEnvironmentConfig } from '../../config/environments'
 
 test.describe('Memory — destroy() lifecycle', { tag: ['@performance'] }, () => {
 
-  test('destroy() no acumula heap en 4 ciclos init-play-destroy (Chromium)', async ({ page, browserName }) => {
+  test('destroy() no acumula heap en 4 ciclos init-play-destroy (Chromium)', async ({ isolatedPlayer, page, browserName }) => {
     test.skip(browserName !== 'chromium', 'performance.memory solo disponible en Chromium')
+    // Use isolatedPlayer (local stream via localhost:9001) — this test measures heap growth,
+    // not CDN speed. Real CDN makes each cycle non-deterministic and blows the 60s timeout.
+    test.setTimeout(180_000)
 
-    const envConfig = getEnvironmentConfig()
     const client = await createCDPSession(page)
 
-    // Navigate once — all cycles on same page (SPA pattern, no navigation between cycles)
-    await page.goto('http://localhost:3000/index.html', { waitUntil: 'domcontentloaded' })
-    await page.addScriptTag({ url: envConfig.playerScriptUrl })
-    await page.waitForFunction(() => typeof (window as any).loadMSPlayer === 'function', { timeout: 15_000 })
+    // Boot via isolatedPlayer so platform mocks + harness script are ready.
+    // Destroy immediately — cycles will re-init via __initPlayer on the same page.
+    await isolatedPlayer.goto({ type: 'media', id: MockContentIds.vod, autoplay: false })
+    await page.evaluate(() => (window as any).__player?.destroy?.())
 
     const runCycle = async (): Promise<number> => {
       // Reset __qa so waitForFunction doesn't resolve from prior cycle's state
@@ -34,7 +35,7 @@ test.describe('Memory — destroy() lifecycle', { tag: ['@performance'] }, () =>
       })
 
       await page.evaluate((cfg) => (window as any).__initPlayer(cfg), {
-        type: 'media', id: ContentIds.vodShort, autoplay: true,
+        type: 'media', id: MockContentIds.vod, autoplay: true,
       } as Record<string, unknown>)
 
       await page.waitForFunction(

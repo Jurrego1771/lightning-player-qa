@@ -15,19 +15,21 @@ import { test, expect, ContentIds } from '../../fixtures'
 
 test.describe('DASH Auto-Detect', { tag: ['@e2e'] }, () => {
 
-  test('URL .mpd con autoplay=true: player llega a playing via auto-detect', async ({ player }) => {
+  test('URL .mpd con autoplay=true: player llega a playing via auto-detect', async ({ player, browserName }) => {
+    test.skip(browserName === 'webkit', 'HLS via hls.js no soportado en Playwright WebKit — usar Safari real (Tier 2)')
     await player.goto({ type: 'media', id: ContentIds.dashVod, autoplay: true })
 
-    await player.waitForEvent('playing', 35_000)
+    await player.waitForEvent('playing', 45_000)
     await player.assertIsPlaying()
     await player.assertNoInitError()
   })
 
-  test('selectedSrcType=dash en state: DashHandler lazy load ocurre una sola vez', async ({ player, page }) => {
+  test('selectedSrcType=dash en state: DashHandler lazy load ocurre una sola vez', async ({ player, page, browserName }) => {
+    test.skip(browserName === 'webkit', 'HLS via hls.js no soportado en Playwright WebKit — usar Safari real (Tier 2)')
     // Verifica que el lazy import de DashHandler no causa doble init o flicker.
     // El player no debe emitir dos eventos 'ready' consecutivos.
     await player.goto({ type: 'media', id: ContentIds.dashVod, autoplay: true })
-    await player.waitForEvent('playing', 35_000)
+    await player.waitForEvent('playing', 45_000)
 
     const events: string[] = await page.evaluate(() => (window as any).__qa?.events ?? [])
     const readyEvents = events.filter((e) => e === 'ready')

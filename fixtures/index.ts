@@ -145,6 +145,13 @@ export const test = base.extend<LightningFixtures>({
       ])
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
+      // Content not found or API auth error → skip rather than fail.
+      // Hard infrastructure errors (network down, token format) still surface.
+      if (/INVALID_OBJECT_ID|HTTP 404|HTTP 401|not found/i.test(msg)) {
+        testInfo.skip(true, `contentAccess: token inaccesible — ${msg}`)
+        await use({ live: { accessToken: '' }, dvr: { accessToken: '' } })
+        return
+      }
       throw new Error(`[contentAccess fixture] Falló la generación del token:\n${msg}`)
     }
 

@@ -14,7 +14,7 @@
       "command": "npx",
       "args": [
         "-y",
-        "@modelcontextprotocol/server-playwright"
+        "@playwright/mcp"
       ]
     }
   }

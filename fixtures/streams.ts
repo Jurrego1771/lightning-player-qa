@@ -1,10 +1,8 @@
 /**
- * streams.ts — Catálogo de contenido de test (ambiente DEV)
+ * streams.ts — Catálogo de contenido de test
  *
- * IDs de contenido reales del ambiente DEV de la plataforma Mediastream.
- * Este repo corre únicamente contra DEV — los IDs están hardcodeados aquí.
- *
- * Para actualizar un ID: editar directamente este archivo.
+ * IDs leídos de variables de entorno (CONTENT_ID_*) con fallback a los IDs DEV.
+ * Para cambiar un ID: definir la variable en .env o en CI secrets.
  *
  * Contenido que requiere access token (live/dvr): usar el fixture `contentAccess`
  * en lugar de pasar el token manualmente.
@@ -12,54 +10,67 @@
 
 export const ContentIds = {
   /** VOD de video — contenido corto (~2 min) para tests rápidos */
-  vodShort: '69d2f1e0461dd502cd921ad6',
+  vodShort: process.env.CONTENT_ID_VOD_SHORT || '69d2f1e0461dd502cd921ad6',
 
   /** VOD de video — contenido largo (>10 min) para tests de ABR y buffer */
-  vodLong: '6900ffde6ddf33fd39a523ee',
+  vodLong: process.env.CONTENT_ID_VOD_LONG || '6900ffde6ddf33fd39a523ee',
 
   /** Stream en vivo activo — requiere accessToken (ver fixture contentAccess) */
-  live: '697a340765be0f0974e5af55',
+  live: process.env.CONTENT_ID_LIVE || '6971288e64b2477e2b935259',
 
   /**
    * Stream DVR activo — mismo ID que live, mismo accessToken.
    * Pasarlo como type: 'dvr' en goto().
    */
-  dvr: '697a340765be0f0974e5af55',
+  dvr: process.env.CONTENT_ID_DVR || '6971288e64b2477e2b935259',
 
   /** Audio */
-  audio: '698b4a88d9cc56fe7a404079',
+  audio: process.env.CONTENT_ID_AUDIO || '698b4a88d9cc56fe7a404079',
 
-  /** Radio — mismo ID que audio por ahora hasta confirmar ID dedicado */
-  radio: '698b4a88d9cc56fe7a404079',
+  /** Radio — stream live de audio con metadata nowplaying */
+  radio: process.env.CONTENT_ID_RADIO || '69724db4002efe954a6c0e00',
 
-  /** Podcast — pendiente confirmar ID */
-  podcast: 'TODO_PODCAST_ID',
+  /**
+   * Podcast — pendiente confirmar ID.
+   * Tests se saltean si el valor empieza con TODO_.
+   */
+  podcast: process.env.CONTENT_ID_PODCAST || 'TODO_PODCAST_ID',
 
   /** VOD con subtítulos en múltiples idiomas */
-  vodWithSubtitles: '69d3081d5493800312af8b6e',
+  vodWithSubtitles: process.env.CONTENT_ID_VOD_WITH_SUBTITLES || '69d3081d5493800312af8b6e',
 
-  /** VOD con múltiples audio tracks — pendiente confirmar ID */
-  vodMultiAudio: 'TODO_VOD_MULTI_AUDIO_ID',
+  /**
+   * VOD con múltiples audio tracks — pendiente confirmar ID.
+   * Tests se saltean si el valor empieza con TODO_.
+   */
+  vodMultiAudio: process.env.CONTENT_ID_VOD_MULTI_AUDIO || 'TODO_VOD_MULTI_AUDIO_ID',
 
   /** VOD con ads: pre-roll + mid-roll a los 10s + post-roll */
-  vodWithAds: '6900fffb6ddf33fd39a5288e',
+  vodWithAds: process.env.CONTENT_ID_VOD_WITH_ADS || '6900fffb6ddf33fd39a5288e',
 
   /**
    * Episodio VOD con "siguiente episodio" configurado en la plataforma.
    * Cuando el contenido llega a nextEpisodeTime, el player emite nextEpisodeIncoming.
-   * Configurar en la plataforma DEV y actualizar este ID.
-   * Tests E2E de next episode se saltean si este ID tiene el prefijo TODO_.
+   * Tests se saltean si el valor empieza con TODO_.
    */
-  episodeWithNext: 'TODO_EPISODE_WITH_NEXT_ID',
+  episodeWithNext: process.env.CONTENT_ID_EPISODE_WITH_NEXT || 'TODO_EPISODE_WITH_NEXT_ID',
 
-  /** VOD DASH — stream VOD con manifiesto MPD (type: 'media') */
-  dashVod: '69b0918a741d2bbba0cacf78',
+  /**
+   * VOD DASH — stream VOD con manifiesto MPD (type: 'media').
+   * Pendiente: necesita un content ID VOD DASH sin DRM en plataforma DEV.
+   * Tests se saltean si el valor empieza con TODO_.
+   */
+  dashVod: process.env.CONTENT_ID_DASH_VOD || 'TODO_DASH_VOD_NO_DRM_ID',
 
-  /** Live DASH — stream live con manifiesto MPD (type: 'live', requiere accessToken) */
-  dashLive: '699afcb05a41925324fa4605',
+  /** Live DASH — stream live con manifiesto MPD (type: 'live') */
+  dashLive: process.env.CONTENT_ID_DASH_LIVE || '6a0f2956a2a6f91404c3cc0c',
 
-  /** DVR DASH — stream DVR sobre DASH (type: 'dvr', requiere accessToken) */
-  dashDvr: '699afcb05a41925324fa4605',
+  /**
+   * DVR DASH — stream DVR sobre DASH (type: 'dvr').
+   * duration tarda en popularse después de 'playing' — tests usan expect.poll().
+   * Seek tests skipados en webkit (DASH DVR inestable en Playwright WebKit).
+   */
+  dashDvr: process.env.CONTENT_ID_DASH_DVR || '6a0f2956a2a6f91404c3cc0c',
 }
 
 // ── Access tokens para contenido restringido ─────────────────────────────

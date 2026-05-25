@@ -38,6 +38,8 @@ const THRESHOLDS = {
 test.describe('QoE — Startup', { tag: ['@performance'] }, () => {
 
   test('startup time < 4.5s en broadband (HLS VOD)', async ({ player, page }) => {
+    // CDN cold-start can take 50s+; global 60s default leaves no room for measureStartup.
+    test.setTimeout(120_000)
     // Record playerInitT0 inside the beforeInit hook — fired right before loadMSPlayer()
     // is called (after the player script has loaded). This measures "time from
     // loadMSPlayer() call to first playing frame", excluding test infrastructure
@@ -69,6 +71,7 @@ test.describe('QoE — Startup', { tag: ['@performance'] }, () => {
   })
 
   test('startup time < 3s en broadband (DASH VOD — playback nativo)', async ({ player, page }) => {
+    test.setTimeout(120_000)
     // DASH usa playback nativo del browser (no dash.js). Sin ABR controlable.
     // DASH se reproduce via el elemento <video> nativo del browser.
     // Este test valida que el browser puede iniciar reproducción de un stream DASH.
@@ -187,15 +190,18 @@ test.describe('QoE — Sesión Completa', { tag: ['@performance', '@slow'] }, ()
 test.describe('QoE — Seek Latency', { tag: ['@performance'] }, () => {
 
   test('seek latency medido y dentro de 15s (dev CDN baseline: 10.6s)', async ({ player, page }) => {
+    // Dev CDN can take 30-40s to serve post-seek segments. Long timeout here prevents
+    // test infrastructure from dying before the assertion — if CDN exceeds 15s, the
+    // seekLatency assertion below correctly flags it as a regression.
+    test.setTimeout(120_000)
     await player.goto({ type: 'media', id: ContentIds.vodLong, autoplay: true })
-    await player.waitForEvent('playing')
+    // Wait for contentFirstPlay (not 'playing') — vodLong has a pre-roll ad.
+    // 'playing' fires during the ad; seeks are blocked while ads play.
+    // contentFirstPlay fires only when actual content starts, after any pre-roll.
+    await player.waitForEvent('contentFirstPlay', 60_000)
 
     // Flush seek-related events from __qa.events BEFORE the seek so that
-    // waitForEvent() cannot match pre-seek entries. Without this flush,
-    // waitForEvent('playing') uses array.includes() which returns true immediately
-    // because 'playing' from the initial autoplay is already in the array.
-    // A stale match produces seekLatency ~0ms, which always passes the 2s threshold
-    // while measuring nothing about actual seek performance.
+    // waitForEvent() cannot match pre-seek entries.
     await page.evaluate(() => {
       ;(window as any).__qa.events = ((window as any).__qa.events as string[]).filter(
         (e) => e !== 'seeking' && e !== 'seeked' && e !== 'playing'
@@ -207,8 +213,8 @@ test.describe('QoE — Seek Latency', { tag: ['@performance'] }, () => {
 
     // These waitForEvent calls now resolve only on the post-seek events because
     // the pre-seek entries were removed above.
-    await player.waitForEvent('seeked', 25_000)
-    await player.waitForEvent('playing', 25_000)
+    await player.waitForEvent('seeked', 60_000)
+    await player.waitForEvent('playing', 90_000)
     const seekLatency = Date.now() - seekStart
 
     // Record before assertions so the value is captured even if the threshold assertion

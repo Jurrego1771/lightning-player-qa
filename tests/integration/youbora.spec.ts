@@ -27,7 +27,8 @@ const MOCK_VAST_URL = process.env.MOCK_VAST_BASE_URL ?? 'http://localhost:9999'
 
 // account_code viene de YOUBORA_ACCOUNT_CODE en .env — nunca hardcodeado.
 // Sin este valor los tests que esperan beacons fallarán con 0 beacons capturados.
-const YOUBORA_ACCOUNT_CODE = process.env.YOUBORA_ACCOUNT_CODE ?? ''
+const YOUBORA_ACCOUNT_CODE = process.env.YOUBORA_ACCOUNT_CODE || 'qa_dummy'
+console.log('DEBUG: YOUBORA_ACCOUNT_CODE =', YOUBORA_ACCOUNT_CODE)
 
 /**
  * Config mínima para activar Youbora en los mocks del player config.
@@ -69,6 +70,10 @@ async function setupNpawInterceptor(page: import('@playwright/test').Page): Prom
   const beacons: string[] = []
   const seen = new Set<string>()
 
+  page.on('console', (msg) => {
+    console.log(`[BROWSER CONSOLE - ${msg.type()}]:`, msg.text())
+  })
+
   const recordBeacon = (url: string) => {
     if (seen.has(url)) return
     seen.add(url)
@@ -80,21 +85,33 @@ async function setupNpawInterceptor(page: import('@playwright/test').Page): Prom
     await route.fulfill({ status: 200, body: '' })
   }
 
-  // page.on('request') es más estable para observabilidad que page.route() sola.
-  // En runs paralelos vimos requests NQS descubiertas en consola que no siempre
-  // pasaban por el closure del route handler a tiempo para alimentar `beacons`.
   page.on('request', (req) => {
     const url = req.url()
-    if (url.includes('youboranqs01.com/') || url.includes('.youbora.com/')) {
+    if (url.includes('youboranqs01.com/') || url.includes('.youbora.com/') || url.includes('lma.npaw.com/')) {
       recordBeacon(url)
     }
   })
 
-  // Capturar solo NQS (beacons de sesión reales) — dejar LMA sin interceptar.
-  // Regex en lugar de glob: **youboranqs01.com/** falla en Playwright porque
-  // ** adyacente a un literal sin separador / no se resuelve correctamente.
+  // Capturar solo NQS y lma data/config
   await page.route(/youboranqs01\.com\//, captureBeacon)
   await page.route(/\.youbora\.com\//, captureBeacon)
+  await page.route(/lma\.npaw\.com\/configuration/, async (route) => {
+    try {
+      // Mock local configuration response so that Youbora SDK doesn't depend on a real account code activation
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          host: 'youboranqs01.com',
+          status: 'active'
+        })
+      })
+    } catch (e) {
+      console.error('DEBUG: LMA Config Mock Error:', e)
+      await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' })
+    }
+  })
+  await page.route(/lma\.npaw\.com\/data/, captureBeacon)
 
   return beacons
 }

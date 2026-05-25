@@ -17,7 +17,8 @@ test.describe('VOD Playback', { tag: ['@regression'] }, () => {
       await player.assertNoInitError()
     })
 
-    test('autoplay=true: player emite playing sin interacción', async ({ player }) => {
+    test('autoplay=true: player emite playing sin interacción', async ({ player, browserName }) => {
+      test.skip(browserName === 'webkit', 'HLS via hls.js no soportado en Playwright WebKit — usar Safari real (Tier 2)')
       await player.goto({ type: 'media', id: ContentIds.vodShort, autoplay: true })
       await player.waitForEvent('playing', 20_000)
       await player.assertIsPlaying()
@@ -33,7 +34,8 @@ test.describe('VOD Playback', { tag: ['@regression'] }, () => {
   })
 
   test.describe('Controles de Playback', () => {
-    test.beforeEach(async ({ player }) => {
+    test.beforeEach(async ({ player, browserName }) => {
+      test.skip(browserName === 'webkit', 'HLS via hls.js no soportado en Playwright WebKit — usar Safari real (Tier 2)')
       await player.goto({ type: 'media', id: ContentIds.vodShort, autoplay: false })
       await player.waitForReady()
       await player.waitForEvent('canplay')
@@ -82,7 +84,8 @@ test.describe('VOD Playback', { tag: ['@regression'] }, () => {
   })
 
   test.describe('load() — Carga Dinámica de Contenido', () => {
-    test('load() cambia el contenido del player', async ({ player }) => {
+    test('load() cambia el contenido del player', async ({ player, browserName }) => {
+      test.skip(browserName === 'webkit', 'HLS via hls.js no soportado en Playwright WebKit — usar Safari real (Tier 2)')
       // Inicializar
       await player.goto({ type: 'media', id: ContentIds.vodShort, autoplay: false })
       await player.waitForReady()
@@ -107,7 +110,8 @@ test.describe('VOD Playback', { tag: ['@regression'] }, () => {
       await player.assertNoInitError()
     })
 
-    test('load() seguido de play() funciona correctamente', async ({ player }) => {
+    test('load() seguido de play() funciona correctamente', async ({ player, browserName }) => {
+      test.skip(browserName === 'webkit', 'HLS via hls.js no soportado en Playwright WebKit — usar Safari real (Tier 2)')
       await player.goto({ type: 'media', id: ContentIds.vodShort, autoplay: false })
       await player.waitForReady()
 
@@ -121,6 +125,10 @@ test.describe('VOD Playback', { tag: ['@regression'] }, () => {
 
   test.describe('Tracks', () => {
     test('textTracks disponibles para contenido con subtítulos', async ({ player }) => {
+      // Content 69d3081d5493800312af8b6e lost subtitle track config on platform DEV.
+      // Unskip when ContentIds.vodWithSubtitles is updated to a valid subtitle content.
+      test.skip(true, 'vodWithSubtitles perdió tracks en plataforma DEV — actualizar ContentIds.vodWithSubtitles')
+
       await player.goto({ type: 'media', id: ContentIds.vodWithSubtitles, autoplay: false })
       await player.waitForReady(20_000)
 
@@ -159,7 +167,8 @@ test.describe('VOD Playback', { tag: ['@regression'] }, () => {
   })
 
   test.describe('Ciclo de vida', () => {
-    test('ended event se emite al terminar un video corto', async ({ player }) => {
+    test('ended event se emite al terminar un video corto', async ({ player, browserName }) => {
+      test.skip(browserName === 'webkit', 'HLS via hls.js no soportado en Playwright WebKit — usar Safari real (Tier 2)')
       await player.goto({ type: 'media', id: ContentIds.vodShort, autoplay: true })
       await player.waitForEvent('playing', 20_000)
 
@@ -179,7 +188,8 @@ test.describe('VOD Playback', { tag: ['@regression'] }, () => {
       await expect(page.locator('video')).toHaveCount(0)
     })
 
-    test('destroy() + reinicialización: 3 ciclos consecutivos sin estado residual', async ({ player, page }) => {
+    test('destroy() + reinicialización: 3 ciclos consecutivos sin estado residual', async ({ player, page, browserName }) => {
+      test.skip(browserName === 'webkit', 'HLS via hls.js no soportado en Playwright WebKit — usar Safari real (Tier 2)')
       // Each full cycle navigates the harness fresh — catches accumulated state
       // in the browser context (listeners, cached globals, hls.js registry).
       for (let i = 0; i < 3; i++) {
@@ -207,7 +217,8 @@ test.describe('VOD Playback', { tag: ['@regression'] }, () => {
   })
 
   test.describe('Propiedades de Calidad (HLS.js)', () => {
-    test('levels disponibles después de loadedmetadata', async ({ player }) => {
+    test('levels disponibles después de loadedmetadata', async ({ player, browserName }) => {
+      test.skip(browserName === 'webkit', 'HLS.js (ABR/levels) no soportado en Playwright WebKit — usar Safari real (Tier 2)')
       await player.goto({ type: 'media', id: ContentIds.vodLong, autoplay: true })
       await player.waitForEvent('levelchanged', 25_000)
 
