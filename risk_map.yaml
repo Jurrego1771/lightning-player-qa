@@ -1,0 +1,577 @@
+# Mapa de riesgo dinámico del Lightning Player
+# Última actualización: manual (inicial)
+# Próxima calibración: ejecutar /pipeline con A1
+#
+# risk_label: critical (0.85–1.0) | high (0.60–0.84) | medium (0.25–0.59) | low (<0.25)
+# risk_score: float 0.0–1.0 derivado de señales de commits, bugs, cobertura y CI failures.
+# test_coverage_ratio: fracción de acceptance_criteria cubiertos por tests existentes (0.0–1.0).
+
+meta:
+  calibration_window_days: 90
+  last_updated: "2026-05-26T00:00:00Z"
+  updated_by: "manual-initial"
+  schema_version: "3.0"
+
+# ─────────────────────────────────────────────
+# CRITICAL  (risk_score 0.85 – 1.0)
+# ─────────────────────────────────────────────
+modules:
+  api-bootstrap:
+    risk_score: 0.95
+    risk_label: critical
+    signals:
+      file_count: 2
+      commit_frequency_90d: 0
+      bugs_closed_90d: 0
+      bug_severity_avg: 0.0
+      test_coverage_ratio: 0.60
+      ci_failure_rate: 0.0
+    files:
+      - "src/api/api.js"
+      - "src/api/player.jsx"
+    tests:
+      - "tests/contract/"
+      - "tests/e2e/vod-playback.spec.ts"
+    acceptance_criteria: "context/features/playback.md"
+    notes: "Embed bootstrap. Si rompe, ningún player carga. Mayor impacto en cascada."
+
+  events:
+    risk_score: 0.93
+    risk_label: critical
+    signals:
+      file_count: 1
+      commit_frequency_90d: 0
+      bugs_closed_90d: 0
+      bug_severity_avg: 0.0
+      test_coverage_ratio: 0.55
+      ci_failure_rate: 0.0
+    files:
+      - "src/events/index.js"
+    tests:
+      - "tests/contract/"
+      - "tests/e2e/"
+    acceptance_criteria: "context/player_architecture.md"
+    notes: "Canal internalEmitter + postMessage externo. Todos los tests dependen de estos eventos."
+
+  playback-core:
+    risk_score: 0.92
+    risk_label: critical
+    signals:
+      file_count: 1
+      commit_frequency_90d: 0
+      bugs_closed_90d: 0
+      bug_severity_avg: 0.0
+      test_coverage_ratio: 0.65
+      ci_failure_rate: 0.0
+    files:
+      - "src/player/base.js"
+    tests:
+      - "tests/integration/"
+      - "tests/e2e/vod-playback.spec.ts"
+    acceptance_criteria: "context/features/playback.md"
+    notes: "Lógica base compartida por HLS, DASH y Native handlers."
+
+  platform-config:
+    risk_score: 0.91
+    risk_label: critical
+    signals:
+      file_count: 1
+      commit_frequency_90d: 0
+      bugs_closed_90d: 0
+      bug_severity_avg: 0.0
+      test_coverage_ratio: 0.50
+      ci_failure_rate: 0.0
+    files:
+      - "src/platform/loadConfig.js"
+    tests:
+      - "tests/contract/"
+    acceptance_criteria: "context/player_architecture.md"
+    notes: "Resolución de config final. Un shape incorrecto rompe la inicialización."
+
+  state:
+    risk_score: 0.90
+    risk_label: critical
+    signals:
+      file_count: 1
+      commit_frequency_90d: 0
+      bugs_closed_90d: 0
+      bug_severity_avg: 0.0
+      test_coverage_ratio: 0.55
+      ci_failure_rate: 0.0
+    files:
+      - "src/context/index.jsx"
+    tests:
+      - "tests/e2e/"
+      - "tests/integration/"
+    acceptance_criteria: "context/player_architecture.md"
+    notes: "Atoms Jotai. Cambios aquí afectan a todos los módulos que consumen estado."
+
+  controls-api:
+    risk_score: 0.90
+    risk_label: critical
+    signals:
+      file_count: 3
+      commit_frequency_90d: 0
+      bugs_closed_90d: 0
+      bug_severity_avg: 0.0
+      test_coverage_ratio: 0.50
+      ci_failure_rate: 0.0
+    files:
+      - "src/controls/"
+    tests:
+      - "tests/contract/"
+      - "tests/e2e/"
+    acceptance_criteria: "context/features/playback.md"
+    notes: "API pública: play, pause, seek, volume, muted. Cambio de firma rompe integraciones."
+
+  plugins:
+    risk_score: 0.88
+    risk_label: critical
+    signals:
+      file_count: 1
+      commit_frequency_90d: 0
+      bugs_closed_90d: 0
+      bug_severity_avg: 0.0
+      test_coverage_ratio: 0.40
+      ci_failure_rate: 0.0
+    files:
+      - "src/plugins/index.js"
+    tests:
+      - "tests/contract/"
+    acceptance_criteria: "context/player_architecture.md"
+    notes: "Registry de plugins. Un plugin mal registrado puede romper el player completo."
+
+  constants:
+    risk_score: 0.87
+    risk_label: critical
+    signals:
+      file_count: 1
+      commit_frequency_90d: 0
+      bugs_closed_90d: 0
+      bug_severity_avg: 0.0
+      test_coverage_ratio: 0.45
+      ci_failure_rate: 0.0
+    files:
+      - "constants.cjs"
+    tests:
+      - "tests/contract/"
+    acceptance_criteria: "context/player_architecture.md"
+    notes: "Constantes compartidas. Un cambio de valor (ej. AUTO_LEVEL) rompe múltiples módulos."
+
+# ─────────────────────────────────────────────
+# HIGH  (risk_score 0.60 – 0.84)
+# ─────────────────────────────────────────────
+
+  hls:
+    risk_score: 0.80
+    risk_label: high
+    signals:
+      file_count: 5
+      commit_frequency_90d: 0
+      bugs_closed_90d: 0
+      bug_severity_avg: 0.0
+      test_coverage_ratio: 0.55
+      ci_failure_rate: 0.0
+    files:
+      - "src/player/handler/hls/"
+    tests:
+      - "tests/integration/"
+      - "tests/e2e/vod-playback.spec.ts"
+    acceptance_criteria: "context/features/playback.md"
+    notes: "hls.js 1.6.13. ABR, DVR, custom pLoader para SGAI. Alta complejidad."
+
+  dash:
+    risk_score: 0.72
+    risk_label: high
+    signals:
+      file_count: 2
+      commit_frequency_90d: 0
+      bugs_closed_90d: 0
+      bug_severity_avg: 0.0
+      test_coverage_ratio: 0.40
+      ci_failure_rate: 0.0
+    files:
+      - "src/player/handler/dash/"
+    tests:
+      - "tests/integration/"
+    acceptance_criteria: "context/features/playback.md"
+    notes: "Native MSE, sin ABR controlable, EME nativo. Menos testeable que HLS."
+
+  drm:
+    risk_score: 0.78
+    risk_label: high
+    signals:
+      file_count: 3
+      commit_frequency_90d: 0
+      bugs_closed_90d: 0
+      bug_severity_avg: 0.0
+      test_coverage_ratio: 0.35
+      ci_failure_rate: 0.0
+    files:
+      - "src/player/drm/"
+      - "src/player/drm/getDRMSupport.js"
+    tests:
+      - "tests/e2e/"
+    acceptance_criteria: "context/features/drm.md"
+    notes: "Widevine/PlayReady/FairPlay. FairPlay no testeable en CI (requiere Safari)."
+
+  ads-ima:
+    risk_score: 0.78
+    risk_label: high
+    signals:
+      file_count: 4
+      commit_frequency_90d: 0
+      bugs_closed_90d: 0
+      bug_severity_avg: 0.0
+      test_coverage_ratio: 0.45
+      ci_failure_rate: 0.0
+    files:
+      - "src/ads/googleIma/"
+    tests:
+      - "tests/integration/ads-dai-vpmute-sync.spec.ts"
+      - "tests/e2e/ads-ima-tag-params.spec.ts"
+    acceptance_criteria: "context/features/ads.md"
+    notes: "Google IMA VAST/VMAP. Lifecycle completo de 11 eventos. Beacons OMID."
+
+  ads-sgai:
+    risk_score: 0.82
+    risk_label: high
+    signals:
+      file_count: 3
+      commit_frequency_90d: 0
+      bugs_closed_90d: 1
+      bug_severity_avg: 0.8
+      test_coverage_ratio: 0.30
+      ci_failure_rate: 0.0
+    files:
+      - "src/ads/googleSGAI/"
+    tests:
+      - "tests/integration/ads-sgai-mute-state-lifecycle.spec.ts"
+    acceptance_criteria: "context/features/ads.md"
+    notes: "Bug conocido: buffering+DVR=loop infinito. Gap de cobertura en useGoogleSGAILifecycle.js."
+
+  ads-dai:
+    risk_score: 0.70
+    risk_label: high
+    signals:
+      file_count: 2
+      commit_frequency_90d: 0
+      bugs_closed_90d: 0
+      bug_severity_avg: 0.0
+      test_coverage_ratio: 0.40
+      ci_failure_rate: 0.0
+    files:
+      - "src/ads/googleDAI/"
+    tests:
+      - "tests/integration/ads-dai-vpmute-sync.spec.ts"
+    acceptance_criteria: "context/features/ads.md"
+    notes: "Google DAI. Stream unificado con ads integrados."
+
+  ads-adswizz:
+    risk_score: 0.65
+    risk_label: high
+    signals:
+      file_count: 2
+      commit_frequency_90d: 0
+      bugs_closed_90d: 0
+      bug_severity_avg: 0.0
+      test_coverage_ratio: 0.30
+      ci_failure_rate: 0.0
+    files:
+      - "src/ads/adswizz/"
+    tests:
+      - "tests/integration/"
+    acceptance_criteria: "context/features/ads.md"
+    notes: "AdSwizz principalmente para radio/audio. Menor cobertura de tests."
+
+  ads-manager:
+    risk_score: 0.75
+    risk_label: high
+    signals:
+      file_count: 3
+      commit_frequency_90d: 0
+      bugs_closed_90d: 0
+      bug_severity_avg: 0.0
+      test_coverage_ratio: 0.40
+      ci_failure_rate: 0.0
+    files:
+      - "src/ads/manager/"
+    tests:
+      - "tests/integration/"
+      - "tests/e2e/ads-ima-tag-params.spec.ts"
+    acceptance_criteria: "context/features/ads.md"
+    notes: "Orquestador de todos los sistemas de ads. VAST/VMAP parser."
+
+  dependency:
+    risk_score: 0.68
+    risk_label: high
+    signals:
+      file_count: 1
+      commit_frequency_90d: 0
+      bugs_closed_90d: 0
+      bug_severity_avg: 0.0
+      test_coverage_ratio: 0.20
+      ci_failure_rate: 0.0
+    files:
+      - "package.json"
+    tests:
+      - "tests/contract/"
+    acceptance_criteria: "context/player_architecture.md"
+    notes: "Versiones de hls.js, React, Jotai, Axios. Un bump mayor puede romper la API."
+
+# ─────────────────────────────────────────────
+# MEDIUM  (risk_score 0.25 – 0.59)
+# ─────────────────────────────────────────────
+
+  analytics-streammetrics:
+    risk_score: 0.45
+    risk_label: medium
+    signals:
+      file_count: 2
+      commit_frequency_90d: 0
+      bugs_closed_90d: 0
+      bug_severity_avg: 0.0
+      test_coverage_ratio: 0.20
+      ci_failure_rate: 0.0
+    files:
+      - "src/analytics/streammetrics/"
+    tests: []
+    acceptance_criteria: "context/player_architecture.md"
+    notes: "Analytics de métricas de stream. No bloquea reproducción si falla."
+
+  analytics-comscore:
+    risk_score: 0.40
+    risk_label: medium
+    signals:
+      file_count: 2
+      commit_frequency_90d: 0
+      bugs_closed_90d: 0
+      bug_severity_avg: 0.0
+      test_coverage_ratio: 0.15
+      ci_failure_rate: 0.0
+    files:
+      - "src/analytics/comscore/"
+    tests: []
+    acceptance_criteria: "context/player_architecture.md"
+    notes: "Comcast analytics. Impacto solo en métricas, no en reproducción."
+
+  analytics-ga4:
+    risk_score: 0.38
+    risk_label: medium
+    signals:
+      file_count: 1
+      commit_frequency_90d: 0
+      bugs_closed_90d: 0
+      bug_severity_avg: 0.0
+      test_coverage_ratio: 0.10
+      ci_failure_rate: 0.0
+    files:
+      - "src/analytics/ga4/"
+    tests: []
+    acceptance_criteria: "context/player_architecture.md"
+    notes: "Google Analytics 4. No bloquea reproducción."
+
+  analytics-reactions:
+    risk_score: 0.35
+    risk_label: medium
+    signals:
+      file_count: 1
+      commit_frequency_90d: 0
+      bugs_closed_90d: 0
+      bug_severity_avg: 0.0
+      test_coverage_ratio: 0.10
+      ci_failure_rate: 0.0
+    files:
+      - "src/analytics/reactions/"
+    tests: []
+    acceptance_criteria: "context/player_architecture.md"
+    notes: "Analytics de reacciones/engagement."
+
+  metadata:
+    risk_score: 0.48
+    risk_label: medium
+    signals:
+      file_count: 2
+      commit_frequency_90d: 0
+      bugs_closed_90d: 0
+      bug_severity_avg: 0.0
+      test_coverage_ratio: 0.25
+      ci_failure_rate: 0.0
+    files:
+      - "src/metadata/"
+    tests:
+      - "tests/e2e/radio-nowplaying-metadata.spec.ts"
+    acceptance_criteria: "context/features/playback.md"
+    notes: "ID3 tags, now-playing. Bloqueador conocido: estación con useID3Sync:true."
+
+  chromecast:
+    risk_score: 0.42
+    risk_label: medium
+    signals:
+      file_count: 2
+      commit_frequency_90d: 0
+      bugs_closed_90d: 0
+      bug_severity_avg: 0.0
+      test_coverage_ratio: 0.15
+      ci_failure_rate: 0.0
+    files:
+      - "src/chromecast/"
+    tests: []
+    acceptance_criteria: "context/features/chromecast.md"
+    notes: "No testeable con Playwright. Requiere dispositivo físico o Cast Simulator."
+
+  federation:
+    risk_score: 0.35
+    risk_label: medium
+    signals:
+      file_count: 1
+      commit_frequency_90d: 0
+      bugs_closed_90d: 0
+      bug_severity_avg: 0.0
+      test_coverage_ratio: 0.10
+      ci_failure_rate: 0.0
+    files:
+      - "src/federation/"
+    tests: []
+    acceptance_criteria: "context/player_architecture.md"
+    notes: "Module Federation / microfrontend. Bajo impacto directo en QA."
+
+  ui-video:
+    risk_score: 0.50
+    risk_label: medium
+    signals:
+      file_count: 3
+      commit_frequency_90d: 0
+      bugs_closed_90d: 0
+      bug_severity_avg: 0.0
+      test_coverage_ratio: 0.30
+      ci_failure_rate: 0.0
+    files:
+      - "src/view/video/"
+    tests:
+      - "tests/visual/"
+      - "tests/a11y/"
+    acceptance_criteria: "context/features/playback.md"
+    notes: "Componente UI principal de video. Cubierto por visual regression y a11y."
+
+  ui-radio:
+    risk_score: 0.45
+    risk_label: medium
+    signals:
+      file_count: 2
+      commit_frequency_90d: 0
+      bugs_closed_90d: 0
+      bug_severity_avg: 0.0
+      test_coverage_ratio: 0.25
+      ci_failure_rate: 0.0
+    files:
+      - "src/view/radio/"
+    tests:
+      - "tests/visual/"
+      - "tests/a11y/"
+    acceptance_criteria: "context/player_architecture.md"
+    notes: "UI de radio. Incluye now-playing metadata display."
+
+  ui-podcast:
+    risk_score: 0.38
+    risk_label: medium
+    signals:
+      file_count: 2
+      commit_frequency_90d: 0
+      bugs_closed_90d: 0
+      bug_severity_avg: 0.0
+      test_coverage_ratio: 0.20
+      ci_failure_rate: 0.0
+    files:
+      - "src/view/podcast/"
+    tests:
+      - "tests/visual/"
+    acceptance_criteria: "context/player_architecture.md"
+    notes: "UI de podcast. Comparte lógica con radio."
+
+  ui-compact:
+    risk_score: 0.35
+    risk_label: medium
+    signals:
+      file_count: 2
+      commit_frequency_90d: 0
+      bugs_closed_90d: 0
+      bug_severity_avg: 0.0
+      test_coverage_ratio: 0.15
+      ci_failure_rate: 0.0
+    files:
+      - "src/view/compact/"
+    tests:
+      - "tests/visual/"
+    acceptance_criteria: "context/player_architecture.md"
+    notes: "Vista compacta embebida. Covers pueden sobreescribir controles."
+
+  ui-tv:
+    risk_score: 0.42
+    risk_label: medium
+    signals:
+      file_count: 3
+      commit_frequency_90d: 0
+      bugs_closed_90d: 0
+      bug_severity_avg: 0.0
+      test_coverage_ratio: 0.10
+      ci_failure_rate: 0.0
+    files:
+      - "src/view/tv/"
+    tests: []
+    acceptance_criteria: "context/player_architecture.md"
+    notes: "UI para TV (Tizen, webOS). Tests de TV eliminados en commit ab1e035. D-pad navigation."
+
+  platform-resume:
+    risk_score: 0.45
+    risk_label: medium
+    signals:
+      file_count: 1
+      commit_frequency_90d: 0
+      bugs_closed_90d: 0
+      bug_severity_avg: 0.0
+      test_coverage_ratio: 0.20
+      ci_failure_rate: 0.0
+    files:
+      - "src/platform/resume/"
+    tests:
+      - "tests/e2e/"
+    acceptance_criteria: "context/player_architecture.md"
+    notes: "Resume playback: recordar posición entre sesiones."
+
+  subtitles:
+    risk_score: 0.50
+    risk_label: medium
+    signals:
+      file_count: 2
+      commit_frequency_90d: 0
+      bugs_closed_90d: 0
+      bug_severity_avg: 0.0
+      test_coverage_ratio: 0.25
+      ci_failure_rate: 0.0
+    files:
+      - "src/metadata/"
+      - "src/view/video/"
+    tests:
+      - "tests/a11y/"
+    acceptance_criteria: "context/features/subtitles.md"
+    notes: "WebVTT nativo, archivos externos, CEA-608/708 (solo hls.js full). WCAG 1.2.2."
+
+  quality-selector:
+    risk_score: 0.55
+    risk_label: medium
+    signals:
+      file_count: 2
+      commit_frequency_90d: 0
+      bugs_closed_90d: 0
+      bug_severity_avg: 0.0
+      test_coverage_ratio: 0.30
+      ci_failure_rate: 0.0
+    files:
+      - "src/player/handler/hls/"
+      - "src/controls/"
+    tests:
+      - "tests/e2e/"
+      - "tests/performance/"
+    acceptance_criteria: "context/features/quality_selector.md"
+    notes: "ABR solo en HLS handler. player.level=-1 (auto) o N (fijo). No-op silencioso en DASH."

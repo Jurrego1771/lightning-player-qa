@@ -1,0 +1,15 @@
+{
+  "version": "1.0",
+  "created_at": null,
+  "pipeline_run": null,
+  "ref": null,
+  "diff": null,
+  "risk_assessment": null,
+  "coverage_gaps": null,
+  "test_plan": null,
+  "execution_results": null,
+  "flaky_filtered": null,
+  "verdict": null,
+  "visual_results": null,
+  "failure_analysis": null
+}

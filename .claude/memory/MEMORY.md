@@ -32,8 +32,7 @@
 
 ## Sistemas de Automatización Implementados
 
-- **analyze-diff.ts** — `npm run diff:analyze [PR|branch|commit]`. Reemplaza prepare-diff.sh + agentes diff-analyzer + coverage-checker. Fetch via @octokit/rest, fallback local via simple-git. ~5s vs ~3-4 min de agentes.
-- **Pipeline /review-diff** — Pasos 1-2 ahora son inline (script + razonamiento directo). Solo test-selector y results-analyzer siguen como agentes.
+- **analyze-diff.ts** — `npm run diff:analyze [PR|branch|commit]`. Fase A1 del pipeline. Fetch via @octokit/rest, fallback local via simple-git. Produce risk-map.json schema v3.0 + coverage-report.json en ~5s.
 - **Performance trend tracking** — `helpers/perf-storage.ts` + `scripts/compare-perf.ts`
 - **Flaky test detection** — `reporters/flakiness-reporter.ts` + `scripts/analyze-flakiness.ts`
 - **API Contract** — `contracts/player-api.ts` + `tests/contract/player-api.spec.ts`. Corre primero en CI.
@@ -42,4 +41,3 @@
 
 - `/sync-knowledge` — sincroniza conocimiento del QA suite con el player repo tras un release
 - `/session-review` — protocolo de cierre de sesión
-- `/review-diff [PR|branch|commit]` — pipeline completo de análisis de cambios
