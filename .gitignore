@@ -31,7 +31,7 @@ perf-results/
 # Flaky detection — raw run data (gitignored; quarantine.json sí se commitea)
 flaky-results/runs/*.json
 
-# Pipeline /review-diff — archivos temporales entre agentes
+# Pipeline /pipeline — archivos temporales entre agentes
 tmp/
 
 # Historial de pipelines (opcional, se guarda si el usuario lo pide)

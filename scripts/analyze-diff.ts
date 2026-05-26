@@ -1,16 +1,16 @@
 #!/usr/bin/env ts-node
 /**
- * analyze-diff.ts — Reemplaza prepare-diff.sh + agentes diff-analyzer + coverage-checker
+ * analyze-diff.ts — Fase A1 del pipeline QA
  *
- * Hace todo el trabajo determinista en una pasada (~3-5s vs ~3-4 min de agentes):
- *   1. Fetch del diff via @octokit/rest (GitHub) o simple-git (local)
+ * Fetch del diff (GitHub o local) + análisis determinista en ~3-5s:
+ *   1. Fetch via @octokit/rest (GitHub) o simple-git (local)
  *   2. Filtrado de ruido (lockfiles, dist, maps)
- *   3. Mapping file → module → risk
+ *   3. Mapping file → module → risk (ver docs/player-risk-map.json)
  *   4. Parse de patches con parse-diff
  *   5. Grep de cobertura existente en tests/
- *   6. Escribe tmp/pipeline/risk-map.json + coverage-report.json
+ *   6. Escribe tmp/pipeline/risk-map.json (schema v3.0) + coverage-report.json
  *
- * El LLM (review-diff skill) solo añade change_summary + rationale inline — sin subagentes.
+ * El agente diff-analyzer enriquece con rationale, change_summary y GitHub issues.
  *
  * Uso:
  *   ts-node scripts/analyze-diff.ts           → último commit en main
@@ -39,22 +39,66 @@ const PLAYER_GITHUB_REPO = process.env.PLAYER_GITHUB_REPO ?? ''
 const PLAYER_LOCAL_REPO = process.env.PLAYER_LOCAL_REPO ?? ''
 
 // File path prefix → module + risk (order matters — more specific first)
+// Verified against real player repo D:\repos\mediastream\lightning-player v1.0.59
+// See docs/player-risk-map.json for full context
 const MODULE_MAP = [
-  { prefix: 'src/player/base',    module: 'api',        risk: 'CRITICAL' },
-  { prefix: 'src/player/ads',     module: 'ads',        risk: 'CRITICAL' },
-  { prefix: 'src/player/drm',     module: 'drm',        risk: 'HIGH'     },
-  { prefix: 'src/player/handler', module: 'hls',        risk: 'HIGH'     },
-  { prefix: 'src/ads',            module: 'ads',        risk: 'CRITICAL' },
-  { prefix: 'src/api',            module: 'api',        risk: 'CRITICAL' },
-  { prefix: 'src/hls',            module: 'hls',        risk: 'HIGH'     },
-  { prefix: 'src/events',         module: 'events',     risk: 'HIGH'     },
-  { prefix: 'src/platform',       module: 'platform',   risk: 'HIGH'     },
-  { prefix: 'src/drm',            module: 'drm',        risk: 'HIGH'     },
-  { prefix: 'src/controls',       module: 'controls',   risk: 'MEDIUM'   },
-  { prefix: 'src/analytics',      module: 'analytics',  risk: 'MEDIUM'   },
-  { prefix: 'src/ui',             module: 'ui',         risk: 'MEDIUM'   },
-  { prefix: 'constants',          module: 'api',        risk: 'HIGH'     },
-  { prefix: 'package.json',       module: 'dependency', risk: 'HIGH'     },
+  // CRITICAL — bootstrap, orchestration, public API
+  { prefix: 'constants.cjs',                      module: 'constants',      risk: 'CRITICAL' },
+  { prefix: 'src/api/api.js',                     module: 'api-bootstrap',  risk: 'CRITICAL' },
+  { prefix: 'src/api/player.jsx',                 module: 'api-bootstrap',  risk: 'CRITICAL' },
+  { prefix: 'src/player/base.js',                 module: 'playback-core',  risk: 'CRITICAL' },
+  { prefix: 'src/platform/loadConfig.js',         module: 'platform-config',risk: 'CRITICAL' },
+  { prefix: 'src/events/index.js',                module: 'events',         risk: 'CRITICAL' },
+  { prefix: 'src/context/index.jsx',              module: 'state',          risk: 'CRITICAL' },
+  { prefix: 'src/controls/methods.js',            module: 'controls-api',   risk: 'CRITICAL' },
+  { prefix: 'src/plugins/index.js',               module: 'plugins',        risk: 'CRITICAL' },
+  // HIGH — playback handlers + DRM + all ad systems
+  { prefix: 'src/player/drm/',                    module: 'drm',            risk: 'HIGH'     },
+  { prefix: 'src/helper/getDRMSupport.js',        module: 'drm',            risk: 'HIGH'     },
+  { prefix: 'src/player/handler/hls/',            module: 'hls',            risk: 'HIGH'     },
+  { prefix: 'src/player/handler/dash/',           module: 'dash',           risk: 'HIGH'     },
+  { prefix: 'src/player/handler/native.js',       module: 'native',         risk: 'HIGH'     },
+  { prefix: 'src/ads/googleSGAI/',                module: 'ads-sgai',       risk: 'HIGH'     },
+  { prefix: 'src/ads/googleDAI/',                 module: 'ads-dai',        risk: 'HIGH'     },
+  { prefix: 'src/ads/googleIma/',                 module: 'ads-ima',        risk: 'HIGH'     },
+  { prefix: 'src/ads/adswizz/',                   module: 'ads-adswizz',    risk: 'HIGH'     },
+  { prefix: 'src/ads/mediaTailorDAI/',            module: 'ads-mediatailord',risk: 'HIGH'   },
+  { prefix: 'src/ads/itg/',                       module: 'ads-itg',        risk: 'HIGH'     },
+  { prefix: 'src/ads/manager/',                   module: 'ads-manager',    risk: 'HIGH'     },
+  { prefix: 'src/ads/api.js',                     module: 'ads-api',        risk: 'HIGH'     },
+  { prefix: 'src/ads/',                           module: 'ads',            risk: 'HIGH'     },
+  { prefix: 'src/platform/',                      module: 'platform-config',risk: 'HIGH'     },
+  { prefix: 'src/api/',                           module: 'api-bootstrap',  risk: 'HIGH'     },
+  { prefix: 'src/controls/',                      module: 'controls-api',   risk: 'HIGH'     },
+  { prefix: 'package.json',                       module: 'dependency',     risk: 'HIGH'     },
+  // MEDIUM — analytics, views, metadata, services
+  { prefix: 'src/analytics/comscore/',            module: 'analytics-comscore',      risk: 'MEDIUM' },
+  { prefix: 'src/analytics/streammetrics/',       module: 'analytics-streammetrics', risk: 'MEDIUM' },
+  { prefix: 'src/analytics/googletracker.jsx',    module: 'analytics-ga4',           risk: 'MEDIUM' },
+  { prefix: 'src/analytics/reactions/',           module: 'analytics-reactions',     risk: 'MEDIUM' },
+  { prefix: 'src/analytics/',                     module: 'analytics',               risk: 'MEDIUM' },
+  { prefix: 'src/metadata/',                      module: 'metadata',                risk: 'MEDIUM' },
+  { prefix: 'src/chromecast/',                    module: 'chromecast',              risk: 'MEDIUM' },
+  { prefix: 'src/federation/',                    module: 'federation',              risk: 'MEDIUM' },
+  { prefix: 'src/view/video/components/skin/tv/', module: 'ui-tv',                   risk: 'MEDIUM' },
+  { prefix: 'src/view/video/',                    module: 'ui-video',                risk: 'MEDIUM' },
+  { prefix: 'src/view/radio/',                    module: 'ui-radio',                risk: 'MEDIUM' },
+  { prefix: 'src/view/radioSA/',                  module: 'ui-radio',                risk: 'MEDIUM' },
+  { prefix: 'src/view/podcast/',                  module: 'ui-podcast',              risk: 'MEDIUM' },
+  { prefix: 'src/view/podcast2/',                 module: 'ui-podcast',              risk: 'MEDIUM' },
+  { prefix: 'src/view/compact/',                  module: 'ui-compact',              risk: 'MEDIUM' },
+  { prefix: 'src/view/reels/',                    module: 'ui-compact',              risk: 'MEDIUM' },
+  { prefix: 'src/view/common/',                   module: 'ui-common',               risk: 'MEDIUM' },
+  { prefix: 'src/view/',                          module: 'views',                   risk: 'MEDIUM' },
+  { prefix: 'src/platform/resumePlaying.js',      module: 'platform-resume',         risk: 'MEDIUM' },
+  // LOW — i18n, compat, helpers, build
+  { prefix: 'src/view/i18n/',                     module: 'i18n',           risk: 'LOW'      },
+  { prefix: 'src/api/legacyApiCompat.js',         module: 'api-compat',     risk: 'LOW'      },
+  { prefix: 'src/api/wdyr.js',                    module: 'dev-tools',      risk: 'LOW'      },
+  { prefix: 'src/dev-ui/',                        module: 'dev-tools',      risk: 'LOW'      },
+  { prefix: 'src/helper/',                        module: 'helpers',        risk: 'LOW'      },
+  { prefix: 'webpack.',                           module: 'build',          risk: 'LOW'      },
+  { prefix: 'babel.',                             module: 'build',          risk: 'LOW'      },
 ] as const
 
 const NOISE_PATTERNS = [
@@ -64,33 +108,100 @@ const NOISE_PATTERNS = [
 ]
 
 // Known test files per module (direct coverage)
+// Module names match MODULE_MAP above
 const COVERAGE_MAP: Record<string, string[]> = {
-  ads:        ['tests/integration/ad-beacons.spec.ts'],
-  hls:        ['tests/integration/hls-abr.spec.ts'],
-  events:     ['tests/e2e/events.spec.ts'],
-  api:        ['tests/contract/player-api.spec.ts', 'tests/e2e/player-api.spec.ts'],
-  platform:   ['tests/e2e/vod-playback.spec.ts', 'tests/e2e/live-playback.spec.ts'],
-  drm:        [],
-  controls:   ['tests/e2e/player-api.spec.ts'],
-  analytics:  [],
-  ui:         ['tests/visual/player-ui.spec.ts', 'tests/a11y/accessibility.spec.ts'],
-  dependency: ['tests/smoke/player-smoke.spec.ts', 'tests/e2e/vod-playback.spec.ts', 'tests/e2e/live-playback.spec.ts'],
-  other:      ['tests/smoke/player-smoke.spec.ts'],
+  'constants':               ['tests/contract/player-api.spec.ts'],
+  'api-bootstrap':           ['tests/contract/player-api.spec.ts', 'tests/e2e/vod-playback.spec.ts'],
+  'playback-core':           ['tests/e2e/vod-playback.spec.ts', 'tests/e2e/live-playback.spec.ts'],
+  'platform-config':         ['tests/e2e/vod-playback.spec.ts', 'tests/e2e/live-playback.spec.ts'],
+  'state':                   ['tests/e2e/player-api.spec.ts'],
+  'controls-api':            ['tests/contract/player-api.spec.ts', 'tests/e2e/player-api.spec.ts'],
+  'plugins':                 ['tests/e2e/vod-playback.spec.ts', 'tests/integration/ad-beacons.spec.ts'],
+  'events':                  ['tests/e2e/events.spec.ts'],
+  'hls':                     ['tests/integration/hls-abr.spec.ts'],
+  'dash':                    ['tests/e2e/vod-playback.spec.ts'],
+  'native':                  ['tests/e2e/vod-playback.spec.ts'],
+  'drm':                     [],
+  'ads-ima':                 ['tests/integration/ad-beacons.spec.ts'],
+  'ads-sgai':                [],
+  'ads-dai':                 ['tests/integration/ad-beacons.spec.ts'],
+  'ads-adswizz':             [],
+  'ads-mediatailord':        [],
+  'ads-itg':                 [],
+  'ads-manager':             ['tests/integration/ad-beacons.spec.ts'],
+  'ads':                     ['tests/integration/ad-beacons.spec.ts'],
+  'ads-api':                 ['tests/integration/ad-beacons.spec.ts'],
+  'dependency':              ['tests/e2e/vod-playback.spec.ts', 'tests/e2e/live-playback.spec.ts'],
+  'analytics-comscore':      [],
+  'analytics-streammetrics': [],
+  'analytics-ga4':           [],
+  'analytics-reactions':     [],
+  'analytics':               [],
+  'metadata':                ['tests/e2e/radio-nowplaying-metadata.spec.ts'],
+  'chromecast':              [],
+  'federation':              [],
+  'ui-video':                ['tests/visual/player-ui.spec.ts', 'tests/a11y/accessibility.spec.ts'],
+  'ui-radio':                ['tests/visual/player-ui.spec.ts'],
+  'ui-podcast':              [],
+  'ui-compact':              ['tests/visual/player-ui.spec.ts'],
+  'ui-tv':                   [],
+  'ui-common':               ['tests/visual/player-ui.spec.ts', 'tests/a11y/accessibility.spec.ts'],
+  'views':                   ['tests/visual/player-ui.spec.ts'],
+  'platform-resume':         ['tests/e2e/vod-playback.spec.ts'],
+  'i18n':                    [],
+  'api-compat':              [],
+  'dev-tools':               [],
+  'helpers':                 [],
+  'build':                   [],
+  'other':                   [],
 }
 
 // Keywords that signal coverage when grepped in test files
 const MODULE_KEYWORDS: Record<string, string[]> = {
-  ads:        ['adsStarted', 'isPlayingAd', 'ad-beacons', 'IMA', 'VAST', 'adsError', 'adsComplete'],
-  hls:        ['hls-abr', 'levelchanged', 'ABR', 'bitrate', 'HLS'],
-  events:     ['waitForEvent', "player.on("],
-  api:        ['player.play()', 'player.pause()', 'player.seek', 'player-api'],
-  platform:   ['setupPlatformMocks', 'mockContentConfig', 'mockPlayerConfig'],
-  drm:        ['Widevine', 'PlayReady', 'FairPlay', 'drm'],
-  controls:   ['aria-label', 'keyboard'],
-  analytics:  ['youbora', 'konodrac', 'comscore', 'GA4'],
-  ui:         ['toMatchSnapshot', 'screenshot', 'axe'],
-  dependency: [],
-  other:      [],
+  'constants':               ['Events.', 'PlayerEvents'],
+  'api-bootstrap':           ['player.play()', 'player.pause()', 'player-api', 'vod-playback'],
+  'playback-core':           ['vod-playback', 'live-playback', 'handler'],
+  'platform-config':         ['setupPlatformMocks', 'mockContentConfig', 'mockPlayerConfig'],
+  'state':                   ['player.play()', 'player.pause()', 'player-api'],
+  'controls-api':            ['player.play()', 'player.pause()', 'player.seek', 'player-api', 'aria-label'],
+  'plugins':                 ['vod-playback', 'ad-beacons', 'adsStarted'],
+  'events':                  ['waitForEvent', 'player.on(', 'Events.'],
+  'hls':                     ['hls-abr', 'levelchanged', 'ABR', 'bitrate', 'HLS'],
+  'dash':                    ['DASH', 'dashjs', 'vod-playback'],
+  'native':                  ['mp4', 'mp3', 'FairPlay', 'webkitneedkey'],
+  'drm':                     ['Widevine', 'PlayReady', 'FairPlay', 'drm', 'DRM'],
+  'ads-ima':                 ['adsStarted', 'isPlayingAd', 'IMA', 'VAST', 'adsError', 'adsComplete', 'ad-beacons'],
+  'ads-sgai':                ['SGAI', 'sgai', 'serverGuided'],
+  'ads-dai':                 ['DAI', 'dai', 'cuepoint', 'adTagUrl'],
+  'ads-adswizz':             ['adswizz', 'Adswizz'],
+  'ads-mediatailord':        ['mediaTailor', 'MediaTailor'],
+  'ads-itg':                 ['ITG', 'itg', 'inTheGame'],
+  'ads-manager':             ['adsStarted', 'adsComplete', 'VAST', 'VMAP', 'OMID', 'ad-beacons'],
+  'ads':                     ['adsStarted', 'isPlayingAd', 'ad-beacons', 'IMA', 'VAST', 'adsError'],
+  'ads-api':                 ['adsStarted', 'ad-beacons'],
+  'dependency':              [],
+  'analytics-comscore':      ['comscore', 'Comscore'],
+  'analytics-streammetrics': ['streammetrics', 'StreamMetrics', 'youbora'],
+  'analytics-ga4':           ['GA4', 'gtag', 'googletracker'],
+  'analytics-reactions':     ['reactions', 'Reactions', 'Firebase'],
+  'analytics':               ['comscore', 'GA4', 'streammetrics', 'konodrac'],
+  'metadata':                ['nowplaying', 'nowPlaying', 'MediaSession', 'metadata'],
+  'chromecast':              ['chromecast', 'Chromecast', 'cast'],
+  'federation':              ['federation', 'Federation'],
+  'ui-video':                ['toMatchSnapshot', 'screenshot', 'axe', 'aria-label'],
+  'ui-radio':                ['radio', 'toMatchSnapshot'],
+  'ui-podcast':              ['podcast'],
+  'ui-compact':              ['compact', 'reels', 'toMatchSnapshot'],
+  'ui-tv':                   ['tv', 'dpad', 'D-pad'],
+  'ui-common':               ['toMatchSnapshot', 'screenshot', 'axe'],
+  'views':                   ['toMatchSnapshot', 'screenshot'],
+  'platform-resume':         ['resumePlaying', 'resume', 'continue'],
+  'i18n':                    ['i18n', 'locale', 'translation'],
+  'api-compat':              ['legacyApiCompat', 'postMessage'],
+  'dev-tools':               [],
+  'helpers':                 [],
+  'build':                   [],
+  'other':                   [],
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -122,6 +233,12 @@ interface FetchResult {
   sourceDesc:    string
   prTitle:       string
   prBody:        string
+  prNumber?:     number
+  branchName?:   string
+  prUrl?:        string
+  baseBranch?:   string
+  prAuthor?:     string
+  prLabels?:     string[]
 }
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
@@ -276,6 +393,12 @@ async function fetchPR(octokit: Octokit, owner: string, repo: string, prNumber: 
     sourceDesc: `PR #${prNumber} — ${prRes.data.title}`,
     prTitle: prRes.data.title,
     prBody: (prRes.data.body ?? '').split('\n').slice(0, 5).join('\n'),
+    prNumber,
+    branchName: prRes.data.head.ref,
+    prUrl: prRes.data.html_url,
+    baseBranch: prRes.data.base.ref,
+    prAuthor: prRes.data.user?.login ?? '',
+    prLabels: (prRes.data.labels ?? []).map((l: { name?: string }) => l.name ?? '').filter(Boolean),
   }
 }
 
@@ -301,6 +424,8 @@ async function fetchBranch(octokit: Octokit, owner: string, repo: string, branch
     sourceDesc: `branch ${branch} vs ${base}`,
     prTitle: '',
     prBody: '',
+    branchName: branch,
+    baseBranch: base,
   }
 }
 
@@ -368,7 +493,7 @@ async function fetchLocal(input: string): Promise<FetchResult> {
     })
   }
 
-  return { rawFiles, commitMessage, sourceDesc: `local ${target}`, prTitle: '', prBody: '' }
+  return { rawFiles, commitMessage, sourceDesc: `local ${target}`, prTitle: '', prBody: '', branchName: target }
 }
 
 // ── Build output JSONs ────────────────────────────────────────────────────────
@@ -382,6 +507,12 @@ function buildRiskMap(
   prTitle: string,
   prBody: string,
   timestamp: string,
+  prNumber?: number,
+  branchName?: string,
+  prUrl?: string,
+  baseBranch?: string,
+  prAuthor?: string,
+  prLabels?: string[],
 ) {
   const testTypeMap: Record<ChangeType, string[]> = {
     'bug-fix':     ['smoke', 'e2e', 'integration'],
@@ -407,7 +538,7 @@ function buildRiskMap(
         path: f.path,
         status: f.status,
         risk: f.risk,
-        change_summary: '',  // filled inline by review-diff skill after this script
+        change_summary: '',  // filled inline by LLM after this script
       })),
       recommended_test_types: recommendedTestTypes,
       suggested_specs: COVERAGE_MAP[moduleName] ?? [],
@@ -424,17 +555,38 @@ function buildRiskMap(
   const suggestedSpecPatterns = Array.from(new Set(moduleNames.flatMap(m => COVERAGE_MAP[m] ?? [])))
 
   return {
-    schema_version: '2.0',
+    schema_version: '3.0',
     timestamp,
     input: { source: sourceDesc, description: prTitle || commitMessage },
+    pr_info: {
+      number: prNumber ?? null,
+      title: prTitle || null,
+      url: prUrl ?? null,
+      base_branch: baseBranch ?? null,
+      head_branch: branchName ?? null,
+      author: prAuthor ?? null,
+      labels: prLabels ?? [],
+    },
     change_type: changeType,
     risk_level: globalRisk,
     modules,
     test_priority: suggestedSpecPatterns.length > 0 ? 'run-existing' : 'generate-and-run',
-    rationale: '',  // filled inline by review-diff skill
+    rationale: '',  // filled inline by LLM
     affected_modules: moduleNames,
     recommended_test_types: recommendedTestTypes,
     suggested_spec_patterns: suggestedSpecPatterns,
+    cross_cutting_risks: [] as string[],
+    related_github_issues: [] as Array<{ number: number; title: string; url: string; relevance: string; matched_modules: string[] }>,
+    pipeline_state: {
+      analyze_completed: true,
+      llm_enrichment_completed: false,
+      coverage_checked: false,
+      tests_generated: false,
+      test_plan_ready: false,
+      execution_completed: false,
+    },
+    test_plan_summary: null as null | string,
+    verdict: null as null | string,
   }
 }
 
@@ -553,6 +705,7 @@ async function main() {
   const riskMap = buildRiskMap(
     files, modulesSet, changeType,
     result.sourceDesc, result.commitMessage, result.prTitle, result.prBody, timestamp,
+    result.prNumber, result.branchName, result.prUrl, result.baseBranch, result.prAuthor, result.prLabels,
   )
   const coverageReport = buildCoverageReport(Array.from(modulesSet), riskMap, timestamp)
 
@@ -574,7 +727,7 @@ async function main() {
   log(`✅ risk-map.json + coverage-report.json → ${OUTPUT_DIR}`)
   log('')
 
-  // Compact summary to stdout — consumed by review-diff skill
+  // Compact summary to stdout — consumed by the calling skill
   console.log(JSON.stringify({
     source:          result.sourceDesc,
     change_type:     changeType,

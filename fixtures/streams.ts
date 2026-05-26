@@ -45,8 +45,11 @@ export const ContentIds = {
    */
   vodMultiAudio: process.env.CONTENT_ID_VOD_MULTI_AUDIO || 'TODO_VOD_MULTI_AUDIO_ID',
 
-  /** VOD con ads: pre-roll + mid-roll a los 10s + post-roll */
+  /** VOD con ads: pre-roll + mid-roll a los 10s + post-roll (VMAP Mediastream) */
   vodWithAds: process.env.CONTENT_ID_VOD_WITH_ADS || '6900fffb6ddf33fd39a5288e',
+
+  /** VOD con Google IMA VMAP: pre-roll + mid-roll (cue=15s) + post-roll vía pubads.g.doubleclick.net */
+  vodWithImaAds: process.env.CONTENT_ID_VOD_WITH_IMA_ADS || '6a1448a663e206efb1ae2ded',
 
   /**
    * Episodio VOD con "siguiente episodio" configurado en la plataforma.
@@ -55,12 +58,8 @@ export const ContentIds = {
    */
   episodeWithNext: process.env.CONTENT_ID_EPISODE_WITH_NEXT || 'TODO_EPISODE_WITH_NEXT_ID',
 
-  /**
-   * VOD DASH — stream VOD con manifiesto MPD (type: 'media').
-   * Pendiente: necesita un content ID VOD DASH sin DRM en plataforma DEV.
-   * Tests se saltean si el valor empieza con TODO_.
-   */
-  dashVod: process.env.CONTENT_ID_DASH_VOD || 'TODO_DASH_VOD_NO_DRM_ID',
+  /** VOD DASH — stream VOD con manifiesto MPD (type: 'media') */
+  dashVod: process.env.CONTENT_ID_DASH_VOD || '69b0918a741d2bbba0cacf78',
 
   /** Live DASH — stream live con manifiesto MPD (type: 'live') */
   dashLive: process.env.CONTENT_ID_DASH_LIVE || '6a0f2956a2a6f91404c3cc0c',
