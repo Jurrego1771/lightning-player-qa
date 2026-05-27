@@ -43,7 +43,21 @@ jobs:
 
       - run: npm ci
 
-      - run: npx playwright install chromium firefox --with-deps
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-chromium-firefox-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright + deps
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install chromium firefox --with-deps
+
+      - name: Install Playwright system deps
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium firefox
+
       - run: sudo apt-get install -y ffmpeg
 
       - name: Log ambiente
