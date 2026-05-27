@@ -1,15 +1,349 @@
 {
-  "version": "1.0",
-  "created_at": null,
-  "pipeline_run": null,
-  "ref": null,
-  "diff": null,
-  "risk_assessment": null,
-  "coverage_gaps": null,
-  "test_plan": null,
-  "execution_results": null,
-  "flaky_filtered": null,
-  "verdict": null,
-  "visual_results": null,
-  "failure_analysis": null
+  "schema_version": "1.0",
+  "pipeline_id": "2026-05-26T23:30:00Z",
+  "pipeline_run": "2026-05-26T23:23:05.598Z",
+  "input_ref": "fix/duration",
+  "input_type": "branch",
+  "ref": "fix/duration",
+  "created_at": "2026-05-26T23:23:05.598Z",
+  "base_branch": "master",
+  "base_sha": "1236be047d5835ca9d2c7207c2a0cdb32a615bdf",
+  "head_sha": "130863f004eb29016df89ef932cefa89e7a2965d",
+  "diff": {
+    "classification_completed": true,
+    "total_files_changed": 2,
+    "cross_cutting_risk": false,
+    "cross_cutting_reasons": [],
+    "files": [
+      {
+        "path": "src/view/video/atoms/duration.js",
+        "module": "ui-video",
+        "inferred": false,
+        "lines_added": 13,
+        "lines_removed": 8,
+        "status": "modified",
+        "symbols_changed": [
+          "durationEffectAtom",
+          "onDurationChange",
+          "isAdsPlaying",
+          "isAdsPlayingAtom",
+          "playerReadyAtom",
+          "durationBaseAtom"
+        ],
+        "events_touched": [
+          "Events._durationchange"
+        ]
+      },
+      {
+        "path": "test/overlay-ads/index.html",
+        "module": "playback-core",
+        "inferred": true,
+        "lines_added": 2,
+        "lines_removed": 1,
+        "status": "modified",
+        "symbols_changed": [
+          "data-id",
+          "data-player"
+        ],
+        "events_touched": []
+      }
+    ],
+    "modules_affected": [
+      "ui-video",
+      "playback-core"
+    ],
+    "excluded_files": [
+      {
+        "path": ".claude/settings.local.json",
+        "reason": "non-player config file — not classified"
+      }
+    ]
+  },
+  "risk_assessment": {
+    "assessment_completed": true,
+    "assessed_at": "2026-05-26T23:31:00Z",
+    "yaml_source": "risk_map.yaml",
+    "risk_label_global": "CRITICAL",
+    "rationale": "playback-core contiene test/overlay-ads/index.html con clasificacion inferred:true sobre un modulo base CRITICAL (0.92). Aplicando multiplicador x1.3 por inferred el score escala a 1.0 (clampeado). ui-video permanece en MEDIUM (0.50): el diff es un fix de race condition en atoms de duracion sin eliminar exports ni superar umbrales de magnitud. Regla 2 aplica: >=1 modulo con risk_score >= 0.85 implica CRITICAL global.",
+    "cross_cutting_active": false,
+    "modules": [
+      {
+        "module": "ui-video",
+        "risk_score": 0.5,
+        "risk_label": "MEDIUM",
+        "base_risk_from_yaml": "medium",
+        "escalation_applied": false,
+        "escalation_reason": null,
+        "breaks_if_not_tested": [
+          "durationBaseAtom ya no se resetea a null al terminar ads: si habia dependientes que usaban null como sentinel, la duracion puede quedar congelada en el valor previo al bloque de ads",
+          "suscripcion directa a isAdsPlayingAtom puede dejar un subscriber activo si el cleanup del efecto no se ejecuta correctamente, causando renders de duracion incorrectos durante y despues de ads"
+        ],
+        "related_issues": []
+      },
+      {
+        "module": "playback-core",
+        "risk_score": 1,
+        "risk_label": "CRITICAL",
+        "base_risk_from_yaml": "critical",
+        "escalation_applied": true,
+        "escalation_reason": "inferred:true sobre modulo base CRITICAL (0.92) — clasificacion incierta, multiplicador conservativo x1.3 clampea a 1.0. El archivo test/overlay-ads/index.html cambia solo atributos data-id/data-player (cambio trivial de datos), pero la incertidumbre de clasificacion impide reducir el score base del modulo.",
+        "breaks_if_not_tested": [
+          "Si test/overlay-ads/index.html es un harness de integracion referenciado por CI, cambiar data-id o data-player puede apuntar a un stream o player distinto haciendo que los tests de overlay-ads validen contra el target incorrecto",
+          "La logica base de reproduccion (src/player/base.js) no fue modificada directamente — el riesgo real es de clasificacion incierta, no de cambio de comportamiento confirmado en playback-core"
+        ],
+        "related_issues": []
+      }
+    ],
+    "modules_critical": [
+      "playback-core"
+    ],
+    "modules_high": [],
+    "modules_medium": [
+      "ui-video"
+    ],
+    "modules_low": []
+  },
+  "test_plan": {
+    "plan_completed": true,
+    "planned_at": "2026-05-26T23:35:00Z",
+    "risk_label": "CRITICAL",
+    "risk_label_rationale": "Etiquetado como CRITICAL por playback-core (inferred, score 1.0), pero el riesgo real es MEDIUM en ui-video (score 0.5, fix focalizado de race condition en durationEffectAtom). El cambio en playback-core es trivial (atributos data-id/data-player en HTML de test). Estrategia: test selectivo en ui-video sin ampliar scope a menos que sea necesario.",
+    "includes_visual_regression": true,
+    "visual_regression_reason": "Módulo ui-video afectado — incluir regresión visual automáticamente",
+    "steps": [
+      {
+        "step": 1,
+        "label": "Integration — duration-effect-ads (MUST gap recién llenado)",
+        "command": "npx playwright test tests/integration/duration-effect-ads.spec.ts --project=chromium",
+        "blocking": true,
+        "reason": "Cubre el gap MUST identificado por A4: valida durationEffectAtom + durationBaseAtom durante ads con cleanup correcto. Este spec fue generado por A5 específicamente para el cambio en src/view/video/atoms/duration.js",
+        "estimated_duration_seconds": 120,
+        "specs": [
+          "tests/integration/duration-effect-ads.spec.ts"
+        ],
+        "symbols_validated": [
+          "durationEffectAtom",
+          "durationBaseAtom"
+        ],
+        "events_validated": [
+          "Events._durationchange"
+        ]
+      },
+      {
+        "step": 2,
+        "label": "E2E selectivo — eventos de duración",
+        "command": "npx playwright test tests/e2e/events.spec.ts --grep \"duration\" --project=chromium",
+        "blocking": false,
+        "reason": "Valida que Events._durationchange se emite correctamente en flujos de usuario. El cambio en atoms/duration.js toca este evento — verificar que sigue disparándose en contexto E2E real.",
+        "estimated_duration_seconds": 90,
+        "specs": [
+          "tests/e2e/events.spec.ts"
+        ],
+        "symbols_validated": [],
+        "events_validated": [
+          "Events._durationchange"
+        ]
+      },
+      {
+        "step": 3,
+        "label": "Visual regression — ui-video",
+        "command": "npx playwright test tests/visual/player-ui.spec.ts --project=chromium",
+        "blocking": false,
+        "reason": "Regresión visual automática: ui-video es módulo UI afectado. Validar que el fix de race condition en durationEffectAtom no causó cambios visuales no intencionados (ej. duración mostrándose incorrectamente, saltos en el display).",
+        "estimated_duration_seconds": 120,
+        "specs": [
+          "tests/visual/player-ui.spec.ts"
+        ]
+      },
+      {
+        "step": 4,
+        "label": "Smoke — red de seguridad final",
+        "command": "npx playwright test tests/smoke/player-smoke.spec.ts --project=chromium",
+        "blocking": false,
+        "reason": "Verificar que el player básico no se rompió. El cambio es pequeño (+15/-9 líneas) pero la batería de smoke previene regresiones inesperadas en flow críticos.",
+        "estimated_duration_seconds": 120,
+        "specs": [
+          "tests/smoke/player-smoke.spec.ts"
+        ]
+      }
+    ],
+    "total_estimated_seconds": 450,
+    "total_estimated_human": "~7.5 minutos",
+    "full_suite_estimated_seconds": 1500,
+    "time_saved_percent": 70,
+    "skip_remaining_if_step_fails": [
+      1
+    ],
+    "notes": [
+      "playback-core (CRITICAL inferred) no tiene tests explícitos porque su cambio es trivial (atributos HTML en test file). Smoke + integration cubren la estabilidad básica.",
+      "No se incluye contract: el cambio no toca API pública (controls-api, api-bootstrap, events, constants).",
+      "No se incluye e2e completo: el riesgo real es MEDIUM en ui-video. E2E selectivo en duration es suficiente.",
+      "No se incluye multi-browser (firefox/webkit): cross_cutting_active=false, no hay cambios cross-cutting.",
+      "Si step 1 (duration-effect-ads) falla: parar aquí. Este es el gap MUST — si falla, el cambio no es seguro.",
+      "Spec duration-effect-ads.spec.ts fue generado por A5 en la sesión anterior y validado con npx playwright test --list."
+    ]
+  },
+  "coverage_gaps": {
+    "audit_completed": true,
+    "audited_at": "2026-05-26T23:29:57Z",
+    "generation_completed": true,
+    "generated_at": "2026-05-26T23:34:00Z",
+    "total_gaps": 1,
+    "must_gaps": 1,
+    "should_gaps": 0,
+    "generated_specs": [
+      {
+        "path": "tests/integration/duration-effect-ads.spec.ts",
+        "gap_module": "ui-video",
+        "tests_count": 4,
+        "covers_symbols": [
+          "durationEffectAtom",
+          "durationBaseAtom"
+        ],
+        "covers_events": [
+          "Events._durationchange"
+        ],
+        "docs_used": true,
+        "docs_sources": [
+          "context/features/ads.md",
+          "context/features/playback.md"
+        ],
+        "mode": "full",
+        "validation_passed": true,
+        "validation_method": "npx playwright test --list"
+      }
+    ],
+    "gaps": [
+      {
+        "priority": "MUST",
+        "module": "ui-video",
+        "file": "src/view/video/atoms/duration.js",
+        "description": "No existe ningún test que valide el comportamiento específico de durationEffectAtom durante ads (cleanup del effect + reset de durationBaseAtom). El cambio corrige una race condition en el cleanup pero no hay cobertura que valide que la duración no queda congelada al terminar ads o que el subscriber se desuscribe correctamente.",
+        "symbols_uncovered": [
+          "durationEffectAtom",
+          "durationBaseAtom"
+        ],
+        "events_uncovered": [
+          "Events._durationchange"
+        ],
+        "known_gap": false,
+        "known_gap_reference": null,
+        "suggested_spec_path": "tests/integration/duration-effect-ads.spec.ts",
+        "suggested_spec_type": "integration",
+        "existing_partial_coverage": [
+          "tests/e2e/events.spec.ts (solo durationchange sin ads)",
+          "tests/integration/ad-beacons.spec.ts (ads sin validar duration)"
+        ]
+      }
+    ]
+  },
+  "flaky_detection_completed": true,
+  "flaky_detection_timestamp": "2026-05-26T23:39:00.000Z",
+  "confirmed_failures": [
+    {
+      "test_id": "tests/contract/player-api-format-param.spec.ts::sin format param: player se inicializa igual que antes (backward compat)::contract",
+      "spec_file": "tests/contract/player-api-format-param.spec.ts",
+      "test_title": "sin format param: player se inicializa igual que antes (backward compat)",
+      "project": "contract",
+      "status": "failed",
+      "error_message": "TimeoutError: page.waitForFunction: Timeout 15000ms exceeded. at LightningPlayerPage.waitForEvent (D:\\repos\\jurrego1771\\lightning-player-qa\\fixtures\\player.ts:297:21) at D:\\repos\\jurrego1771\\lightning-player-qa\\tests\\contract\\player-api-format-param.spec.ts:208:26",
+      "flaky_count_30d": 0,
+      "retry_attempts": 0,
+      "confirmation_reason": "nuevo fallo sin historial flaky"
+    },
+    {
+      "test_id": "tests/integration/duration-effect-ads.spec.ts::pre-roll: getDuration() refleja la duración del contenido al terminar el ad, no la del ad",
+      "spec_file": "tests/integration/duration-effect-ads.spec.ts",
+      "test_title": "pre-roll: getDuration() refleja la duración del contenido al terminar el ad, no la del ad",
+      "project": "chromium",
+      "status": "failed",
+      "error_message": "expect.poll: getDuration() debería reflejar la duración del contenido post-ad (>= 60s) — Expected: >= 60, Received: 8.03408",
+      "flaky_count_30d": 0,
+      "retry_attempts": 0,
+      "confirmation_reason": "100% fail rate — bug de test fixture (stream dura 8s, umbral de 60s incorrecto)"
+    },
+    {
+      "test_id": "tests/integration/duration-effect-ads.spec.ts::pre-roll: evento durationchange se emite con la duración del contenido después del ad",
+      "spec_file": "tests/integration/duration-effect-ads.spec.ts",
+      "test_title": "pre-roll: evento durationchange se emite con la duración del contenido después del ad",
+      "project": "chromium",
+      "status": "failed",
+      "error_message": "expect.poll: Se esperaba al menos un evento durationchange con valor >= 60s después de que el ad terminara — Expected: >= 1, Received: 0",
+      "flaky_count_30d": 0,
+      "retry_attempts": 0,
+      "confirmation_reason": "100% fail rate — bug de test fixture (stream dura 8s, umbral de 60s incorrecto)"
+    },
+    {
+      "test_id": "tests/integration/duration-effect-ads.spec.ts::edge case: getDuration() es valido (> 0, no NaN, no congelado en valor de ad) cuando el ad termina rapido",
+      "spec_file": "tests/integration/duration-effect-ads.spec.ts",
+      "test_title": "edge case: getDuration() es valido (> 0, no NaN, no congelado en valor de ad) cuando el ad termina rapido",
+      "project": "chromium",
+      "status": "failed",
+      "error_message": "expect: getDuration() retornó un valor <= 60s post-ad — Expected: >= 60, Received: 8.03408",
+      "flaky_count_30d": 0,
+      "retry_attempts": 0,
+      "confirmation_reason": "100% fail rate — bug de test fixture (stream dura 8s, umbral de 60s incorrecto)"
+    },
+    {
+      "test_id": "tests/integration/duration-effect-ads.spec.ts::VOD sin ads: getDuration() retorna un valor valido desde el inicio",
+      "spec_file": "tests/integration/duration-effect-ads.spec.ts",
+      "test_title": "VOD sin ads: getDuration() retorna un valor valido desde el inicio",
+      "project": "chromium",
+      "status": "failed",
+      "error_message": "expect.poll: getDuration() debería retornar un valor >= 60s en VOD sin ads — Expected: >= 60, Received: 8.03408",
+      "flaky_count_30d": 0,
+      "retry_attempts": 0,
+      "confirmation_reason": "100% fail rate — bug de test fixture (stream dura 8s, umbral de 60s incorrecto). El test de no-regresión también falla porque comparte el mismo fixture mal dimensionado."
+    }
+  ],
+  "flaky_failures": [],
+  "flaky_summary": {
+    "total_failed": 5,
+    "confirmed": 5,
+    "flaky_filtered": 0,
+    "new_flaky_registrations": 0
+  },
+  "failure_analysis": {
+    "analyzed_at": "2026-05-26T23:45:00Z",
+    "root_cause_category": "TEST_FIXTURE_BUG",
+    "root_cause_summary": "El stream HLS local usado por isolatedPlayer (fixtures/streams/vod/360p/index.m3u8 y 720p/index.m3u8) contiene solo 4 segmentos de 2s cada uno: duración real = 8s (~8.034s con overhead de decodificación). El spec fue generado por A5 asumiendo que LocalStreams.hls.vod tendría duración > 60s, pero el fixture nunca fue dimensionado para esa duración. La constante MIN_CONTENT_DURATION_S = 60 es incorrecta para el stream de test.",
+    "evidence": [
+      "fixtures/streams/vod/360p/index.m3u8: 4 segmentos × #EXTINF:2.000000 = 8s total",
+      "fixtures/streams/vod/720p/index.m3u8: idéntico — 4 segmentos × 2s = 8s total",
+      "Valor recibido en todos los tests: 8.03408s — coincide exactamente con la duración del stream local",
+      "El test 'VOD sin ads' también falla con 8.03408s: descarta que sea un bug del player post-ad. Si fuera durationBaseAtom congelado, el test sin ads no se vería afectado.",
+      "El valor recibido es consistente (8.03408) en los 4 tests: no hay reset a 0/NaN, lo que indica que durationEffectAtom funciona correctamente y está reportando la duración real del stream."
+    ],
+    "player_bug_ruled_out": true,
+    "player_bug_ruling_reason": "Si el bug de race condition en durationEffectAtom siguiera presente, getDuration() retornaría la duración del ad (15-30s según mock-vast preroll.xml) o 0/NaN post-cleanup. El valor constante de 8.034s en TODOS los tests — incluyendo el test sin ads que nunca corre ads — confirma que el player está reportando correctamente la duración del stream real. El fix en durationEffectAtom aparenta funcionar. El problema es el umbral del test, no el comportamiento del player.",
+    "fix_required": "TEST_FIXTURE",
+    "fix_description": "Dos opciones de fix para los tests en duration-effect-ads.spec.ts:\n  OPCION A (recomendada): Regenerar el stream HLS local con duración >= 60s. Actualizar scripts/generate-fixtures.sh o crear un fixture dedicado 'vod-long' con al menos 30 segmentos de 2s. Mantener MIN_CONTENT_DURATION_S = 60.\n  OPCION B (parche rápido): Reemplazar MIN_CONTENT_DURATION_S = 60 por MIN_CONTENT_DURATION_S = 5 (ajustado a la duración real del stream de test), y MAX_AD_DURATION_S por un valor menor que la duración del contenido (ej. 3s). Esta opción degrada la calidad del test — un ad de 5s pasaría la verificación. No recomendada.\n  OPCION C (recomendada para tests de ads): Usar un ContentId real (ContentIds.vodShort = '69d2f1e0461dd502cd921ad6', ~2min) con el fixture player real (no isolatedPlayer), que garantiza duración >= 60s. Requiere red y acceso a DEV platform.",
+    "impact_on_verdict": "Los fallos son bugs del test (fixture subdimensionado), no bugs del player. La funcionalidad real de durationEffectAtom no puede ser confirmada ni negada con este stream de 8s — el test no puede distinguir entre 'duración del ad' y 'duración del contenido' si el contenido dura menos que el ad esperado."
+  },
+  "verdict": {
+    "decision": "INVESTIGATE",
+    "decided_at": "2026-05-26T23:45:00Z",
+    "confidence": "HIGH",
+    "rationale": "Los 4 fallos en duration-effect-ads.spec.ts son bugs del fixture de test, no del player. El stream local HLS (fixtures/streams/vod/) dura 8s — la fixture fue generada con solo 4 segmentos de 2s, mientras que el spec asume MIN_CONTENT_DURATION_S = 60. Sin embargo, el fix en durationEffectAtom NO PUEDE SER VALIDADO con estos tests rotos: la batería MUST (step 1 del plan) falla completamente. No hay evidencia de que el player bug esté presente NI de que esté corregido. Se requiere corregir el fixture antes de poder emitir SAFE_TO_MERGE.",
+    "blocking_issues": [
+      {
+        "issue_id": "FIXTURE-001",
+        "type": "TEST_FIXTURE_BUG",
+        "severity": "BLOCKER",
+        "description": "fixtures/streams/vod/ solo tiene 4 segmentos HLS de 2s (duración total: ~8s). MIN_CONTENT_DURATION_S = 60 en duration-effect-ads.spec.ts es incorrecto para este stream. Los 4 tests fallan por este motivo.",
+        "affected_tests": [
+          "tests/integration/duration-effect-ads.spec.ts (4 tests — 100% fail rate)"
+        ],
+        "fix": "Regenerar fixture vod con >= 30 segmentos de 2s (>= 60s) O ajustar MIN_CONTENT_DURATION_S al valor real del stream local (> duración máxima del ad mock).",
+        "fix_file": "fixtures/streams/vod/360p/index.m3u8, fixtures/streams/vod/720p/index.m3u8 (scripts/generate-fixtures.sh)"
+      }
+    ],
+    "non_blocking_issues": [],
+    "safe_to_merge_conditions": [
+      "Corregir fixture HLS local para que la duración sea >= 60s (o ajustar MIN_CONTENT_DURATION_S a un valor coherente con el stream real)",
+      "Re-ejecutar tests/integration/duration-effect-ads.spec.ts y confirmar que los 4 tests pasan",
+      "Si los tests pasan después del fix del fixture: el veredicto cambia a SAFE_TO_MERGE (el fix de durationEffectAtom es un cambio pequeño y bien acotado)"
+    ],
+    "summary": "INVESTIGATE — Los 4 fallos son bugs del fixture de test (stream dura 8s vs umbral de 60s). El fix del player en durationEffectAtom no puede validarse con el test roto. Corregir el fixture y re-ejecutar antes de aprobar el merge."
+  }
 }
