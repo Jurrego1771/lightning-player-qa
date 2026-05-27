@@ -163,37 +163,6 @@ export async function mockContentConfig(
   })
 }
 
-export async function mockContentConfigById(
-  page: Page,
-  configsById: Record<string, Record<string, unknown>>
-): Promise<void> {
-  const base = JSON.parse(FIXTURES.content.vod)
-  const { platformDomain } = getEnvironmentConfig()
-
-  await page.route(`**/${platformDomain}/**`, async (route) => {
-    const parsedPath = new URL(route.request().url()).pathname
-    if (parsedPath.includes('/player')) {
-      await route.fallback()
-      return
-    }
-
-    const contentMatch = parsedPath.match(/\/(?:video|episode|audio)\/([^/]+)\.json$/)
-    const contentId = contentMatch?.[1]
-    const overrides = contentId ? configsById[contentId] : undefined
-
-    if (!overrides) {
-      await route.fallback()
-      return
-    }
-
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ ...base, ...overrides }),
-    })
-  })
-}
-
 export async function mockPlayerConfig(
   page: Page,
   overrides: Record<string, unknown>
