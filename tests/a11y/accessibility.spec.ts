@@ -53,10 +53,14 @@ test.describe('Accessibility — Player de Video', { tag: ['@a11y'] }, () => {
   test('Space/Enter activan play en el botón de play', async ({ isolatedPlayer: player, page }) => {
     await player.goto({ type: 'media', id: MockContentIds.vod, autoplay: false })
     await player.waitForReady()
-    await player.waitForCanPlay()
 
-    // Encontrar y hacer focus en el botón de play
+    // No usar waitForCanPlay() aquí: con autoplay=false el browser no prebufferiza
+    // el stream, por lo que el evento 'canplay' no se emite hasta que play() sea
+    // invocado. Esperar 'canplay' antes del click bloquea indefinidamente.
+    // waitForReady() es suficiente: la UI del player ya está renderizada y los
+    // controles son interactivos.
     const playButton = page.locator('[aria-label*="play" i], [aria-label*="Play" i], button[class*="play"]').first()
+    await expect(playButton).toBeVisible()
     await playButton.focus()
     await page.keyboard.press('Space')
 

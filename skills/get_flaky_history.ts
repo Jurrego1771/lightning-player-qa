@@ -76,7 +76,7 @@ function loadRegistry(): FlakyRegistry {
     if (Array.isArray(parsed)) {
       return { tests: parsed as FlakyRegistryItem[] }
     }
-    if (parsed && typeof parsed === 'object' && 'tests' in parsed) {
+    if (parsed && typeof parsed === 'object' && 'tests' in parsed && Array.isArray((parsed as any).tests)) {
       return parsed as FlakyRegistry
     }
 

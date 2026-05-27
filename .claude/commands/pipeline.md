@@ -22,11 +22,11 @@ Pipeline QA del Lightning Player. Orquesta los agentes A1–A11 en el flujo corr
 ## PASO 0 — Prerequisitos
 
 ```bash
-cat .env 2>/dev/null | grep -E "PLAYER_GITHUB_REPO|PLAYER_LOCAL_REPO"
+cat .env 2>/dev/null | grep "PLAYER_GITHUB_REPO"
 gh auth status 2>/dev/null
 ```
 
-Si `PLAYER_GITHUB_REPO` no está → advertir, continuar en modo local.
+Si `PLAYER_GITHUB_REPO` no está → **STOP**: pedir al usuario que lo configure en `.env`.
 
 Inicializar `state/session_state.json` con el run actual:
 ```json

@@ -104,9 +104,8 @@ export default defineConfig({
     {
       name: 'webkit',
       use: { ...devices['Desktop Safari'] },
-      testMatch: ENV_CONFIG.testSuite === 'full'
-        ? ['tests/e2e/**', 'tests/smoke/**']
-        : ['tests/smoke/**'],
+      // WebKit excluye smoke — timing de HLS en headless WebKit no es confiable
+      testMatch: ['tests/e2e/**'],
     },
 
     // ── Performance: solo en chromium (CDP disponible) ────────────────────

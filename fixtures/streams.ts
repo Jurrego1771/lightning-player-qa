@@ -16,13 +16,13 @@ export const ContentIds = {
   vodLong: process.env.CONTENT_ID_VOD_LONG || '6900ffde6ddf33fd39a523ee',
 
   /** Stream en vivo activo — requiere accessToken (ver fixture contentAccess) */
-  live: process.env.CONTENT_ID_LIVE || '6971288e64b2477e2b935259',
+  live: process.env.CONTENT_ID_LIVE || '6a15a4e5a23b8b92586beb63',
 
   /**
    * Stream DVR activo — mismo ID que live, mismo accessToken.
    * Pasarlo como type: 'dvr' en goto().
    */
-  dvr: process.env.CONTENT_ID_DVR || '6971288e64b2477e2b935259',
+  dvr: process.env.CONTENT_ID_DVR || '6a15a4e5a23b8b92586beb63',
 
   /** Audio */
   audio: process.env.CONTENT_ID_AUDIO || '698b4a88d9cc56fe7a404079',
