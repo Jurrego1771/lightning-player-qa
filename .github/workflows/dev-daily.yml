@@ -299,16 +299,44 @@ jobs:
     steps:
       - name: Evaluar resultado global
         run: |
-          if [[ "${{ needs.smoke.result }}" == "failure" || "${{ needs.integration.result }}" == "failure" || "${{ needs.performance.result }}" == "failure" ]]; then
-            echo "❌ Tests FALLARON en ambiente DEV"
+          SMOKE="${{ needs.smoke.result }}"
+          INTEGRATION="${{ needs.integration.result }}"
+          PERFORMANCE="${{ needs.performance.result }}"
+          ACCESSIBILITY="${{ needs.accessibility.result }}"
+          VISUAL="${{ needs.visual.result }}"
+
+          if [[ "$SMOKE" == "failure" || "$INTEGRATION" == "failure" || "$PERFORMANCE" == "failure" ]]; then
             echo "RESULT=failure" >> $GITHUB_ENV
+            echo "ICON=❌" >> $GITHUB_ENV
           else
-            echo "✅ Tests PASARON en ambiente DEV"
             echo "RESULT=success" >> $GITHUB_ENV
+            echo "ICON=✅" >> $GITHUB_ENV
           fi
 
-      # TODO: Agregar notificación a Slack/Teams/Email cuando se configure
-      # - name: Notificar Slack
-      #   uses: slackapi/slack-github-action@v1
-      #   with:
-      #     payload: '{"text": "QA Dev: ${{ env.RESULT }}"}'
+          echo "SMOKE_R=$SMOKE"           >> $GITHUB_ENV
+          echo "INTEGRATION_R=$INTEGRATION" >> $GITHUB_ENV
+          echo "PERFORMANCE_R=$PERFORMANCE" >> $GITHUB_ENV
+          echo "ACCESSIBILITY_R=$ACCESSIBILITY" >> $GITHUB_ENV
+          echo "VISUAL_R=$VISUAL"         >> $GITHUB_ENV
+
+      - name: Notificar Slack
+        if: ${{ secrets.SLACK_WEBHOOK != '' }}
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+        run: |
+          STATUS_EMOJI() { [[ "$1" == "success" ]] && echo "✅" || [[ "$1" == "skipped" ]] && echo "⏭️" || echo "❌"; }
+          curl -s -X POST "$SLACK_WEBHOOK" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"text\": \"${{ env.ICON }} *QA Dev — Suite Diaria* (<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|Run #${{ github.run_number }}>)\",
+              \"attachments\": [{
+                \"color\": \"$([ '${{ env.RESULT }}' = 'success' ] && echo 'good' || echo 'danger')\",
+                \"fields\": [
+                  {\"title\": \"Smoke\",        \"value\": \"${{ env.SMOKE_R }}\",        \"short\": true},
+                  {\"title\": \"Integration\",  \"value\": \"${{ env.INTEGRATION_R }}\",  \"short\": true},
+                  {\"title\": \"A11y\",         \"value\": \"${{ env.ACCESSIBILITY_R }}\",\"short\": true},
+                  {\"title\": \"Visual\",       \"value\": \"${{ env.VISUAL_R }}\",       \"short\": true},
+                  {\"title\": \"Performance\",  \"value\": \"${{ env.PERFORMANCE_R }}\",  \"short\": true}
+                ]
+              }]
+            }"
