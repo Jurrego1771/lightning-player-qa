@@ -195,16 +195,16 @@ test.describe('Player API — format param', {
 
   test('sin format param: player se inicializa igual que antes (backward compat)', async ({ isolatedPlayer }) => {
     // Verificar que la adición del parámetro format no rompe la init sin format
+    // autoplay: true — HLS handler is lazy-loaded and only mounts when media starts loading.
+    // With autoplay: false it never mounts, loadedmetadata never fires and getHandler() returns null.
     await isolatedPlayer.goto({
       type: 'media',
       id: MockContentIds.vod,
-      autoplay: false,
-      // Sin parámetro format — comportamiento pre-v1.0.58
+      autoplay: true,
     })
 
     await isolatedPlayer.waitForReady(20_000)
     await isolatedPlayer.assertNoInitError()
-    // Same race as player-api.spec.ts test #4: ready fires before HLS lazy chunk mounts.
     await isolatedPlayer.waitForEvent('loadedmetadata', 15_000)
 
     // El player debe seguir reproduciendo HLS por defecto
