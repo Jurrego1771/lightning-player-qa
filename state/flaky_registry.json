@@ -1,5 +1,66 @@
 {
   "version": "1.0",
-  "last_updated": null,
-  "tests": []
+  "last_updated": "2026-05-27T15:45:00.000Z",
+  "tests": [
+    {
+      "test_id": "tests/e2e/dash-dvr.spec.ts::seek dentro de la ventana DVR no provoca error fatal::chromium",
+      "spec_file": "tests/e2e/dash-dvr.spec.ts",
+      "test_title": "seek dentro de la ventana DVR no provoca error fatal",
+      "project": "chromium",
+      "first_seen": "2026-05-27T15:27:51.096Z",
+      "last_seen": "2026-05-27T15:27:51.096Z",
+      "flaky_count_30d": 0,
+      "total_runs": 2,
+      "total_failures": 2,
+      "failure_rate": 1.0,
+      "classification": "CONFIRMED_FAILURE",
+      "error_pattern": "getDuration() retorna 0 — Timeout 10000ms exceeded while waiting on predicate (toBeGreaterThan(0)) en dash-dvr.spec.ts:47",
+      "error_location": "tests/e2e/dash-dvr.spec.ts:47",
+      "error_type": "TIMEOUT_POLL",
+      "retries_in_last_run": 1,
+      "last_retry_status": "failed",
+      "confirmed_reason": "flaky_count_30d=0 — nuevo fallo sin historial previo, falla determinista en retry #0 y #1 con el mismo error y mismo valor recibido (0)",
+      "notes": "getDuration() devuelve 0 tras waitForEvent('playing') en DASH DVR. Posible regresión en durationEffectAtom o en el stream DASH DVR del fixture. Correlaciona con el fix en src/view/video/atoms/duration.js (branch fix/duration)."
+    },
+    {
+      "test_id": "tests/e2e/dash-dvr.spec.ts::seek al inicio de la ventana DVR y el player retoma reproducción::chromium",
+      "spec_file": "tests/e2e/dash-dvr.spec.ts",
+      "test_title": "seek al inicio de la ventana DVR y el player retoma reproducción",
+      "project": "chromium",
+      "first_seen": "2026-05-27T15:27:51.096Z",
+      "last_seen": "2026-05-27T15:27:51.096Z",
+      "flaky_count_30d": 0,
+      "total_runs": 2,
+      "total_failures": 2,
+      "failure_rate": 1.0,
+      "classification": "CONFIRMED_FAILURE",
+      "error_pattern": "getDuration() retorna 0 — Timeout 10000ms exceeded while waiting on predicate (toBeGreaterThan(0)) en dash-dvr.spec.ts:71",
+      "error_location": "tests/e2e/dash-dvr.spec.ts:71",
+      "error_type": "TIMEOUT_POLL",
+      "retries_in_last_run": 1,
+      "last_retry_status": "failed",
+      "confirmed_reason": "flaky_count_30d=0 — nuevo fallo sin historial previo, falla determinista en retry #0 y #1 con el mismo error y mismo valor recibido (0)",
+      "notes": "Mismo patrón que test anterior: getDuration()=0 tras waitForEvent('playing'). El seek en sí nunca llega a ejecutarse porque el precondition (duration > 0) falla antes."
+    },
+    {
+      "test_id": "tests/e2e/dash-dvr.spec.ts::DASH DVR: currentTime actualiza correctamente después de seek::chromium",
+      "spec_file": "tests/e2e/dash-dvr.spec.ts",
+      "test_title": "DASH DVR: currentTime actualiza correctamente después de seek",
+      "project": "chromium",
+      "first_seen": "2026-05-27T15:27:51.096Z",
+      "last_seen": "2026-05-27T15:27:51.096Z",
+      "flaky_count_30d": 0,
+      "total_runs": 2,
+      "total_failures": 2,
+      "failure_rate": 1.0,
+      "classification": "CONFIRMED_FAILURE",
+      "error_pattern": "getDuration() retorna 0 — Timeout 10000ms exceeded while waiting on predicate (toBeGreaterThan(30)) en dash-dvr.spec.ts:96",
+      "error_location": "tests/e2e/dash-dvr.spec.ts:96",
+      "error_type": "TIMEOUT_POLL",
+      "retries_in_last_run": 1,
+      "last_retry_status": "failed",
+      "confirmed_reason": "flaky_count_30d=0 — nuevo fallo sin historial previo, falla determinista en retry #0 y #1. El umbral aquí es > 30 (más restrictivo que los otros dos tests que usan > 0)",
+      "notes": "Mismo patrón raíz: getDuration()=0 en DASH DVR. El umbral > 30 hace que incluso si hubiera un valor parcial, el test fallaría igual."
+    }
+  ]
 }

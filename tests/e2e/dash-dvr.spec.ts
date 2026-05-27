@@ -6,7 +6,12 @@
  * para cubrir DASH además de HLS.
  *
  * Fixture: player
- * Requiere: ContentIds.dashDvr (stream DVR en la plataforma DEV) con soporte DASH.
+ * Requiere: ContentIds.dashDvr apuntando a un stream DASH con ventana DVR configurada.
+ *
+ * ESTADO ACTUAL: ContentIds.dashDvr (6a0f2956a2a6f91404c3cc0c) = mismo ID que dashLive.
+ * Es un stream DASH live SIN ventana DVR → __player.duration nunca se popula.
+ * Los tests de seek están en test.fixme hasta que plataforma provea un ID con DVR real.
+ * Configurar: CONTENT_ID_DASH_DVR=<id-con-dvr-window> en .env o CI secrets.
  */
 import { test, expect, ContentIds } from '../../fixtures'
 
@@ -34,6 +39,7 @@ test.describe('DASH DVR — Seek en ventana live', { tag: ['@e2e'] }, () => {
   })
 
   test('seek dentro de la ventana DVR no provoca error fatal', async ({ player, browserName }) => {
+    test.fixme(true, 'CONTENT_ID_DASH_DVR apunta a un stream sin ventana DVR — __player.duration nunca se popula. Configurar un ID con DVR real en .env')
     test.skip(browserName === 'webkit', 'DASH DVR seek inestable en Playwright WebKit — usar Safari real (Tier 2)')
     // Arrange
     await player.goto({
@@ -59,6 +65,7 @@ test.describe('DASH DVR — Seek en ventana live', { tag: ['@e2e'] }, () => {
   })
 
   test('seek al inicio de la ventana DVR y el player retoma reproducción', async ({ player, browserName }) => {
+    test.fixme(true, 'CONTENT_ID_DASH_DVR apunta a un stream sin ventana DVR — __player.duration nunca se popula. Configurar un ID con DVR real en .env')
     test.skip(browserName === 'webkit', 'DASH DVR seek inestable en Playwright WebKit — usar Safari real (Tier 2)')
     // Arrange
     await player.goto({
@@ -84,6 +91,7 @@ test.describe('DASH DVR — Seek en ventana live', { tag: ['@e2e'] }, () => {
   })
 
   test('DASH DVR: currentTime actualiza correctamente después de seek', async ({ player, browserName }) => {
+    test.fixme(true, 'CONTENT_ID_DASH_DVR apunta a un stream sin ventana DVR — __player.duration nunca se popula. Configurar un ID con DVR real en .env')
     test.skip(browserName === 'webkit', 'DASH DVR seek inestable en Playwright WebKit — usar Safari real (Tier 2)')
     // Arrange
     await player.goto({

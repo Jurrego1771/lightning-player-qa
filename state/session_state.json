@@ -238,7 +238,8 @@
     ]
   },
   "flaky_detection_completed": true,
-  "flaky_detection_timestamp": "2026-05-26T23:39:00.000Z",
+  "flaky_detection_timestamp": "2026-05-27T15:45:00.000Z",
+  "flaky_detection_run_ref": "tests/e2e/dash-dvr.spec.ts --project=chromium (2026-05-27T15:27:51Z)",
   "confirmed_failures": [
     {
       "test_id": "tests/contract/player-api-format-param.spec.ts::sin format param: player se inicializa igual que antes (backward compat)::contract",
@@ -294,14 +295,51 @@
       "flaky_count_30d": 0,
       "retry_attempts": 0,
       "confirmation_reason": "100% fail rate — bug de test fixture (stream dura 8s, umbral de 60s incorrecto). El test de no-regresión también falla porque comparte el mismo fixture mal dimensionado."
+    },
+    {
+      "test_id": "tests/e2e/dash-dvr.spec.ts::seek dentro de la ventana DVR no provoca error fatal::chromium",
+      "spec_file": "tests/e2e/dash-dvr.spec.ts",
+      "test_title": "seek dentro de la ventana DVR no provoca error fatal",
+      "project": "chromium",
+      "status": "failed",
+      "error_message": "expect.poll: getDuration() retorna 0 — Expected: > 0, Received: 0. Timeout 10000ms exceeded. dash-dvr.spec.ts:47",
+      "flaky_count_30d": 0,
+      "retry_attempts": 1,
+      "confirmation_reason": "flaky_count_30d=0 — nuevo fallo, falla determinista en retry #0 y #1 con el mismo error (getDuration()=0)"
+    },
+    {
+      "test_id": "tests/e2e/dash-dvr.spec.ts::seek al inicio de la ventana DVR y el player retoma reproducción::chromium",
+      "spec_file": "tests/e2e/dash-dvr.spec.ts",
+      "test_title": "seek al inicio de la ventana DVR y el player retoma reproducción",
+      "project": "chromium",
+      "status": "failed",
+      "error_message": "expect.poll: getDuration() retorna 0 — Expected: > 0, Received: 0. Timeout 10000ms exceeded. dash-dvr.spec.ts:71",
+      "flaky_count_30d": 0,
+      "retry_attempts": 1,
+      "confirmation_reason": "flaky_count_30d=0 — nuevo fallo, falla determinista en retry #0 y #1 con el mismo error (getDuration()=0)"
+    },
+    {
+      "test_id": "tests/e2e/dash-dvr.spec.ts::DASH DVR: currentTime actualiza correctamente después de seek::chromium",
+      "spec_file": "tests/e2e/dash-dvr.spec.ts",
+      "test_title": "DASH DVR: currentTime actualiza correctamente después de seek",
+      "project": "chromium",
+      "status": "failed",
+      "error_message": "expect.poll: getDuration() retorna 0 — Expected: > 30, Received: 0. Timeout 10000ms exceeded. dash-dvr.spec.ts:96",
+      "flaky_count_30d": 0,
+      "retry_attempts": 1,
+      "confirmation_reason": "flaky_count_30d=0 — nuevo fallo, falla determinista en retry #0 y #1 con el mismo error (getDuration()=0)"
     }
   ],
   "flaky_failures": [],
   "flaky_summary": {
-    "total_failed": 5,
-    "confirmed": 5,
+    "total": 4,
+    "confirmed": 3,
     "flaky_filtered": 0,
-    "new_flaky_registrations": 0
+    "new_flaky_registrations": 3,
+    "clean": 1,
+    "run_ref": "tests/e2e/dash-dvr.spec.ts --project=chromium",
+    "run_timestamp": "2026-05-27T15:27:51.096Z",
+    "note": "1 test CLEAN (isDVR retorna true, retry 0, passed). 3 tests CONFIRMED_FAILURE con getDuration()=0 en todos los intentos — fallo determinista, no flaky. Sin entradas previas en registro 30d. Los 3 tests registrados en flaky_registry.json como nuevas entradas."
   },
   "failure_analysis": {
     "analyzed_at": "2026-05-26T23:45:00Z",
