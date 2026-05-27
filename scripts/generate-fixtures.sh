@@ -31,16 +31,18 @@ fi
 echo "✅ ffmpeg: $(ffmpeg -version 2>&1 | head -1)"
 echo ""
 
-# ── VOD Multi-bitrate (360p + 720p, ~8 segundos) ──────────────────────────────
-echo "📹 Generando VOD multi-bitrate (~8s, 2 calidades)..."
+# ── VOD Multi-bitrate (360p + 720p, ~64 segundos) ─────────────────────────────
+# 64s > 15s (duración del ad mock en mock-vast/responses/preroll.xml)
+# Tests de durationEffectAtom necesitan que la duración del contenido sea > la del ad.
+echo "📹 Generando VOD multi-bitrate (~64s, 2 calidades)..."
 
 mkdir -p "$STREAMS_DIR/vod/360p"
 mkdir -p "$STREAMS_DIR/vod/720p"
 
 # 360p — baja calidad (~400 Kbps)
 ffmpeg -y -loglevel error \
-  -f lavfi -i "testsrc=duration=8:size=640x360:rate=24" \
-  -f lavfi -i "sine=frequency=440:duration=8" \
+  -f lavfi -i "testsrc=duration=64:size=640x360:rate=24" \
+  -f lavfi -i "sine=frequency=440:duration=64" \
   -c:v libx264 -preset ultrafast -b:v 350k -maxrate 420k -bufsize 840k \
   -c:a aac -b:a 64k -ar 44100 \
   -g 48 -keyint_min 48 -sc_threshold 0 \
@@ -55,8 +57,8 @@ echo "  ✅ 360p OK"
 
 # 720p — alta calidad (~1.5 Mbps)
 ffmpeg -y -loglevel error \
-  -f lavfi -i "testsrc=duration=8:size=1280x720:rate=24" \
-  -f lavfi -i "sine=frequency=880:duration=8" \
+  -f lavfi -i "testsrc=duration=64:size=1280x720:rate=24" \
+  -f lavfi -i "sine=frequency=880:duration=64" \
   -c:v libx264 -preset ultrafast -b:v 1400k -maxrate 1680k -bufsize 3360k \
   -c:a aac -b:a 128k -ar 44100 \
   -g 48 -keyint_min 48 -sc_threshold 0 \
