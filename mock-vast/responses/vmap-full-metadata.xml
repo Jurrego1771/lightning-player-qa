@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  VMAP 1.0 — pre-roll + mid-roll(15s) + post-roll, todos apuntando al VAST con
+  metadata completa (vast-full-metadata.xml). Sirve la misma estructura que el
+  sample de Google vmap_ad_samples pero con AdTitle/AdSystem/MediaFile poblados.
+  Ruta servida: GET /vmap/full-metadata
+-->
+<vmap:VMAP xmlns:vmap="http://www.iab.net/videosuite/vmap" version="1.0">
+  <vmap:AdBreak timeOffset="start" breakType="linear" breakId="preroll">
+    <vmap:AdSource id="preroll-ad-1" allowMultipleAds="false" followRedirects="true">
+      <vmap:AdTagURI templateType="vast3"><![CDATA[http://localhost:9999/vast/full-metadata]]></vmap:AdTagURI>
+    </vmap:AdSource>
+  </vmap:AdBreak>
+  <vmap:AdBreak timeOffset="00:00:15.000" breakType="linear" breakId="midroll-1">
+    <vmap:AdSource id="midroll-1-ad-1" allowMultipleAds="false" followRedirects="true">
+      <vmap:AdTagURI templateType="vast3"><![CDATA[http://localhost:9999/vast/full-metadata]]></vmap:AdTagURI>
+    </vmap:AdSource>
+  </vmap:AdBreak>
+  <vmap:AdBreak timeOffset="end" breakType="linear" breakId="postroll">
+    <vmap:AdSource id="postroll-ad-1" allowMultipleAds="false" followRedirects="true">
+      <vmap:AdTagURI templateType="vast3"><![CDATA[http://localhost:9999/vast/full-metadata]]></vmap:AdTagURI>
+    </vmap:AdSource>
+  </vmap:AdBreak>
+</vmap:VMAP>

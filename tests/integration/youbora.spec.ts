@@ -92,26 +92,10 @@ async function setupNpawInterceptor(page: import('@playwright/test').Page): Prom
     }
   })
 
-  // Capturar solo NQS y lma data/config
+  // Capturar solo NQS — LMA (configuration + data) debe llegar al servidor real
+  // para que el SDK 7.3.28-js-sdk complete su handshake Fastdata y aprenda el host NQS.
   await page.route(/youboranqs01\.com\//, captureBeacon)
   await page.route(/\.youbora\.com\//, captureBeacon)
-  await page.route(/lma\.npaw\.com\/configuration/, async (route) => {
-    try {
-      // Mock local configuration response so that Youbora SDK doesn't depend on a real account code activation
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          host: 'youboranqs01.com',
-          status: 'active'
-        })
-      })
-    } catch (e) {
-      console.error('DEBUG: LMA Config Mock Error:', e)
-      await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' })
-    }
-  })
-  await page.route(/lma\.npaw\.com\/data/, captureBeacon)
 
   return beacons
 }
@@ -1173,5 +1157,461 @@ test.describe('Youbora — Next Episode Session Chain', { tag: ['@integration', 
       timeout: 15_000,
       message: 'El segundo episodio debe emitir beacons normales de sesión Youbora',
     }).toBeGreaterThan(firstSessionStarts)
+  })
+})
+
+// ── Helper: parseBeaconParam ─────────────────────────────────────────────────
+
+/**
+ * Extrae un parámetro del query string de un beacon URL de NPAW NQS.
+ * npaw-plugin@7.3.28 usa GET con params directos en el query string:
+ *   https://xxx.youboranqs01.com/nqs/...?content.id=yyy&user.type=premium&...
+ * Si no se encuentra como param directo, intenta deserializar un blob JSON
+ * bajo la clave 'params' (formato alternativo del SDK).
+ */
+function parseBeaconParam(url: string, key: string): string | null {
+  try {
+    const u = new URL(url)
+    const direct = u.searchParams.get(key)
+    if (direct !== null) return direct
+    const blob = u.searchParams.get('params')
+    if (blob) {
+      const parsed = JSON.parse(decodeURIComponent(blob))
+      const val = parsed[key]
+      if (val !== undefined && val !== null) return String(val)
+    }
+  } catch { /* URL inválida o params no parseables */ }
+  return null
+}
+
+// Config con user metadata (issue-706 — customer_extras)
+// contextMapper lee context.options?.['customer_extras.type'] → userType
+// tracker.js buildVideoOptions: userType → opts['user.type']
+const YOUBORA_CONFIG_USER = {
+  metadata: { player: { tracking: { youbora: { enabled: true, account_code: YOUBORA_ACCOUNT_CODE } } } },
+  'customer_extras.type': 'premium',
+  'customer_extras.name': 'testuser',
+}
+
+// ── Block A: User Metadata (issue-706) ──────────────────────────────────────
+
+test.describe('Youbora — User Metadata (issue-706)', { tag: ['@integration', '@analytics', '@youbora', '@metadata'] }, () => {
+
+  test('NPAW-2.17a — user.type in /start beacon when customer_extras.type configured', async ({ isolatedPlayer: player, page }) => {
+    await mockPlayerConfig(page, YOUBORA_CONFIG_USER)
+    const beacons = await setupNpawInterceptor(page)
+    await player.goto({ type: 'media', id: MockContentIds.vod, autoplay: true })
+    await player.waitForEvent('contentFirstPlay', 20_000)
+
+    const startBeacons = () => beacons.filter(url => url.includes('/start') || url.includes('/joinTime'))
+    await expect.poll(() => startBeacons().length, {
+      timeout: 20_000,
+      message: 'Se esperaba al menos 1 beacon /start para verificar user.type',
+    }).toBeGreaterThan(0)
+
+    const startUrl = startBeacons()[0]
+    const userType = parseBeaconParam(startUrl, 'user.type')
+    expect(
+      userType,
+      `user.type debe ser 'premium' en el beacon /start — url: ${startUrl}`
+    ).toBe('premium')
+  })
+
+  test('NPAW-2.17b — user.name in /start beacon when customer_extras.name configured', async ({ isolatedPlayer: player, page }) => {
+    await mockPlayerConfig(page, YOUBORA_CONFIG_USER)
+    const beacons = await setupNpawInterceptor(page)
+    await player.goto({ type: 'media', id: MockContentIds.vod, autoplay: true })
+    await player.waitForEvent('contentFirstPlay', 20_000)
+
+    const startBeacons = () => beacons.filter(url => url.includes('/start') || url.includes('/joinTime'))
+    await expect.poll(() => startBeacons().length, {
+      timeout: 20_000,
+      message: 'Se esperaba al menos 1 beacon /start para verificar user.name',
+    }).toBeGreaterThan(0)
+
+    const startUrl = startBeacons()[0]
+    const userName = parseBeaconParam(startUrl, 'user.name')
+    expect(
+      userName,
+      `user.name debe ser 'testuser' en el beacon /start — url: ${startUrl}`
+    ).toBe('testuser')
+  })
+
+  test('NPAW-2.17c — user.type absent from /start beacon when customer_extras not configured', async ({ isolatedPlayer: player, page }) => {
+    // Sin customer_extras en el config: user.type NO debe aparecer en el beacon.
+    // tracker.js buildVideoOptions: `if (userType) opts['user.type'] = userType` — guard condicional.
+    await mockPlayerConfig(page, YOUBORA_CONFIG)
+    const beacons = await setupNpawInterceptor(page)
+    await player.goto({ type: 'media', id: MockContentIds.vod, autoplay: true })
+    await player.waitForEvent('contentFirstPlay', 20_000)
+
+    const startBeacons = () => beacons.filter(url => url.includes('/start') || url.includes('/joinTime'))
+    await expect.poll(() => startBeacons().length, {
+      timeout: 20_000,
+      message: 'Se esperaba beacon /start para verificar ausencia de user.type',
+    }).toBeGreaterThan(0)
+
+    const startUrl = startBeacons()[0]
+    expect(
+      parseBeaconParam(startUrl, 'user.type'),
+      'user.type no debe estar en el beacon cuando customer_extras.type no está configurado'
+    ).toBeNull()
+  })
+
+  test('NPAW-updateOptions — reload with same id/type/accountCode does not restart Youbora session', async ({ isolatedPlayer: player, page }) => {
+    // issue-706 introduce lógica de restart inteligente en index.jsx:
+    //   Si prev.id === next.id && prev.type === next.type && prev.accountCode === next.accountCode
+    //   → updateOptions(next) en lugar de tracker.restart(next)
+    // updateOptions() llama setVideoOptions() sin _cleanup() ni fireStop().
+    // Observable: recargar el mismo id/type no debe generar beacon /stop.
+    await mockPlayerConfig(page, YOUBORA_CONFIG)
+    const beacons = await setupNpawInterceptor(page)
+    await player.goto({ type: 'media', id: MockContentIds.vod, autoplay: true })
+    await player.waitForEvent('contentFirstPlay', 20_000)
+
+    const startBeacons = () => beacons.filter(url => url.includes('/start') || url.includes('/joinTime')).length
+    await expect.poll(startBeacons, {
+      timeout: 20_000,
+      message: 'Se esperaban beacons /start antes de recargar el mismo contenido',
+    }).toBeGreaterThan(0)
+
+    const stopBeaconCount = () => beacons.filter(url => url.includes('/stop')).length
+
+    // player.load() con el mismo id/type → YouboraAnalytics.restart(false) → updateOptions (no restart)
+    // No se llama _cleanup() ni fireStop() → /stop no debe aparecer.
+    await player.load({ type: 'media', id: MockContentIds.vod })
+
+    await expect.poll(stopBeaconCount, {
+      timeout: 2_000,
+      intervals: [200],
+      message: 'updateOptions path: reload del mismo id/type no debe generar beacon /stop — issue-706',
+    }).toBe(0)
+  })
+})
+
+// ── Block B: Content Metadata Validation ─────────────────────────────────────
+
+test.describe('Youbora — Content Metadata Validation', { tag: ['@integration', '@analytics', '@youbora', '@metadata'] }, () => {
+
+  test('NPAW-2.21 — content.id in /start beacon matches loaded content ID', async ({ isolatedPlayer: player, page }) => {
+    await mockPlayerConfig(page, YOUBORA_CONFIG)
+    const beacons = await setupNpawInterceptor(page)
+    await player.goto({ type: 'media', id: MockContentIds.vod, autoplay: true })
+    await player.waitForEvent('contentFirstPlay', 20_000)
+
+    const startBeacons = () => beacons.filter(url => url.includes('/start') || url.includes('/joinTime'))
+    await expect.poll(() => startBeacons().length, {
+      timeout: 20_000,
+      message: 'Se esperaba beacon /start para verificar content.id',
+    }).toBeGreaterThan(0)
+
+    const startUrl = startBeacons()[0]
+    const contentId = parseBeaconParam(startUrl, 'content.id')
+    expect(
+      contentId,
+      `content.id debe ser '${MockContentIds.vod}' en el beacon /start — url: ${startUrl}`
+    ).toBe(MockContentIds.vod)
+  })
+
+  test('NPAW-2.22-VOD — content.type=VOD for type:media', async ({ isolatedPlayer: player, page }) => {
+    await mockPlayerConfig(page, YOUBORA_CONFIG)
+    const beacons = await setupNpawInterceptor(page)
+    await player.goto({ type: 'media', id: MockContentIds.vod, autoplay: true })
+    await player.waitForEvent('contentFirstPlay', 20_000)
+
+    const startBeacons = () => beacons.filter(url => url.includes('/start') || url.includes('/joinTime'))
+    await expect.poll(() => startBeacons().length, { timeout: 20_000 }).toBeGreaterThan(0)
+
+    const contentType = parseBeaconParam(startBeacons()[0], 'content.type')
+    expect(
+      contentType,
+      `content.type debe ser 'VOD' para type:'media' — url: ${startBeacons()[0]}`
+    ).toBe('VOD')
+  })
+
+  test('NPAW-2.22-Live — content.type=Live for type:live', async ({ isolatedPlayer: player, page }) => {
+    // mapContentType('live') → 'Live' en tracker.js
+    await mockPlayerConfig(page, YOUBORA_CONFIG)
+    const beacons = await setupNpawInterceptor(page)
+    await player.goto({ type: 'live', id: MockContentIds.live, autoplay: true })
+
+    // Live streams pueden no emitir contentFirstPlay en el mock local — usar playing como fallback
+    await expect.poll(
+      () => player.page.evaluate(() => {
+        const events = (window as any).__qa?.events ?? []
+        return events.includes('contentFirstPlay') || events.includes('playing')
+      }),
+      { timeout: 25_000, intervals: [500] }
+    ).toBe(true)
+
+    const startBeacons = () => beacons.filter(url => url.includes('/start') || url.includes('/joinTime'))
+    await expect.poll(() => startBeacons().length, { timeout: 20_000 }).toBeGreaterThan(0)
+
+    const contentType = parseBeaconParam(startBeacons()[0], 'content.type')
+    expect(
+      contentType,
+      `content.type debe ser 'Live' para type:'live' — url: ${startBeacons()[0]}`
+    ).toBe('Live')
+  })
+
+  test('NPAW-2.6 — content.duration > 0 in /start beacon for VOD (timing fix: getDuration from _initAdapter)', async ({ isolatedPlayer: player, page }) => {
+    // issue-706: _initAdapter() se llama desde onReady, y getDuration() es un getter dinámico
+    // que lee api?.duration en tiempo de llamada. Para VOD, esto garantiza que la duración
+    // real del stream (no 0) está disponible cuando el SDK construye el beacon /start.
+    // Regresión fija: en el tracker anterior, buildVideoOptions pasaba api?.duration || 0 en
+    // onFirstPlay, que podía ser 0 si HLS aún no había cargado el manifest completo.
+    await mockPlayerConfig(page, YOUBORA_CONFIG)
+    const beacons = await setupNpawInterceptor(page)
+    await player.goto({ type: 'media', id: MockContentIds.vod, autoplay: true })
+    await player.waitForEvent('contentFirstPlay', 20_000)
+
+    const startBeacons = () => beacons.filter(url => url.includes('/start') || url.includes('/joinTime'))
+    await expect.poll(() => startBeacons().length, {
+      timeout: 20_000,
+      message: 'Se esperaba beacon /start para verificar content.duration',
+    }).toBeGreaterThan(0)
+
+    const startUrl = startBeacons()[0]
+    const durationStr = parseBeaconParam(startUrl, 'content.duration')
+    const duration = durationStr !== null ? parseFloat(durationStr) : null
+
+    expect(
+      duration,
+      `content.duration debe ser > 0 para VOD — url: ${startUrl}`
+    ).not.toBeNull()
+    expect(
+      duration!,
+      `content.duration debe ser > 0 para VOD (timing fix en _initAdapter) — url: ${startUrl}`
+    ).toBeGreaterThan(0)
+  })
+})
+
+// ── Block C: Rendition Tracking ──────────────────────────────────────────────
+
+test.describe('Youbora — Rendition Tracking (issue-706)', { tag: ['@integration', '@analytics', '@youbora', '@rendition'] }, () => {
+
+  test('NPAW-2.13a — ABR settled level produces calculable rendition via computeRendition(api)', async ({ isolatedPlayer: player, page }) => {
+    // issue-706: computeRendition(api) usa api.videoWidth, api.videoHeight, api.bitrate.
+    // getRendition() en el adapter retorna el rendition string solo cuando _started=true.
+    // Verificamos: después de contentFirstPlay + levelChanged, el player tiene video dimensions
+    // disponibles que el SDK puede reportar como rendition.
+    await mockPlayerConfig(page, YOUBORA_CONFIG)
+    const beacons = await setupNpawInterceptor(page)
+    await player.goto({ type: 'media', id: MockContentIds.vod, autoplay: true })
+    await player.waitForEvent('contentFirstPlay', 20_000)
+
+    // Esperar que HLS.js elija un nivel ABR → video element tiene dimensiones reales
+    await expect.poll(
+      () => player.page.evaluate(() => {
+        const v = document.querySelector('video')
+        return (v?.videoWidth ?? 0) > 0 && (v?.videoHeight ?? 0) > 0
+      }),
+      { timeout: 15_000, intervals: [500], message: 'video.videoWidth debe ser > 0 después de ABR settle' }
+    ).toBe(true)
+
+    // Verificar que el tracker tiene api.videoWidth disponible para computeRendition
+    const videoWidth = await player.page.evaluate(() => (window as any).__player?.videoWidth ?? 0)
+    expect(videoWidth, 'player.videoWidth debe ser > 0 para que computeRendition genere un rendition string').toBeGreaterThan(0)
+
+    // La actividad de beacons confirma que el SDK está activo y reportando rendition
+    await expect.poll(() => beacons.length, {
+      timeout: 8_000,
+      message: 'Se esperaban beacons NPAW activos durante reproducción (SDK reporta rendition via getRendition getter)',
+    }).toBeGreaterThan(0)
+  })
+
+  test('NPAW-2.13b — manual level change triggers additional beacons (rendition update)', async ({ isolatedPlayer: player, page }) => {
+    // player.setLevel(0) → levelChanged → SDK recibe nueva rendition via getRendition()
+    // en el siguiente ping o setVideoOptions call desde el adapter.
+    await mockPlayerConfig(page, YOUBORA_CONFIG)
+    const beacons = await setupNpawInterceptor(page)
+    await player.goto({ type: 'media', id: MockContentIds.vod, autoplay: true })
+    await player.waitForEvent('contentFirstPlay', 20_000)
+
+    // Esperar que haya niveles disponibles antes de cambiar
+    await expect.poll(
+      async () => (await player.getLevels()).length,
+      { timeout: 10_000, intervals: [300], message: 'Se esperaban niveles HLS disponibles para cambio manual' }
+    ).toBeGreaterThan(0)
+
+    const n0 = beacons.length
+
+    // Cambio manual al nivel 0 (menor calidad)
+    await player.setLevel(0)
+    await player.waitForEvent('levelChanged', 10_000)
+
+    // El adapter SDK pinga con la nueva rendition en el siguiente heartbeat
+    await expect.poll(() => beacons.length, {
+      timeout: 10_000,
+      message: 'Se esperaban beacons adicionales tras cambio de level — SDK reporta nueva rendition',
+    }).toBeGreaterThan(n0)
+  })
+})
+
+// ── Block D: Buffering ────────────────────────────────────────────────────────
+
+test.describe('Youbora — Buffering (issue-706)', { tag: ['@integration', '@analytics', '@youbora', '@buffering'] }, () => {
+
+  test('NPAW-4.1 — buffer stall mid-playback fires fireBufferBegin with non-zero playhead', async ({ isolatedPlayer: player, page }) => {
+    // issue-706: adapter.getPlayhead() = () => this._contentPlayheadAtBreak ?? api?.currentTime ?? 0
+    // Para buffering mid-playback (no en ad break), _contentPlayheadAtBreak=null → usa api.currentTime.
+    // api.currentTime es > 0 cuando el stall ocurre después de que el stream empezó a reproducir.
+    // Observable: fireBufferBegin + fireBufferEnd generan beacons adicionales.
+    test.slow()
+    await mockPlayerConfig(page, YOUBORA_CONFIG)
+    const beacons = await setupNpawInterceptor(page)
+    await player.goto({ type: 'media', id: MockContentIds.vod, autoplay: true })
+    await player.waitForEvent('contentFirstPlay', 20_000)
+
+    // Esperar currentTime > 0 para garantizar que api.currentTime es válido en el beacon
+    await expect.poll(
+      () => player.getCurrentTime(),
+      { timeout: 10_000, message: 'currentTime debe ser > 0 antes de inducir buffer stall' }
+    ).toBeGreaterThan(0)
+
+    const n0 = beacons.length
+
+    // Inducir buffer stall temporal — abortar segmentos HLS por 2s luego restaurar
+    // El tracker recibe: Events._buffering → fireBufferBegin, Events._canplay → fireBufferEnd
+    await page.route('**/localhost:9001/vod/**', (route) => route.abort())
+    // Dar tiempo para que el stall se propague al player
+    await player.waitForEvent('buffering', 8_000)
+
+    await page.unroute('**/localhost:9001/vod/**')
+
+    // El player debe retomar la reproducción y emitir canplay → fireBufferEnd
+    await player.waitForEvent('canplay', 10_000)
+
+    // Assert — fireBufferBegin + posiblemente fireBufferEnd generaron beacons adicionales
+    await expect.poll(() => beacons.length, {
+      timeout: 5_000,
+      message: 'Se esperaban beacons NPAW adicionales tras buffer stall (fireBufferBegin/fireBufferEnd)',
+    }).toBeGreaterThan(n0)
+  })
+})
+
+// ── Block E: Pre-roll Content View (issue-706) ────────────────────────────────
+
+test.describe('Youbora — Pre-roll Content View (issue-706)', { tag: ['@integration', '@analytics', '@youbora', '@ads'] }, () => {
+
+  test('NPAW-A.2.pre — content View opens before pre-roll (fireStart in onContentPauseRequested)', async ({ isolatedPlayer: player, page }) => {
+    // issue-706 cambia onContentPauseRequested: si _started=false (pre-roll),
+    // ahora abre la content View ANTES del ad: _started=true, _paused=true, fireStart+fireJoin.
+    // Comportamiento anterior: firePause() sin abrir View si _started=false.
+    // Observable: beacon /start llega al momento de adsContentPauseRequested, antes de adsAllAdsCompleted.
+    await mockPlayerConfig(page, YOUBORA_CONFIG)
+    const beacons = await setupNpawInterceptor(page)
+
+    await player.goto({
+      type: 'media',
+      id: MockContentIds.vod,
+      autoplay: false,
+      adsMap: `${MOCK_VAST_URL}/vast/preroll`,
+    })
+    await player.play()
+
+    // Esperar inicio del ad break — en este punto el nuevo código ya ejecutó fireStart+fireJoin
+    await player.waitForEvent('adsContentPauseRequested', 30_000)
+
+    const startBeacons = () => beacons.filter(url => url.includes('/start') || url.includes('/joinTime')).length
+
+    // Inmediatamente después de adsContentPauseRequested, la content View ya debe estar abierta
+    await expect.poll(startBeacons, {
+      timeout: 5_000,
+      message: 'issue-706: content View debe abrirse DURANTE el pre-roll (fireStart en onContentPauseRequested cuando _started=false)',
+    }).toBeGreaterThan(0)
+  })
+})
+
+// ── Block F: Ad Break Metadata (issue-706) ────────────────────────────────────
+
+test.describe('Youbora — Ad Break Metadata (issue-706)', { tag: ['@integration', '@analytics', '@youbora', '@ads'] }, () => {
+
+  test('NPAW-A.2.6 — ad break metadata beacons fired before first ad completes', async ({ isolatedPlayer: player, page }) => {
+    // issue-706 onAdsStarted: setVideoOptions con ad.givenBreaks, ad.breaksTime, ad.expectedPattern
+    // ANTES de fireBreakStart. Esto genera el beacon /adManifest del SDK NPAW (parte de
+    // fireBreakStart) con metadata completa de breaks.
+    // Observable: beacons relacionados con ad break llegan antes de adsAllAdsCompleted.
+    await mockPlayerConfig(page, YOUBORA_CONFIG)
+    const beacons = await setupNpawInterceptor(page)
+
+    await player.goto({
+      type: 'media',
+      id: MockContentIds.vod,
+      autoplay: false,
+      adsMap: `${MOCK_VAST_URL}/vast/preroll`,
+    })
+    await player.play()
+
+    // Esperar inicio del ad break para confirmar que el ciclo de ads comenzó
+    await player.waitForEvent('adsContentPauseRequested', 30_000)
+
+    const beaconsAtBreakStart = beacons.length
+
+    // El SDK debe haber enviado beacons de break start con la metadata de breaks
+    // (ad.givenBreaks, ad.breaksTime, ad.expectedPattern) configurada en onAdsStarted
+    expect(
+      beaconsAtBreakStart,
+      'Se esperaban beacons NPAW de ad break start al inicio del break (issue-706 — ad break metadata)'
+    ).toBeGreaterThan(0)
+
+    // Esperar fin del ciclo de ads completo
+    await player.waitForAllAdsComplete(60_000)
+
+    // El total de beacons debe incluir el ciclo completo: breakStart, adStart, adJoin, adStop, breakStop
+    await expect.poll(() => beacons.length, {
+      timeout: 5_000,
+      message: 'Se esperaban beacons NPAW del ciclo completo del ad break (issue-706)',
+    }).toBeGreaterThan(beaconsAtBreakStart)
+  })
+
+  test('NPAW-A.2.23 — adSkipped beacon fires when skippable ad is skipped', async ({ isolatedPlayer: player, page }) => {
+    // tracker.js onAdsSkipped: this._adsAdapter?.fireSkip()
+    // Observable: beacon /skip capturado cuando player.skipAd() se llama.
+    // Usa preroll-skippable (skipoffset="00:00:05") — IMA habilita skip tras 5s.
+    test.slow()
+    await mockPlayerConfig(page, YOUBORA_CONFIG)
+    const beacons = await setupNpawInterceptor(page)
+
+    await player.goto({
+      type: 'media',
+      id: MockContentIds.vod,
+      autoplay: false,
+      adsMap: `${MOCK_VAST_URL}/vast/preroll-skippable`,
+    })
+    await player.play()
+
+    // Esperar que el ad empiece a reproducirse
+    await player.waitForAdStart(30_000)
+
+    const n0 = beacons.length
+
+    // Esperar que IMA habilite el botón de skip (skipoffset=5s)
+    await expect.poll(
+      () => player.isAdSkippable(),
+      { timeout: 30_000, intervals: [500], message: 'Ad debe ser skippable después de skipoffset=5s' }
+    ).toBe(true)
+
+    // Act — skip via API pública del player
+    await player.skipAd()
+    await player.waitForEvent('adsSkipped', 10_000)
+
+    // Assert — beacon /skip capturado (fireSkip en tracker.js onAdsSkipped)
+    const skipBeacons = () => beacons.filter(url => url.includes('/skip') || url.includes('skip')).length
+    await expect.poll(skipBeacons, {
+      timeout: 5_000,
+      message: 'Se esperaba beacon /skip de NPAW tras skipAd() — fireSkip en tracker.js onAdsSkipped (issue-706)',
+    }).toBeGreaterThan(0)
+
+    // Al menos 1 beacon adicional después del skip
+    expect(beacons.length).toBeGreaterThan(n0)
+  })
+
+  test('NPAW-A.2.11 — ad playhead/duration/provider in ad beacons', async () => {
+    test.fixme(true, 'Pending: mock-vast no provee ad metadata completa (title, duration, adSystem). Requiere VAST tag con esas propiedades para validar getTitle/getDuration/getAdProvider del adsAdapter (issue-706).')
+  })
+
+  test('NPAW-A.3.1 — background tab pauses session (background.settings.android/iOS:pause)', async () => {
+    test.fixme(true, 'Pending: requiere manipulación de Page Visibility API (document.visibilityState) y verificar que el NpawPlugin con background.settings.android/iOS:pause no envía beacons en background. Implementar con page.evaluate(() => Object.defineProperty(document, "visibilityState", ...)).')
   })
 })

@@ -13,6 +13,8 @@
  *   GET /vast/pod              → VAST con 3 ads en pod
  *   GET /vmap/preroll-midroll  → VMAP con pre-roll + mid-roll a los 30s
  *   GET /vmap/midroll-only     → VMAP con mid-roll único a los 5s (sin pre-roll)
+ *   GET /vast/full-metadata    → VAST con AdSystem/AdTitle/MediaFile poblados (NPAW A.2.16/17/19) + skippable
+ *   GET /vmap/full-metadata    → VMAP pre+mid(15s)+post apuntando a /vast/full-metadata
  *   GET /health                → health check
  */
 import express from 'express'
@@ -47,6 +49,8 @@ app.get('/vast/error-303', serve('error-303.xml'))
 app.get('/vast/pod', serve('pod.xml'))
 app.get('/vmap/preroll-midroll', serve('vmap-preroll-midroll.xml'))
 app.get('/vmap/midroll-only', serve('vmap-midroll-only.xml'))
+app.get('/vast/full-metadata', serve('vast-full-metadata.xml'))
+app.get('/vmap/full-metadata', serve('vmap-full-metadata.xml'))
 
 app.get('/health', (_, res) => {
   res.setHeader('Content-Type', 'application/json')

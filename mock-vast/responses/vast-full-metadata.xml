@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  VAST 3.0 — Ad con metadata COMPLETA para validar NPAW A.2.16/2.17/2.19
+  Valores reconocibles a propósito para verlos en el beacon /adStart:
+    AdSystem  -> adProvider  : "MediastreamQA"
+    AdTitle   -> adTitle     : "QA NPAW Test Ad - Title Visible"
+    MediaFile -> adResource  : URL del mp4
+  skipoffset 00:00:05 -> skippable=true (para A.2.23)
+-->
+<VAST version="3.0">
+  <Ad id="qa-npaw-fullmeta-001">
+    <InLine>
+      <AdSystem version="1.0">MediastreamQA</AdSystem>
+      <AdTitle>QA NPAW Test Ad - Title Visible</AdTitle>
+      <Description>Ad de prueba con title, adSystem y mediaFile poblados para validar adTitle/adProvider/adResource en NPAW</Description>
+      <Advertiser>MediastreamQA Advertiser</Advertiser>
+      <Pricing model="CPM" currency="USD"><![CDATA[1.00]]></Pricing>
+      <Error><![CDATA[http://localhost:9999/track/error]]></Error>
+      <Impression id="ms-imp"><![CDATA[http://localhost:9999/track/impression]]></Impression>
+      <Creatives>
+        <Creative id="qa-creative-001" sequence="1" adId="qa-npaw-fullmeta-001">
+          <UniversalAdId idRegistry="Mediastream" idValue="QA-NPAW-001">QA-NPAW-001</UniversalAdId>
+          <Linear skipoffset="00:00:05">
+            <Duration>00:00:10</Duration>
+            <TrackingEvents>
+              <Tracking event="start"><![CDATA[http://localhost:9999/track/start]]></Tracking>
+              <Tracking event="firstQuartile"><![CDATA[http://localhost:9999/track/firstQuartile]]></Tracking>
+              <Tracking event="midpoint"><![CDATA[http://localhost:9999/track/midpoint]]></Tracking>
+              <Tracking event="thirdQuartile"><![CDATA[http://localhost:9999/track/thirdQuartile]]></Tracking>
+              <Tracking event="complete"><![CDATA[http://localhost:9999/track/complete]]></Tracking>
+              <Tracking event="skip"><![CDATA[http://localhost:9999/track/skip]]></Tracking>
+            </TrackingEvents>
+            <VideoClicks>
+              <ClickThrough id="ms-click"><![CDATA[https://www.mediastream.io]]></ClickThrough>
+            </VideoClicks>
+            <MediaFiles>
+              <MediaFile delivery="progressive" type="video/mp4" width="640" height="360" bitrate="400" scalable="true" maintainAspectRatio="true">
+                <![CDATA[https://storage.googleapis.com/interactive-media-ads/media/android.mp4]]>
+              </MediaFile>
+            </MediaFiles>
+          </Linear>
+        </Creative>
+      </Creatives>
+    </InLine>
+  </Ad>
+</VAST>
