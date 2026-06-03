@@ -116,6 +116,13 @@ jobs:
         if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
 
+      # Los HLS fixtures (vod/audio/vod-with-error) están gitignored y se
+      # generan con ffmpeg. Sin esto el global-setup aborta el job.
+      - name: Preparar HLS fixtures
+        run: |
+          sudo apt-get install -y ffmpeg
+          npm run fixtures:generate
+
       - name: E2E tests
         run: npx playwright test tests/e2e/ --project=chromium
         env:
@@ -161,6 +168,11 @@ jobs:
       - name: Install Playwright system deps
         if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps ${{ matrix.project }}
+
+      - name: Preparar HLS fixtures
+        run: |
+          sudo apt-get install -y ffmpeg
+          npm run fixtures:generate
 
       - name: E2E tests
         run: npx playwright test tests/e2e/ --project=${{ matrix.project }}
@@ -293,6 +305,11 @@ jobs:
         if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
 
+      - name: Preparar HLS fixtures
+        run: |
+          sudo apt-get install -y ffmpeg
+          npm run fixtures:generate
+
       - run: npx playwright test tests/a11y/ --project=chromium
 
       - uses: actions/upload-artifact@v4
@@ -329,6 +346,11 @@ jobs:
       - name: Install Playwright system deps
         if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
+
+      - name: Preparar HLS fixtures
+        run: |
+          sudo apt-get install -y ffmpeg
+          npm run fixtures:generate
 
       - run: npx playwright test tests/visual/ --project=chromium
 
@@ -367,6 +389,11 @@ jobs:
       - name: Install Playwright system deps
         if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
+
+      - name: Preparar HLS fixtures
+        run: |
+          sudo apt-get install -y ffmpeg
+          npm run fixtures:generate
 
       - name: Run performance tests
         run: npx playwright test tests/performance/ --project=performance
