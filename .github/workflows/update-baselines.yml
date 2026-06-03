@@ -1,19 +1,16 @@
 name: Update Visual Baselines (manual)
 
 # Genera/actualiza los baselines de screenshot EN el runner de CI (ubuntu-latest)
-# y los commitea de vuelta a la rama indicada. Es la forma correcta de capturar
-# baselines: en el mismo entorno donde el job `visual` los compara.
+# y los commitea de vuelta a la rama. Es la forma correcta de capturar baselines:
+# en el mismo entorno donde el job `visual` los compara.
 #
-# Uso: Actions → "Update Visual Baselines (manual)" → Run workflow → elegir rama.
-# Tras correr, hacer `git pull` local para traer los PNG generados.
+# Se dispara en cada push a la rama de trabajo (mientras se calibran baselines).
+# El commit que genera lleva "[skip ci]" para no entrar en bucle.
+# Quitar el trigger `push` antes de mergear a main.
 
 on:
-  workflow_dispatch:
-    inputs:
-      ref:
-        description: 'Rama sobre la que generar y commitear los baselines'
-        required: true
-        default: 'ci/optimize-dev-daily-suite'
+  push:
+    branches: [ci/optimize-dev-daily-suite]
 
 permissions:
   contents: write
@@ -24,8 +21,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.inputs.ref }}
 
       - uses: actions/setup-node@v4
         with: { node-version: '20', cache: 'npm' }
@@ -53,5 +48,5 @@ jobs:
             echo "No hay cambios en baselines."
           else
             git commit -m "chore(visual): generar baselines linux en CI [skip ci]"
-            git push origin HEAD:${{ github.event.inputs.ref }}
+            git push origin HEAD:${{ github.ref_name }}
           fi
