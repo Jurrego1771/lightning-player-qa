@@ -39,6 +39,16 @@ async function gotoVideoNextEpisodeState(
   })
   await player.waitForEvent('playing', 20_000)
 
+  // Tras 'playing' la duración HLS puede no estar disponible todavía; hacer
+  // seek con una duración no-finita lanza "currentTime non-finite". Esperar a
+  // una duración finita y > 0 antes de buscar el final del episodio.
+  await expect
+    .poll(() => player.getDuration(), {
+      timeout: 15_000,
+      message: 'getDuration() debe devolver una duración finita > 0 antes del seek',
+    })
+    .toBeGreaterThan(1)
+
   const duration = await player.getDuration()
   await player.seek(Math.max(0, duration - 0.8))
   await page.locator('.next-episode').waitFor({ state: 'visible', timeout: 10_000 })
