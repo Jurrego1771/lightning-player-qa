@@ -2,28 +2,24 @@ name: Dev — Suite Completa (Diario + Push)
 
 # ─── Cuándo corre y qué jobs ───────────────────────────────────────────────
 #
-#  TRIGGER             smoke  e2e(chr)  e2e(ff/wk)  integ  analytics  a11y  visual  perf
-#  ────────────────────────────────────────────────────────────────────────────────
-#  PR → main           ✅     —         —           ✅(*)  —          —     —       —
-#  push → main         ✅     —         —           —      —          —     —       —
-#  schedule Mar-Vie    ✅     ✅        —           ✅(*)  —          ✅    ✅      —
-#  schedule Lunes      ✅     ✅        ✅          ✅(*)  —          ✅    ✅      ✅
-#  workflow_dispatch   ✅     full      full        full   full       full  full    full
+#  TRIGGER             smoke  e2e(chr)  e2e(ff/wk)  a11y  visual  perf
+#  ─────────────────────────────────────────────────────────────────────
+#  PR → main           ✅     —         —           —     —       —
+#  push → main         ✅     —         —           —     —       —
+#  schedule Mar-Vie    ✅     ✅        —           ✅    ✅      —
+#  schedule Lunes      ✅     ✅        ✅          ✅    ✅      ✅
+#  workflow_dispatch   ✅     full      full        full  full    full
 #
-#  (*) integration "diaria" excluye las baterías de analytics de terceros
-#      Youbora/NPAW + Konodrac (--grep-invert "Youbora|Konodrac"): esos trackers
-#      esperan beacons reales (lma.npaw.com, konodrac) → lentos, flaky y poco
-#      probables de romper. NO entran en ningún schedule; corren solo bajo
-#      demanda con workflow_dispatch → suite=full (job integration-analytics).
+#  Integration (incl. analytics Youbora/Konodrac): ELIMINADA de CI por ser
+#  lenta (>30 min, con cuelgues) y poco probable de romper a diario.
 #
-#  Estrategia: el camino crítico diario (Mar-Vie) baja a ~15-18 min corriendo
-#  solo chromium + integración crítica. Los lunes se ejecuta la cobertura completa:
-#  cross-browser (firefox/webkit) y performance. Las baterías de analytics
-#  (Youbora + Konodrac) quedan fuera de todo schedule: solo workflow_dispatch.
+#  Estrategia: el camino crítico diario (Mar-Vie) corre solo chromium e2e +
+#  a11y + visual. Los lunes se suma la cobertura completa: cross-browser
+#  (firefox/webkit) y performance.
 
 on:
   pull_request:
-    branches: [main]        # Smoke + integration en cada PR (feedback pre-merge)
+    branches: [main]        # Solo smoke en cada PR (feedback pre-merge rápido)
   schedule:
     - cron: '0 12 * * 2-5'  # Mar-Vie 7 AM Colombia — diario ligero (chromium)
     - cron: '0 12 * * 1'    # Lunes 7 AM Colombia — suite completa (cross-browser + perf)
@@ -186,98 +182,12 @@ jobs:
           path: playwright-report/
           retention-days: 14
 
-  # ── JOB 4: Integration diaria (excluye analytics de terceros — ver header) ──
-  integration:
-    name: Integration — Chromium (sin analytics)
-    runs-on: ubuntu-latest
-    needs: smoke
-    # Corre en PRs (feedback pre-merge) y en cualquier schedule.
-    # No en push a main: ya fue validado en el PR correspondiente.
-    if: ${{ github.event_name == 'pull_request' || github.event_name == 'schedule' || github.event.inputs.suite == 'full' }}
+  # ── Integración: ELIMINADA de CI ─────────────────────────────────────────
+  # Los jobs de integration (incl. analytics Youbora/Konodrac) se removieron:
+  # eran lentos (>30 min, con cuelgues) y poco probables de romper a diario.
+  # Si se reintroducen, considerar sharding (--shard) y diagnosticar el hang.
 
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: '20', cache: 'npm' }
-      - run: npm ci
-
-      - name: Cache Playwright browsers
-        uses: actions/cache@v4
-        id: playwright-cache
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-chromium-${{ hashFiles('package-lock.json') }}
-
-      - name: Install Playwright + deps
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: npx playwright install chromium --with-deps
-
-      - name: Install Playwright system deps
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium
-
-      - run: sudo apt-get install -y ffmpeg
-
-      - name: Integration tests (excluye analytics de terceros)
-        run: npx playwright test tests/integration/ --project=chromium --grep-invert "Youbora|Konodrac"
-        env:
-          PLATFORM_API_TOKEN: ${{ secrets.PLATFORM_API_TOKEN }}
-
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: integration-report
-          path: playwright-report/
-          retention-days: 14
-
-  # ── JOB 5: Analytics de terceros (Youbora + Konodrac) — SOLO manual ──────
-  # Estos trackers esperan beacons reales (lma.npaw.com no se puede mockear sin
-  # romper Fastdata del SDK; konodrac igual), por lo que son lentos e
-  # inherentemente flaky y poco probables de romper. NO entran en ningún
-  # schedule (ni diario ni lunes); solo se corren bajo demanda con
-  # workflow_dispatch → suite=full.
-  integration-analytics:
-    name: Integration — Analytics (Youbora + Konodrac)
-    runs-on: ubuntu-latest
-    needs: smoke
-    if: ${{ github.event.inputs.suite == 'full' }}
-
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: '20', cache: 'npm' }
-      - run: npm ci
-
-      - name: Cache Playwright browsers
-        uses: actions/cache@v4
-        id: playwright-cache
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-chromium-${{ hashFiles('package-lock.json') }}
-
-      - name: Install Playwright + deps
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: npx playwright install chromium --with-deps
-
-      - name: Install Playwright system deps
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium
-
-      - run: sudo apt-get install -y ffmpeg
-
-      - name: Analytics tests (Youbora + Konodrac)
-        run: npx playwright test tests/integration/ --project=chromium --grep "Youbora|Konodrac"
-        env:
-          PLATFORM_API_TOKEN: ${{ secrets.PLATFORM_API_TOKEN }}
-
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: analytics-report
-          path: playwright-report/
-          retention-days: 14
-
-  # ── JOB 6: Accessibility (diario) ────────────────────────────────────────
+  # ── JOB 4: Accessibility (diario) ────────────────────────────────────────
   accessibility:
     name: Accessibility (WCAG 2.1 AA)
     runs-on: ubuntu-latest
@@ -420,7 +330,7 @@ jobs:
   notify-results:
     name: Notificar Resultados
     runs-on: ubuntu-latest
-    needs: [smoke, e2e-chromium, e2e-cross-browser, integration, accessibility, visual, performance]
+    needs: [smoke, e2e-chromium, e2e-cross-browser, accessibility, visual, performance]
     if: always() && github.event_name == 'schedule'
     # secrets no puede usarse en condiciones if: — se promueve a env del job
     # para poder evaluarlo en el paso de Slack.
@@ -432,13 +342,12 @@ jobs:
           SMOKE="${{ needs.smoke.result }}"
           E2E_CHR="${{ needs.e2e-chromium.result }}"
           E2E_XB="${{ needs.e2e-cross-browser.result }}"
-          INTEGRATION="${{ needs.integration.result }}"
           PERFORMANCE="${{ needs.performance.result }}"
           ACCESSIBILITY="${{ needs.accessibility.result }}"
           VISUAL="${{ needs.visual.result }}"
 
           # skipped (jobs que solo corren lunes) NO cuenta como fallo.
-          if [[ "$SMOKE" == "failure" || "$E2E_CHR" == "failure" || "$E2E_XB" == "failure" || "$INTEGRATION" == "failure" || "$PERFORMANCE" == "failure" ]]; then
+          if [[ "$SMOKE" == "failure" || "$E2E_CHR" == "failure" || "$E2E_XB" == "failure" || "$PERFORMANCE" == "failure" ]]; then
             echo "RESULT=failure" >> $GITHUB_ENV
             echo "ICON=❌" >> $GITHUB_ENV
           else
@@ -449,7 +358,6 @@ jobs:
           echo "SMOKE_R=$SMOKE"               >> $GITHUB_ENV
           echo "E2E_CHR_R=$E2E_CHR"           >> $GITHUB_ENV
           echo "E2E_XB_R=$E2E_XB"             >> $GITHUB_ENV
-          echo "INTEGRATION_R=$INTEGRATION"   >> $GITHUB_ENV
           echo "PERFORMANCE_R=$PERFORMANCE"   >> $GITHUB_ENV
           echo "ACCESSIBILITY_R=$ACCESSIBILITY" >> $GITHUB_ENV
           echo "VISUAL_R=$VISUAL"             >> $GITHUB_ENV
@@ -467,7 +375,6 @@ jobs:
                   {\"title\": \"Smoke\",        \"value\": \"${{ env.SMOKE_R }}\",        \"short\": true},
                   {\"title\": \"E2E chromium\", \"value\": \"${{ env.E2E_CHR_R }}\",      \"short\": true},
                   {\"title\": \"E2E ff/wk\",    \"value\": \"${{ env.E2E_XB_R }}\",       \"short\": true},
-                  {\"title\": \"Integration\",  \"value\": \"${{ env.INTEGRATION_R }}\",  \"short\": true},
                   {\"title\": \"A11y\",         \"value\": \"${{ env.ACCESSIBILITY_R }}\",\"short\": true},
                   {\"title\": \"Visual\",       \"value\": \"${{ env.VISUAL_R }}\",       \"short\": true},
                   {\"title\": \"Performance\",  \"value\": \"${{ env.PERFORMANCE_R }}\",  \"short\": true}
