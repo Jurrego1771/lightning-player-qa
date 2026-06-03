@@ -49,6 +49,9 @@ test.describe('Visual Regression — Player de Video', { tag: ['@visual'] }, () 
   test('controles visibles — hover', async ({ isolatedPlayer: player, page }) => {
     await player.goto({ type: 'media', id: MockContentIds.vod, autoplay: true })
     await player.waitForCanPlay()
+    // Congelar el frame: con el video reproduciéndose, toHaveScreenshot no logra
+    // dos capturas estables consecutivas. Pausar fija el frame del video.
+    await player.pause()
     await disableAnimations(page)
 
     // Mover mouse sobre el player para mostrar controles.

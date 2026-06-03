@@ -52,6 +52,9 @@ async function gotoVideoNextEpisodeState(
   const duration = await player.getDuration()
   await player.seek(Math.max(0, duration - 0.8))
   await page.locator('.next-episode').waitFor({ state: 'visible', timeout: 10_000 })
+  // Congelar el video que sigue corriendo detrás del overlay: si no, el frame
+  // cambia y toHaveScreenshot no logra dos capturas estables consecutivas.
+  await player.pause()
   await disableAnimations(page)
 }
 
