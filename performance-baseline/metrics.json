@@ -21,7 +21,7 @@
       "timeToFirstFrame_ms": 2281
     },
     "buffer_health_degraded_3g": {
-      "bufferedAhead_sec": 3.981611
+      "bufferedAhead_sec": 2.0
     },
     "session_30s": {
       "bufferingRatio": 0,
