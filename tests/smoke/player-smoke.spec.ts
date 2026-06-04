@@ -83,8 +83,9 @@ test.describe(`Smoke Tests — ${ENV.name}`, { tag: ['@smoke'] }, () => {
 
   // ── 6. Live stream carga ──────────────────────────────────────────────────
   test('Live: stream carga y reproduce (isLive=true)', async ({ player, contentAccess }) => {
+    test.slow() // live CDN cold-start can be slow in CI
     await player.goto({ type: 'live', id: ContentIds.live, autoplay: true, ...contentAccess.live })
-    await player.waitForEvent('playing', 30_000)
+    await player.waitForEvent('playing', 60_000)
 
     const isLive = await player.isLive()
     expect(isLive).toBe(true)
