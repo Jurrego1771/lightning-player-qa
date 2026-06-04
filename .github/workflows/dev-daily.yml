@@ -38,6 +38,7 @@ env:
   MOCK_VAST_BASE_URL: http://localhost:9999
   PLATFORM_API_URL: https://dev.platform.mediastre.am/api
   CI: true
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   # ── JOB 1: Smoke rápido (siempre corre primero, falla rápido) ────────────
@@ -73,6 +74,20 @@ jobs:
       - name: Install Playwright system deps
         if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
+
+      - name: Cache HLS fixtures
+        id: fixtures-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            fixtures/streams/vod
+            fixtures/streams/audio
+            fixtures/streams/vod-with-error
+          key: fixtures-${{ runner.os }}-${{ hashFiles('scripts/generate-fixtures.sh') }}
+
+      - name: Generate HLS fixtures
+        if: steps.fixtures-cache.outputs.cache-hit != 'true'
+        run: sudo apt-get install -y ffmpeg && npm run fixtures:generate
 
       - name: Smoke tests
         run: npx playwright test tests/smoke/ --project=chromium
@@ -126,6 +141,20 @@ jobs:
       - name: Install Playwright system deps
         if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps ${{ matrix.project }}
+
+      - name: Cache HLS fixtures
+        id: fixtures-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            fixtures/streams/vod
+            fixtures/streams/audio
+            fixtures/streams/vod-with-error
+          key: fixtures-${{ runner.os }}-${{ hashFiles('scripts/generate-fixtures.sh') }}
+
+      - name: Generate HLS fixtures
+        if: steps.fixtures-cache.outputs.cache-hit != 'true'
+        run: sudo apt-get install -y ffmpeg && npm run fixtures:generate
 
       - name: E2E tests
         run: npx playwright test tests/e2e/ --project=${{ matrix.project }}
@@ -241,6 +270,20 @@ jobs:
         if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
 
+      - name: Cache HLS fixtures
+        id: fixtures-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            fixtures/streams/vod
+            fixtures/streams/audio
+            fixtures/streams/vod-with-error
+          key: fixtures-${{ runner.os }}-${{ hashFiles('scripts/generate-fixtures.sh') }}
+
+      - name: Generate HLS fixtures
+        if: steps.fixtures-cache.outputs.cache-hit != 'true'
+        run: sudo apt-get install -y ffmpeg && npm run fixtures:generate
+
       - run: npx playwright test tests/a11y/ --project=chromium
 
       - uses: actions/upload-artifact@v4
@@ -287,6 +330,20 @@ jobs:
         if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
 
+      - name: Cache HLS fixtures
+        id: fixtures-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            fixtures/streams/vod
+            fixtures/streams/audio
+            fixtures/streams/vod-with-error
+          key: fixtures-${{ runner.os }}-${{ hashFiles('scripts/generate-fixtures.sh') }}
+
+      - name: Generate HLS fixtures
+        if: steps.fixtures-cache.outputs.cache-hit != 'true'
+        run: sudo apt-get install -y ffmpeg && npm run fixtures:generate
+
       - run: npx playwright test tests/visual/ --project=chromium
 
       - uses: actions/upload-artifact@v4
@@ -332,6 +389,20 @@ jobs:
       - name: Install Playwright system deps
         if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
+
+      - name: Cache HLS fixtures
+        id: fixtures-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            fixtures/streams/vod
+            fixtures/streams/audio
+            fixtures/streams/vod-with-error
+          key: fixtures-${{ runner.os }}-${{ hashFiles('scripts/generate-fixtures.sh') }}
+
+      - name: Generate HLS fixtures
+        if: steps.fixtures-cache.outputs.cache-hit != 'true'
+        run: sudo apt-get install -y ffmpeg && npm run fixtures:generate
 
       - name: Run performance tests
         run: npx playwright test tests/performance/ --project=performance
