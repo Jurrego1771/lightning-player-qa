@@ -42,6 +42,7 @@ async function gotoVideoNextEpisodeState(
   const duration = await player.getDuration()
   await player.seek(Math.max(0, duration - 0.8))
   await page.locator('.next-episode').waitFor({ state: 'visible', timeout: 10_000 })
+  await player.pause()
   await disableAnimations(page)
 }
 
