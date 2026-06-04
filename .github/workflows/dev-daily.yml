@@ -384,10 +384,10 @@ jobs:
           echo "VISUAL_R=$VISUAL"         >> $GITHUB_ENV
 
       - name: Notificar Slack
-        if: ${{ secrets.SLACK_WEBHOOK != '' }}
         env:
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
         run: |
+          [ -z "$SLACK_WEBHOOK" ] && exit 0
           STATUS_EMOJI() { [[ "$1" == "success" ]] && echo "✅" || [[ "$1" == "skipped" ]] && echo "⏭️" || echo "❌"; }
           curl -s -X POST "$SLACK_WEBHOOK" \
             -H "Content-Type: application/json" \
