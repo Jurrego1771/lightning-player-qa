@@ -48,7 +48,16 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: '20', cache: 'npm' }
+
+      - name: Cache node_modules
+        id: nm-cache
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: nm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
       - run: npm ci
+        if: steps.nm-cache.outputs.cache-hit != 'true'
 
       - name: Cache Playwright browsers
         uses: actions/cache@v4
@@ -64,8 +73,6 @@ jobs:
       - name: Install Playwright system deps
         if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
-
-      - run: sudo apt-get install -y ffmpeg
 
       - name: Smoke tests
         run: npx playwright test tests/smoke/ --project=chromium
@@ -94,7 +101,16 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: '20', cache: 'npm' }
+
+      - name: Cache node_modules
+        id: nm-cache
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: nm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
       - run: npm ci
+        if: steps.nm-cache.outputs.cache-hit != 'true'
 
       - name: Cache Playwright browsers
         uses: actions/cache@v4
@@ -136,7 +152,16 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: '20', cache: 'npm' }
+
+      - name: Cache node_modules
+        id: nm-cache
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: nm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
       - run: npm ci
+        if: steps.nm-cache.outputs.cache-hit != 'true'
 
       - name: Cache Playwright browsers
         uses: actions/cache@v4
@@ -153,7 +178,19 @@ jobs:
         if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
 
-      - run: sudo apt-get install -y ffmpeg
+      - name: Cache HLS fixtures
+        id: fixtures-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            fixtures/streams/vod
+            fixtures/streams/audio
+            fixtures/streams/vod-with-error
+          key: fixtures-${{ runner.os }}-${{ hashFiles('scripts/generate-fixtures.sh') }}
+
+      - name: Generate HLS fixtures
+        if: steps.fixtures-cache.outputs.cache-hit != 'true'
+        run: sudo apt-get install -y ffmpeg && npm run fixtures:generate
 
       - name: Integration tests
         run: npx playwright test tests/integration/ --project=chromium
@@ -178,7 +215,16 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: '20', cache: 'npm' }
+
+      - name: Cache node_modules
+        id: nm-cache
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: nm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
       - run: npm ci
+        if: steps.nm-cache.outputs.cache-hit != 'true'
 
       - name: Cache Playwright browsers
         uses: actions/cache@v4
@@ -215,7 +261,16 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: '20', cache: 'npm' }
+
+      - name: Cache node_modules
+        id: nm-cache
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: nm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
       - run: npm ci
+        if: steps.nm-cache.outputs.cache-hit != 'true'
 
       - name: Cache Playwright browsers
         uses: actions/cache@v4
@@ -252,7 +307,16 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: '20', cache: 'npm' }
+
+      - name: Cache node_modules
+        id: nm-cache
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: nm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
       - run: npm ci
+        if: steps.nm-cache.outputs.cache-hit != 'true'
 
       - name: Cache Playwright browsers
         uses: actions/cache@v4
