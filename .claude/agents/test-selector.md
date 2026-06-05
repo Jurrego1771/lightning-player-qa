@@ -1,6 +1,6 @@
 ---
 name: test-selector
-description: "Elige la batería mínima de tests según el risk_assessment de session_state.json. Escribe test_plan en session_state.json con los comandos exactos de Playwright a ejecutar. Es el tercer agente del pipeline (A3) — delegar después de risk-mapper (A2).\n\n<example>\nContext: risk-mapper calculó risk_label=HIGH para módulo ads-ima y el pipeline necesita decidir qué tests correr.\nuser: \"¿Qué tests debo correr para los cambios en ads-ima?\"\nassistant: \"Usaré test-selector para determinar la suite mínima suficiente según el nivel de riesgo HIGH.\"\n<commentary>\nDelegar a test-selector cuando risk_assessment ya está en session_state.json. El agente produce test_plan con comandos Playwright concretos y tiempo estimado.\n</commentary>\n</example>\n\n<example>\nContext: El diff afecta ui-video y ui-radio — módulos UI que requieren visual regression.\nuser: \"Selecciona los tests para los cambios de UI.\"\nassistant: \"Lanzo test-selector. Como hay módulos UI afectados, incluirá visual regression automáticamente.\"\n<commentary>\ntest-selector siempre agrega visual regression cuando ui-video, ui-radio o ui-compact están en los módulos afectados, independiente del risk_label global.\n</commentary>\n</example>"
+description: "Elige la batería mínima de tests según el risk_assessment de session_state.json. Escribe test_plan en session_state.json con los comandos exactos de Playwright a ejecutar. Es el tercer agente del pipeline (A3) — delegar después de coverage-auditor (A4) y test-generator (A5), para que el plan incluya los specs recién generados para gaps MUST.\n\n<example>\nContext: risk-mapper calculó risk_label=HIGH para módulo ads-ima, coverage-auditor ya auditó gaps y test-generator generó los specs faltantes.\nuser: \"¿Qué tests debo correr para los cambios en ads-ima?\"\nassistant: \"Usaré test-selector para determinar la suite mínima suficiente según el nivel de riesgo HIGH, incluyendo los nuevos specs generados.\"\n<commentary>\nDelegar a test-selector cuando risk_assessment Y coverage_gaps ya están en session_state.json. El agente produce test_plan con comandos Playwright concretos y tiempo estimado.\n</commentary>\n</example>\n\n<example>\nContext: El diff afecta ui-video y ui-radio — módulos UI que requieren visual regression.\nuser: \"Selecciona los tests para los cambios de UI.\"\nassistant: \"Lanzo test-selector. Como hay módulos UI afectados, incluirá visual regression automáticamente.\"\n<commentary>\ntest-selector siempre agrega visual regression cuando ui-video, ui-radio o ui-compact están en los módulos afectados, independiente del risk_label global.\n</commentary>\n</example>"
 tools: Read Bash
 model: claude-haiku-4-5-20251001
 color: yellow
@@ -268,7 +268,7 @@ Leer `state/session_state.json`, agregar `test_plan` y reescribir conservando to
   Tiempo estimado: ~6 min (vs suite completa: ~25 min — ahorro: 76%)
 
   state/session_state.json ✅ actualizado con test_plan
-  → Siguiente: coverage-auditor (A4) para detectar gaps de cobertura
+  → /pipeline procede a fase de ejecución (A6 + A9 en paralelo)
 
 ═══════════════════════════════════════════════════════════
 ```

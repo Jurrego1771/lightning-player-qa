@@ -1,0 +1,65 @@
+name: Setup QA Environment
+description: Node, npm cache, Playwright browsers, and HLS fixtures in one step.
+
+inputs:
+  browser:
+    description: 'Playwright browser(s) to install (e.g. chromium, firefox, webkit)'
+    required: false
+    default: 'chromium'
+  fixtures:
+    description: 'Whether to cache/generate HLS fixtures'
+    required: false
+    default: 'true'
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: npm
+
+    - name: Cache node_modules
+      id: nm-cache
+      uses: actions/cache@v4
+      with:
+        path: node_modules
+        key: nm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+    - name: Install dependencies
+      if: steps.nm-cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: npm ci
+
+    - name: Cache Playwright browsers
+      id: playwright-cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-${{ runner.os }}-${{ inputs.browser }}-${{ hashFiles('package-lock.json') }}
+
+    - name: Install Playwright + system deps
+      if: steps.playwright-cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: npx playwright install ${{ inputs.browser }} --with-deps
+
+    - name: Install Playwright system deps only
+      if: steps.playwright-cache.outputs.cache-hit == 'true'
+      shell: bash
+      run: npx playwright install-deps ${{ inputs.browser }}
+
+    - name: Cache HLS fixtures
+      if: inputs.fixtures == 'true'
+      id: fixtures-cache
+      uses: actions/cache@v4
+      with:
+        path: |
+          fixtures/streams/vod
+          fixtures/streams/audio
+          fixtures/streams/vod-with-error
+        key: fixtures-${{ runner.os }}-${{ hashFiles('scripts/generate-fixtures.sh') }}
+
+    - name: Generate HLS fixtures
+      if: inputs.fixtures == 'true' && steps.fixtures-cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: sudo apt-get install -y ffmpeg && npm run fixtures:generate

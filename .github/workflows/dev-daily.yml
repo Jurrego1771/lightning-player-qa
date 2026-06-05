@@ -2,24 +2,24 @@ name: Dev — Suite Completa (Diario + Push)
 
 # ─── Cuándo corre y qué jobs ───────────────────────────────────────────────
 #
-#  TRIGGER            smoke  integration  e2e  a11y  visual  perf
+#  TRIGGER            contract  smoke  integration  e2e  a11y  perf
 #  ─────────────────────────────────────────────────────────────────
-#  PR → main          ✅     ✅            —    —     —       —
-#  push → main        ✅     —             —    —     —       —
-#  schedule (L-V)     ✅     ✅            ✅   ✅    ✅      lunes
-#  workflow_dispatch  ✅     full          full full  full    —
+#  PR → main          ✅        ✅     ✅            —    —     —
+#  push → main        ✅        ✅     —             —    —     —
+#  schedule (L-V)     ✅        ✅     ✅            ✅   ✅    lunes
+#  workflow_dispatch  ✅        full   full          full full  —
 #
-#  PR: smoke + integration dan feedback pre-merge en ~5-7 min.
-#  push a main: solo smoke (la suite completa ya validó el PR).
+#  PR: contract → smoke → integration (~5-7 min feedback pre-merge).
+#  push a main: contract + smoke (suite completa ya validó el PR).
 #  schedule: suite completa diaria contra develop del player.
 
 on:
   pull_request:
-    branches: [main]        # Smoke + integration en cada PR (feedback pre-merge)
+    branches: [main]
   schedule:
     - cron: '0 12 * * 1-5'  # 7 AM Colombia, Lunes a Viernes
   push:
-    branches: [main]        # Solo smoke post-merge (ya validado en PR)
+    branches: [main]
   workflow_dispatch:
     inputs:
       suite:
@@ -41,59 +41,43 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  # ── JOB 1: Smoke rápido (siempre corre primero, falla rápido) ────────────
+  # ── JOB 1: Contract tests (siempre, gate antes de smoke) ─────────────────
+  contract:
+    name: Contract — API Shape
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-qa
+        with:
+          browser: chromium
+          fixtures: 'false'
+      - name: Contract tests
+        run: npx playwright test tests/contract/ --project=chromium
+        env:
+          PLATFORM_API_TOKEN: ${{ secrets.PLATFORM_API_TOKEN }}
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: contract-report
+          path: playwright-report/
+          retention-days: 7
+
+  # ── JOB 2: Smoke rápido (falla rápido, gate para el resto) ───────────────
   smoke:
     name: Smoke — Dev
     runs-on: ubuntu-latest
+    needs: contract
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: '20', cache: 'npm' }
-
-      - name: Cache node_modules
-        id: nm-cache
-        uses: actions/cache@v4
+      - uses: ./.github/actions/setup-qa
         with:
-          path: node_modules
-          key: nm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-
-      - run: npm ci
-        if: steps.nm-cache.outputs.cache-hit != 'true'
-
-      - name: Cache Playwright browsers
-        uses: actions/cache@v4
-        id: playwright-cache
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-chromium-${{ hashFiles('package-lock.json') }}
-
-      - name: Install Playwright + deps
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: npx playwright install chromium --with-deps
-
-      - name: Install Playwright system deps
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium
-
-      - name: Cache HLS fixtures
-        id: fixtures-cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            fixtures/streams/vod
-            fixtures/streams/audio
-            fixtures/streams/vod-with-error
-          key: fixtures-${{ runner.os }}-${{ hashFiles('scripts/generate-fixtures.sh') }}
-
-      - name: Generate HLS fixtures
-        if: steps.fixtures-cache.outputs.cache-hit != 'true'
-        run: sudo apt-get install -y ffmpeg && npm run fixtures:generate
-
+          browser: chromium
       - name: Smoke tests
         run: npx playwright test tests/smoke/ --project=chromium
         env:
           PLATFORM_API_TOKEN: ${{ secrets.PLATFORM_API_TOKEN }}
-
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
@@ -101,66 +85,26 @@ jobs:
           path: playwright-report/
           retention-days: 7
 
-  # ── JOB 2: Suite completa E2E (Chromium + Firefox + WebKit) ─────────────
+  # ── JOB 3: Suite completa E2E (Chromium + Firefox + WebKit) ─────────────
   e2e-full:
     name: E2E — ${{ matrix.project }}
     runs-on: ubuntu-latest
     needs: smoke
+    timeout-minutes: 30
     if: ${{ github.event_name == 'schedule' || github.event.inputs.suite == 'full' || github.event.inputs.suite == 'e2e-only' }}
     strategy:
       fail-fast: false
       matrix:
         project: [chromium, firefox, webkit]
-
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: '20', cache: 'npm' }
-
-      - name: Cache node_modules
-        id: nm-cache
-        uses: actions/cache@v4
+      - uses: ./.github/actions/setup-qa
         with:
-          path: node_modules
-          key: nm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-
-      - run: npm ci
-        if: steps.nm-cache.outputs.cache-hit != 'true'
-
-      - name: Cache Playwright browsers
-        uses: actions/cache@v4
-        id: playwright-cache
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ matrix.project }}-${{ hashFiles('package-lock.json') }}
-
-      - name: Install Playwright + deps
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: npx playwright install ${{ matrix.project }} --with-deps
-
-      - name: Install Playwright system deps
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: npx playwright install-deps ${{ matrix.project }}
-
-      - name: Cache HLS fixtures
-        id: fixtures-cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            fixtures/streams/vod
-            fixtures/streams/audio
-            fixtures/streams/vod-with-error
-          key: fixtures-${{ runner.os }}-${{ hashFiles('scripts/generate-fixtures.sh') }}
-
-      - name: Generate HLS fixtures
-        if: steps.fixtures-cache.outputs.cache-hit != 'true'
-        run: sudo apt-get install -y ffmpeg && npm run fixtures:generate
-
+          browser: ${{ matrix.project }}
       - name: E2E tests
         run: npx playwright test tests/e2e/ --project=${{ matrix.project }}
         env:
           PLATFORM_API_TOKEN: ${{ secrets.PLATFORM_API_TOKEN }}
-
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -168,64 +112,22 @@ jobs:
           path: playwright-report/
           retention-days: 14
 
-  # ── JOB 3: Integration tests (solo Chromium, necesitan mock VAST) ────────
+  # ── JOB 4: Integration tests (PRs + schedule, solo Chromium) ─────────────
   integration:
     name: Integration — Chromium
     runs-on: ubuntu-latest
     needs: smoke
-    # Corre en PRs (feedback pre-merge) y en schedule completo.
-    # No en push a main: ya fue validado en el PR correspondiente.
+    timeout-minutes: 20
     if: ${{ github.event_name == 'pull_request' || github.event_name == 'schedule' || github.event.inputs.suite == 'full' }}
-
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: '20', cache: 'npm' }
-
-      - name: Cache node_modules
-        id: nm-cache
-        uses: actions/cache@v4
+      - uses: ./.github/actions/setup-qa
         with:
-          path: node_modules
-          key: nm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-
-      - run: npm ci
-        if: steps.nm-cache.outputs.cache-hit != 'true'
-
-      - name: Cache Playwright browsers
-        uses: actions/cache@v4
-        id: playwright-cache
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-chromium-${{ hashFiles('package-lock.json') }}
-
-      - name: Install Playwright + deps
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: npx playwright install chromium --with-deps
-
-      - name: Install Playwright system deps
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium
-
-      - name: Cache HLS fixtures
-        id: fixtures-cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            fixtures/streams/vod
-            fixtures/streams/audio
-            fixtures/streams/vod-with-error
-          key: fixtures-${{ runner.os }}-${{ hashFiles('scripts/generate-fixtures.sh') }}
-
-      - name: Generate HLS fixtures
-        if: steps.fixtures-cache.outputs.cache-hit != 'true'
-        run: sudo apt-get install -y ffmpeg && npm run fixtures:generate
-
+          browser: chromium
       - name: Integration tests
         run: npx playwright test tests/integration/ --project=chromium
         env:
           PLATFORM_API_TOKEN: ${{ secrets.PLATFORM_API_TOKEN }}
-
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -233,59 +135,19 @@ jobs:
           path: playwright-report/
           retention-days: 14
 
-  # ── JOB 4: Accessibility ─────────────────────────────────────────────────
+  # ── JOB 5: Accessibility ─────────────────────────────────────────────────
   accessibility:
     name: Accessibility (WCAG 2.1 AA)
     runs-on: ubuntu-latest
     needs: smoke
+    timeout-minutes: 15
     if: ${{ github.event_name == 'schedule' || github.event.inputs.suite == 'full' }}
-
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: '20', cache: 'npm' }
-
-      - name: Cache node_modules
-        id: nm-cache
-        uses: actions/cache@v4
+      - uses: ./.github/actions/setup-qa
         with:
-          path: node_modules
-          key: nm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-
-      - run: npm ci
-        if: steps.nm-cache.outputs.cache-hit != 'true'
-
-      - name: Cache Playwright browsers
-        uses: actions/cache@v4
-        id: playwright-cache
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-chromium-${{ hashFiles('package-lock.json') }}
-
-      - name: Install Playwright + deps
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: npx playwright install chromium --with-deps
-
-      - name: Install Playwright system deps
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium
-
-      - name: Cache HLS fixtures
-        id: fixtures-cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            fixtures/streams/vod
-            fixtures/streams/audio
-            fixtures/streams/vod-with-error
-          key: fixtures-${{ runner.os }}-${{ hashFiles('scripts/generate-fixtures.sh') }}
-
-      - name: Generate HLS fixtures
-        if: steps.fixtures-cache.outputs.cache-hit != 'true'
-        run: sudo apt-get install -y ffmpeg && npm run fixtures:generate
-
+          browser: chromium
       - run: npx playwright test tests/a11y/ --project=chromium
-
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -293,69 +155,24 @@ jobs:
           path: playwright-report/
           retention-days: 14
 
-  # ── JOB 6: Performance / QoE (diario L-V + workflow_dispatch full) ──────────
+  # ── JOB 6: Performance / QoE (diario L-V + workflow_dispatch full) ───────
   performance:
     name: QoE Metrics
     runs-on: ubuntu-latest
     needs: smoke
+    timeout-minutes: 20
     if: ${{ github.event_name == 'schedule' || github.event.inputs.suite == 'full' }}
-
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: '20', cache: 'npm' }
-
-      - name: Cache node_modules
-        id: nm-cache
-        uses: actions/cache@v4
+      - uses: ./.github/actions/setup-qa
         with:
-          path: node_modules
-          key: nm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-
-      - run: npm ci
-        if: steps.nm-cache.outputs.cache-hit != 'true'
-
-      - name: Cache Playwright browsers
-        uses: actions/cache@v4
-        id: playwright-cache
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-chromium-${{ hashFiles('package-lock.json') }}
-
-      - name: Install Playwright + deps
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: npx playwright install chromium --with-deps
-
-      - name: Install Playwright system deps
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium
-
-      - name: Cache HLS fixtures
-        id: fixtures-cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            fixtures/streams/vod
-            fixtures/streams/audio
-            fixtures/streams/vod-with-error
-          key: fixtures-${{ runner.os }}-${{ hashFiles('scripts/generate-fixtures.sh') }}
-
-      - name: Generate HLS fixtures
-        if: steps.fixtures-cache.outputs.cache-hit != 'true'
-        run: sudo apt-get install -y ffmpeg && npm run fixtures:generate
-
+          browser: chromium
       - name: Run performance tests
         run: npx playwright test tests/performance/ --project=performance
         env:
           PLATFORM_API_TOKEN: ${{ secrets.PLATFORM_API_TOKEN }}
-
-      # Compara contra baseline commiteado. Falla el job si alguna métrica
-      # empeoró > 20% respecto al baseline. Si el baseline está vacío (primera
-      # ejecución), el script hace exit 0 y no bloquea CI.
-      # Para actualizar el baseline: npm run perf:update-baseline + commit.
       - name: Compare against performance baseline
         run: npm run perf:compare
-
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -365,11 +182,11 @@ jobs:
             perf-results/current-run.json
           retention-days: 30
 
-  # ── Notificación de resultados ────────────────────────────────────────────
+  # ── Notificación de resultados (solo schedule) ────────────────────────────
   notify-results:
     name: Notificar Resultados
     runs-on: ubuntu-latest
-    needs: [smoke, integration, accessibility, performance]
+    needs: [smoke, integration, e2e-full, accessibility, performance]
     if: always() && github.event_name == 'schedule'
     steps:
       - name: Evaluar resultado global
@@ -378,9 +195,9 @@ jobs:
           INTEGRATION="${{ needs.integration.result }}"
           PERFORMANCE="${{ needs.performance.result }}"
           ACCESSIBILITY="${{ needs.accessibility.result }}"
-          VISUAL="${{ needs.visual.result }}"
+          E2E="${{ needs.e2e-full.result }}"
 
-          if [[ "$SMOKE" == "failure" || "$INTEGRATION" == "failure" || "$PERFORMANCE" == "failure" ]]; then
+          if [[ "$SMOKE" == "failure" || "$INTEGRATION" == "failure" || "$PERFORMANCE" == "failure" || "$E2E" == "failure" ]]; then
             echo "RESULT=failure" >> $GITHUB_ENV
             echo "ICON=❌" >> $GITHUB_ENV
           else
@@ -388,11 +205,11 @@ jobs:
             echo "ICON=✅" >> $GITHUB_ENV
           fi
 
-          echo "SMOKE_R=$SMOKE"           >> $GITHUB_ENV
+          echo "SMOKE_R=$SMOKE"             >> $GITHUB_ENV
           echo "INTEGRATION_R=$INTEGRATION" >> $GITHUB_ENV
           echo "PERFORMANCE_R=$PERFORMANCE" >> $GITHUB_ENV
           echo "ACCESSIBILITY_R=$ACCESSIBILITY" >> $GITHUB_ENV
-          echo "VISUAL_R=$VISUAL"         >> $GITHUB_ENV
+          echo "E2E_R=$E2E"                 >> $GITHUB_ENV
 
       - name: Notificar Slack
         env:
@@ -409,8 +226,8 @@ jobs:
                 \"fields\": [
                   {\"title\": \"Smoke\",        \"value\": \"${{ env.SMOKE_R }}\",        \"short\": true},
                   {\"title\": \"Integration\",  \"value\": \"${{ env.INTEGRATION_R }}\",  \"short\": true},
+                  {\"title\": \"E2E\",          \"value\": \"${{ env.E2E_R }}\",          \"short\": true},
                   {\"title\": \"A11y\",         \"value\": \"${{ env.ACCESSIBILITY_R }}\",\"short\": true},
-                  {\"title\": \"Visual\",       \"value\": \"${{ env.VISUAL_R }}\",       \"short\": true},
                   {\"title\": \"Performance\",  \"value\": \"${{ env.PERFORMANCE_R }}\",  \"short\": true}
                 ]
               }]

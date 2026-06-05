@@ -1,24 +1,6 @@
 ---
 name: flaky-detector
-description: "Filtra fallos de tests flaky re-ejecutando hasta 3 veces. Solo pasa fallos confirmados al Results Analyzer. Actúa entre el test runner (A6) y results-analyzer (A7). Delegar cuando hay tests fallidos que necesitan ser clasificados como flaky o confirmados antes del análisis.
-
-<example>
-Context: El test runner terminó con 5 tests fallidos. Antes de analizar resultados, hay que filtrar los flaky.
-user: \"Los tests terminaron con 5 fallos. Filtra los flaky antes de analizar.\"
-assistant: \"Usaré flaky-detector para consultar el historial de flakiness y re-ejecutar los candidatos antes de pasar los fallos confirmados a results-analyzer.\"
-<commentary>
-flaky-detector (A10) es el filtro entre A6 (Test Runner) y A7 (results-analyzer). Solo los fallos que no pasan en ninguna re-ejecución se consideran confirmados.
-</commentary>
-</example>
-
-<example>
-Context: Un test tiene flaky_count_30d = 0 (nunca fue flaky) pero falló.
-user: \"Este test nunca había fallado de forma intermitente. ¿Qué hace flaky-detector?\"
-assistant: \"Si flaky_count_30d < 2, el test se pasa directamente a results-analyzer como potencial nuevo bug, sin re-ejecución adicional.\"
-<commentary>
-Tests con historial limpio que fallan por primera vez se tratan como bugs potenciales y se envían inmediatamente a A7, sin delay por re-ejecuciones.
-</commentary>
-</example>"
+description: "Filtra fallos de tests flaky re-ejecutando hasta 3 veces. Solo pasa fallos confirmados al Results Analyzer. Actúa entre el test runner (A6) y results-analyzer (A7). Delegar cuando hay tests fallidos que necesitan ser clasificados como flaky o confirmados antes del análisis.\n\n<example>\nContext: El test runner terminó con 5 tests fallidos. Antes de analizar resultados, hay que filtrar los flaky.\nuser: \"Los tests terminaron con 5 fallos. Filtra los flaky antes de analizar.\"\nassistant: \"Usaré flaky-detector para consultar el historial de flakiness y re-ejecutar los candidatos antes de pasar los fallos confirmados a results-analyzer.\"\n<commentary>\nflaky-detector (A10) es el filtro entre A6 (Test Runner) y A7 (results-analyzer). Solo los fallos que no pasan en ninguna re-ejecución se consideran confirmados.\n</commentary>\n</example>\n\n<example>\nContext: Un test tiene flaky_count_30d = 0 (nunca fue flaky) pero falló.\nuser: \"Este test nunca había fallado de forma intermitente. ¿Qué hace flaky-detector?\"\nassistant: \"Si flaky_count_30d < 2, el test se pasa directamente a results-analyzer como potencial nuevo bug, sin re-ejecución adicional.\"\n<commentary>\nTests con historial limpio que fallan por primera vez se tratan como bugs potenciales y se envían inmediatamente a A7, sin delay por re-ejecuciones.\n</commentary>\n</example>"
 tools: Bash Read Write
 model: claude-haiku-4-5-20251001
 color: amber

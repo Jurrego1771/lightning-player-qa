@@ -133,19 +133,21 @@ El risk_label global siempre es el nivel más alto entre todas las reglas aplica
 Para cada módulo CRITICAL o HIGH:
 
 ```bash
-npx ts-node skills/get_issue_history.ts ads-ima 2>/dev/null
+# Ejecutar para cada módulo CRITICAL o HIGH — sustituir MODULE por el nombre real
+MODULE="ads-ima"  # reemplazar en cada iteración del loop
+npx ts-node skills/get_issue_history.ts "$MODULE" 2>/dev/null
 # Si el skill no existe, fallback:
 source .env 2>/dev/null || true
 gh issue list --repo "$PLAYER_GITHUB_REPO" --state open --label "bug" \
   --limit 50 --json number,title,labels,url,createdAt 2>/dev/null | \
   python3 -c "
-import sys, json
+import sys, json, os
 issues = json.load(sys.stdin)
-module = 'ads-ima'
+module = os.environ['MODULE']
 relevant = [i for i in issues if module in i.get('title','').lower() or
             any(module in l.get('name','') for l in i.get('labels',[]))]
 print(json.dumps(relevant[:5], indent=2))
-"
+" MODULE="$MODULE"
 ```
 
 Incluir en `related_issues` solo los issues con relevancia directa al módulo (título o label menciona el módulo). Máximo 5 por módulo.

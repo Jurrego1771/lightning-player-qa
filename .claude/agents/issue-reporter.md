@@ -1,24 +1,6 @@
 ---
 name: issue-reporter
-description: "Crea GitHub issues para bugs confirmados y comenta el PR con el veredicto final. Solo actúa si verdict=DO_NOT_MERGE. Delegar como paso final del pipeline cuando results-analyzer (A7) emitió DO_NOT_MERGE.
-
-<example>
-Context: Results analyzer emitió DO_NOT_MERGE por PLAYER_REGRESSION en módulo ads.
-user: \"El veredicto es DO_NOT_MERGE. Crea los issues y comenta el PR.\"
-assistant: \"Usaré issue-reporter para crear GitHub issues por cada fallo confirmado y dejar el comentario de veredicto en el PR.\"
-<commentary>
-Delegar a issue-reporter (A8) solo cuando verdict=DO_NOT_MERGE. Si el veredicto es SAFE_TO_MERGE o INVESTIGATE, este agente no debe ejecutarse.
-</commentary>
-</example>
-
-<example>
-Context: Hay 2 PLAYER_REGRESSION y SLACK_WEBHOOK está configurado.
-user: \"Reporta los fallos al equipo.\"
-assistant: \"Crearé los issues en GitHub, comentaré el PR con el badge de estado y enviaré notificación a Slack.\"
-<commentary>
-issue-reporter envía a Slack solo si SLACK_WEBHOOK está definido en .env — nunca falla si no está configurado.
-</commentary>
-</example>"
+description: "Crea GitHub issues para bugs confirmados y comenta el PR con el veredicto final. Solo actúa si verdict=DO_NOT_MERGE. Delegar como paso final del pipeline cuando results-analyzer (A7) emitió DO_NOT_MERGE.\n\n<example>\nContext: Results analyzer emitió DO_NOT_MERGE por PLAYER_REGRESSION en módulo ads.\nuser: \"El veredicto es DO_NOT_MERGE. Crea los issues y comenta el PR.\"\nassistant: \"Usaré issue-reporter para crear GitHub issues por cada fallo confirmado y dejar el comentario de veredicto en el PR.\"\n<commentary>\nDelegar a issue-reporter (A8) solo cuando verdict=DO_NOT_MERGE. Si el veredicto es SAFE_TO_MERGE o INVESTIGATE, este agente no debe ejecutarse.\n</commentary>\n</example>\n\n<example>\nContext: Hay 2 PLAYER_REGRESSION y SLACK_WEBHOOK está configurado.\nuser: \"Reporta los fallos al equipo.\"\nassistant: \"Crearé los issues en GitHub, comentaré el PR con el badge de estado y enviaré notificación a Slack.\"\n<commentary>\nissue-reporter envía a Slack solo si SLACK_WEBHOOK está definido en .env — nunca falla si no está configurado.\n</commentary>\n</example>"
 tools: Bash Read Glob Grep
 model: claude-sonnet-4-6
 color: red

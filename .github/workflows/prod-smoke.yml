@@ -64,8 +64,6 @@ jobs:
         if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
 
-      - run: sudo apt-get install -y ffmpeg
-
       - name: Log ambiente
         run: |
           VERSION="${{ github.event.inputs.version || github.event.client_payload.version || 'unknown' }}"
