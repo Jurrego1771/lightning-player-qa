@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "last_updated": "2026-05-27T15:45:00.000Z",
+  "last_updated": "2026-05-29T16:26:33.856Z",
   "tests": [
     {
       "test_id": "tests/e2e/dash-dvr.spec.ts::seek dentro de la ventana DVR no provoca error fatal::chromium",
@@ -12,7 +12,7 @@
       "flaky_count_30d": 0,
       "total_runs": 2,
       "total_failures": 2,
-      "failure_rate": 1.0,
+      "failure_rate": 1,
       "classification": "CONFIRMED_FAILURE",
       "error_pattern": "getDuration() retorna 0 — Timeout 10000ms exceeded while waiting on predicate (toBeGreaterThan(0)) en dash-dvr.spec.ts:47",
       "error_location": "tests/e2e/dash-dvr.spec.ts:47",
@@ -32,7 +32,7 @@
       "flaky_count_30d": 0,
       "total_runs": 2,
       "total_failures": 2,
-      "failure_rate": 1.0,
+      "failure_rate": 1,
       "classification": "CONFIRMED_FAILURE",
       "error_pattern": "getDuration() retorna 0 — Timeout 10000ms exceeded while waiting on predicate (toBeGreaterThan(0)) en dash-dvr.spec.ts:71",
       "error_location": "tests/e2e/dash-dvr.spec.ts:71",
@@ -52,7 +52,7 @@
       "flaky_count_30d": 0,
       "total_runs": 2,
       "total_failures": 2,
-      "failure_rate": 1.0,
+      "failure_rate": 1,
       "classification": "CONFIRMED_FAILURE",
       "error_pattern": "getDuration() retorna 0 — Timeout 10000ms exceeded while waiting on predicate (toBeGreaterThan(30)) en dash-dvr.spec.ts:96",
       "error_location": "tests/e2e/dash-dvr.spec.ts:96",
@@ -61,6 +61,54 @@
       "last_retry_status": "failed",
       "confirmed_reason": "flaky_count_30d=0 — nuevo fallo sin historial previo, falla determinista en retry #0 y #1. El umbral aquí es > 30 (más restrictivo que los otros dos tests que usan > 0)",
       "notes": "Mismo patrón raíz: getDuration()=0 en DASH DVR. El umbral > 30 hace que incluso si hubiera un valor parcial, el test fallaría igual."
+    },
+    {
+      "test_id": "tests/integration/youbora.spec.ts::emits start beacon after contentFirstPlay::chromium",
+      "spec_file": "tests/integration/youbora.spec.ts",
+      "test_title": "emits start beacon after contentFirstPlay",
+      "project": "chromium",
+      "first_seen": "2026-05-29T16:26:33.856Z",
+      "last_seen": "2026-05-29T16:26:33.856Z",
+      "flaky_count_30d": 1,
+      "total_runs": 5,
+      "total_failures": 2,
+      "failure_rate": 0.4,
+      "classification": "FLAKY",
+      "error_pattern": "Beacon NQS no llega en ventana de timeout bajo carga — pasa al re-ejecutar aislado (contención servidor NPAW real lma.npaw.com)",
+      "context": "local",
+      "passed_on_retry": true
+    },
+    {
+      "test_id": "tests/integration/youbora.spec.ts::restarts tracking session after player.load() with new content::chromium",
+      "spec_file": "tests/integration/youbora.spec.ts",
+      "test_title": "restarts tracking session after player.load() with new content",
+      "project": "chromium",
+      "first_seen": "2026-05-29T16:26:33.856Z",
+      "last_seen": "2026-05-29T16:26:33.856Z",
+      "flaky_count_30d": 1,
+      "total_runs": 5,
+      "total_failures": 2,
+      "failure_rate": 0.4,
+      "classification": "FLAKY",
+      "error_pattern": "Beacon NQS no llega en ventana de timeout bajo carga — pasa al re-ejecutar aislado (contención servidor NPAW real lma.npaw.com)",
+      "context": "local",
+      "passed_on_retry": true
+    },
+    {
+      "test_id": "tests/integration/youbora.spec.ts::NPAW-7.1 — video ended emits stop beacon::chromium",
+      "spec_file": "tests/integration/youbora.spec.ts",
+      "test_title": "NPAW-7.1 — video ended emits stop beacon",
+      "project": "chromium",
+      "first_seen": "2026-05-29T16:26:33.856Z",
+      "last_seen": "2026-05-29T16:26:33.856Z",
+      "flaky_count_30d": 1,
+      "total_runs": 5,
+      "total_failures": 2,
+      "failure_rate": 0.4,
+      "classification": "FLAKY",
+      "error_pattern": "Beacon NQS no llega en ventana de timeout bajo carga — pasa al re-ejecutar aislado (contención servidor NPAW real lma.npaw.com)",
+      "context": "local",
+      "passed_on_retry": true
     }
   ]
 }
