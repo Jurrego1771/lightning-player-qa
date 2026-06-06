@@ -73,7 +73,7 @@
       "when": "El script intenta cargar la config",
       "then": "Se emite evento 'error' con fatal:true. No hay loop de retries infinito. El player queda en estado de error sin crashear.",
       "priority": "MUST",
-      "covered_by": []
+      "covered_by": ["tests/contract/api-bootstrap.spec.ts"]
     },
     {
       "id": "AC-BOOTSTRAP-004",
@@ -100,7 +100,7 @@
       "when": "El player termina de inicializarse",
       "then": "myCallback es invocado con la instancia del player. El evento 'playerloaded' es disparado en el script tag.",
       "priority": "MUST",
-      "covered_by": []
+      "covered_by": ["tests/contract/api-bootstrap.spec.ts"]
     }
   ],
   "known_bugs": [],
