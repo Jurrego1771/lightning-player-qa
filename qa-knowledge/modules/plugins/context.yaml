@@ -16,6 +16,7 @@ depended_by:
   - analytics-comscore
   - analytics-ga4
   - analytics-reactions
+  - youbora
   - ads-ima
   - ads-dai
   - ads-sgai

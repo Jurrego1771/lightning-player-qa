@@ -15,6 +15,7 @@ depended_by:
   - dash
   - drm
   - ads-manager
+  - youbora
 
 breaks_if_changed:
   - "Config de plataforma no se carga → ningún player inicializa"

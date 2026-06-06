@@ -315,7 +315,7 @@ Automatizar: después de cada CI run, calcular ratio real desde `covered_by[]` e
 ## FASE 4 — Testing Avanzado: Industria 2026
 **Duración:** 3–4 semanas | **Impacto:** 9/10 → 10/10
 
-### 4.1 Mutation Testing con Stryker
+### 4.1 Mutation Testing con Stryker ✅ 2026-06-06
 
 Verificar que los tests realmente detectan bugs — no solo ejercen el código.
 
@@ -344,7 +344,7 @@ test('player en iframe cross-origin recibe postMessage correctamente', async ({ 
 
 Requiere: segundo webServer en `playwright.config.ts` (port 3001).
 
-### 4.3 Accessibility Completo (WCAG 2.1 AA → 2.2 AA)
+### 4.3 Accessibility Completo (WCAG 2.1 AA → 2.2 AA) ✅ 2026-06-06
 
 ```typescript
 // tests/a11y/accessibility.spec.ts — expandir desde 7 tests actuales
@@ -394,7 +394,7 @@ Configurar para:
          --project=browserstack-safari
 ```
 
-### 4.6 Chaos Engineering para Streams
+### 4.6 Chaos Engineering para Streams ✅ 2026-06-06
 
 Simular condiciones adversas de producción:
 
@@ -428,7 +428,7 @@ test('player hace recovery cuando el CDN falla mid-stream', async ({ page, isola
 })
 ```
 
-### 4.7 Mock HLS Server para SGAI
+### 4.7 Mock HLS Server para SGAI ✅ 2026-06-06
 
 SGAI requiere manifests HLS con `#EXT-X-DATERANGE` (cue markers). Implementar:
 
@@ -540,7 +540,7 @@ Publicar como GitHub Pages con renderizado de los behavior.json → tabla visual
 | Fase 1: Estabilidad | 1–2 sem | 6/10 | 0 fallos, fixtures correctos | ✅ 2026-06-06 |
 | Fase 2: Cobertura | 2–4 sem | 8/10 | 23 MUST → 0, Knowledge System, AirPlay, nextEpisode, platform schema | ✅ 2026-06-06 |
 | Fase 3: Infraestructura | 2–3 sem | 9/10 | Sharding, ABR real, property testing | ✅ 2026-06-06 |
-| Fase 4: Avanzado | 3–4 sem | 10/10 | Chaos, SGAI mock, BrowserStack, Mutation | ⬜ |
+| Fase 4: Avanzado | 3–4 sem | 10/10 | Chaos, SGAI mock, BrowserStack, Mutation | 🔄 2026-06-06 (4.1+4.3+4.6+4.7 ✅) |
 | Fase 5: Continuo | ongoing | 10/10 | Auto-pipeline, sync mensual, test debt 0 | ⬜ |
 
 ---

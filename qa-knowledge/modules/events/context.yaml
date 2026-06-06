@@ -22,6 +22,7 @@ depended_by:
   - analytics-streammetrics
   - analytics-comscore
   - analytics-ga4
+  - youbora
 
 breaks_if_changed:
   - "player.on(event, fn) deja de funcionar para cualquier evento"
