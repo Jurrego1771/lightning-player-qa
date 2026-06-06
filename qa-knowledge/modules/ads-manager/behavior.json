@@ -68,7 +68,7 @@
       "when": "El player carga los ads",
       "then": "La cadena de Wrappers se resuelve. El creativo final se reproduce. Los beacons de tracking de cada Wrapper se disparan.",
       "priority": "MUST",
-      "covered_by": []
+      "covered_by": ["tests/integration/ads-manager-degradation.spec.ts"]
     },
     {
       "id": "AC-ADSMANAGER-003",
@@ -77,7 +77,7 @@
       "when": "El player intenta inicializar ads",
       "then": "Content reproduce normalmente sin ads. No se emite error fatal. adsError puede emitirse pero no bloquea.",
       "priority": "MUST",
-      "covered_by": []
+      "covered_by": ["tests/integration/ads-manager-degradation.spec.ts", "tests/integration/ads-ima-error.spec.ts"]
     },
     {
       "id": "AC-ADSMANAGER-004",

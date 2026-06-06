@@ -64,6 +64,7 @@ app.get('/vmap/preroll-midroll', serve('vmap-preroll-midroll.xml'))
 app.get('/vmap/midroll-only', serve('vmap-midroll-only.xml'))
 app.get('/vast/full-metadata', serve('vast-full-metadata.xml'))
 app.get('/vmap/full-metadata', serve('vmap-full-metadata.xml'))
+app.get('/vast/wrapper', serve('wrapper.xml'))
 
 // ── SGAI HLS routes ───────────────────────────────────────────────────────────
 
