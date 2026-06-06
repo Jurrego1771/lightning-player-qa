@@ -15,6 +15,12 @@
       "when": "Error fatal DASH (manifest inválido, MSE error, license DRM rechazada)",
       "payload_shape": { "fatal": "true", "message": "string" },
       "optional": true
+    },
+    {
+      "name": "buffering",
+      "when": "Player sin buffer — ocurre más seguido en DASH Live por el sliding window",
+      "payload_shape": {},
+      "optional": true
     }
   ],
   "api_contracts": [
@@ -57,12 +63,42 @@
       "then": "Se emiten 'seeking' → 'seeked'. player.currentTime === 15 ± 1s.",
       "priority": "MUST",
       "covered_by": []
+    },
+    {
+      "id": "AC-DASH-004",
+      "scenario": "DASH Live: ventana DVR disponible vía player.seekable",
+      "given": "Player reproduciendo stream DASH Live (MPD type=dynamic con timeShiftBufferDepth)",
+      "when": "El player emite 'playing'",
+      "then": "player.seekable.start >= 0. player.seekable.end > player.seekable.start. La ventana representa el buffer DVR disponible.",
+      "priority": "MUST",
+      "covered_by": [],
+      "notes": "DASH Live usa timeShiftBufferDepth en el MPD. dash.js expone el rango via MediaSource.seekable. Distinto de HLS DVR que usa EXT-X-PLAYLIST-TYPE:EVENT."
+    },
+    {
+      "id": "AC-DASH-005",
+      "scenario": "DASH Live: seek dentro de la ventana DVR funciona",
+      "given": "Player reproduciendo DASH Live con DVR (seekable.end - seekable.start > 30s)",
+      "when": "Se asigna player.currentTime = seekable.start + 10",
+      "then": "Se emiten 'seeking' → 'seeked'. El player reproduce desde la posición dentro del DVR. No emite error.",
+      "priority": "MUST",
+      "covered_by": []
+    },
+    {
+      "id": "AC-DASH-006",
+      "scenario": "DASH Live: player.edge refleja la posición del live edge",
+      "given": "Player reproduciendo DASH Live",
+      "when": "Se lee player.edge después de 'playing'",
+      "then": "player.edge es un número positivo > 0, aproximadamente igual a player.seekable.end.",
+      "priority": "SHOULD",
+      "covered_by": []
     }
   ],
   "known_bugs": [],
   "do_not_reflag": [],
   "test_anti_patterns": [
     "No testear ABR en DASH — no existe ABR controlable en esta implementación",
-    "No asumir que player.levels tiene múltiples niveles — en DASH puede ser vacío"
+    "No asumir que player.levels tiene múltiples niveles — en DASH puede ser vacío",
+    "No usar EXT-X-PROGRAM-DATE-TIME ni programdatetime event — son exclusivos de HLS",
+    "No testear DVR DASH en CI sin fixture DASH Live disponible en localhost:9001"
   ]
 }

@@ -221,7 +221,7 @@ test.describe('Playback Core — error fatal con stream HLS inaccesible', {
     )
 
     const hasErrorInfo =
-      playerStatus === 'error' ||
+      (playerStatus as string) === 'error' ||
       errors.length > 0 ||
       errorData != null
 
