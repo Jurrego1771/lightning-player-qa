@@ -180,7 +180,7 @@ steps:
 Impacto: tiempo de CI de ~25 min → ~7 min con 4 shards.  
 Prerequisito: merge reports en artifact después (`npx playwright merge-reports`).
 
-### 3.2 Network Conditions para ABR Testing
+### 3.2 Network Conditions para ABR Testing ✅ (ya en hls-abr.spec.ts)
 
 Playwright expone CDP directamente. Simular throttling real para ABR:
 
@@ -205,7 +205,7 @@ test('ABR baja calidad al throttlear a 3G', async ({ page, isolatedPlayer }) => 
 })
 ```
 
-### 3.3 Stream Error Injection
+### 3.3 Stream Error Injection ✅ 2026-06-06
 
 Mock de errores de stream para testing de recovery:
 
@@ -267,7 +267,7 @@ test('ninguna combinación de config válida rompe el init', async ({ page }) =>
 
 Instalación: `npm i -D fast-check`
 
-### 3.6 Lighthouse CI para Performance Regression
+### 3.6 Lighthouse CI para Performance Regression ✅ 2026-06-06
 
 ```yaml
 # .github/workflows/lighthouse.yml
@@ -293,7 +293,7 @@ Instalación: `npm i -D fast-check`
 
 Complementa `tests/performance/qoe-metrics.spec.ts` existente con métricas de carga de página.
 
-### 3.7 Coverage Tracking Over Time
+### 3.7 Coverage Tracking Over Time ✅ 2026-06-06
 
 Actualmente `test_coverage_ratio` en `risk_map.yaml` es estático.  
 Automatizar: después de cada CI run, calcular ratio real desde `covered_by[]` en behavior.json y actualizar risk_map.yaml via A11.
@@ -539,7 +539,7 @@ Publicar como GitHub Pages con renderizado de los behavior.json → tabla visual
 | Baseline | — | 5/10 | Tests rotos, coverage gaps, CI lento | — |
 | Fase 1: Estabilidad | 1–2 sem | 6/10 | 0 fallos, fixtures correctos | ✅ 2026-06-06 |
 | Fase 2: Cobertura | 2–4 sem | 8/10 | 23 MUST → 0, Knowledge System, AirPlay, nextEpisode, platform schema | ✅ 2026-06-06 |
-| Fase 3: Infraestructura | 2–3 sem | 9/10 | Sharding, ABR real, property testing | 🔄 2026-06-06 (3.1+3.4+3.5 ✅) |
+| Fase 3: Infraestructura | 2–3 sem | 9/10 | Sharding, ABR real, property testing | ✅ 2026-06-06 |
 | Fase 4: Avanzado | 3–4 sem | 10/10 | Chaos, SGAI mock, BrowserStack, Mutation | ⬜ |
 | Fase 5: Continuo | ongoing | 10/10 | Auto-pipeline, sync mensual, test debt 0 | ⬜ |
 
