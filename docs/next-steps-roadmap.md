@@ -447,18 +447,30 @@ app.get('/sgai/:contentId/playlist.m3u8', (req, res) => {
 Esto desbloquea los 3 gaps MUST de `ads-sgai` — actualmente imposibles sin este mock.  
 BUG-SGAI-001 (buffering+DVR loop) puede verificarse de forma determinista.
 
-### 4.8 Test Impact Analysis en CI
+### 4.8 Test Impact Analysis en CI ✅ 2026-06-06
 
-Actualmente el pipeline QA (A1→A3) selecciona tests por riesgo.  
-Integrar con CI para que el pipeline corra automáticamente en cada PR:
+Implementado en `.github/workflows/qa-impact-analysis.yml` + `scripts/select-tests.ts`:
 
+- **Trigger:** `workflow_dispatch` (manual con PR#) o `repository_dispatch` desde el player repo
+- **`scripts/prepare-diff.ts`** — ya existente: obtiene diff del player PR → `tmp/pipeline/diff-input.json`
+- **`scripts/select-tests.ts`** — nuevo: lee diff-input + risk_map → `tmp/pipeline/test-plan.json`
+  - `critical` → contract + smoke + integration + e2e
+  - `high` → smoke + integration (scoped si ads) + e2e sin @slow
+  - `medium` → smoke + integration
+  - `low` → smoke only (~3 min vs 60 min full)
+- **Jobs condicionales** por `risk_label`: contract/integration/e2e corren solo si el riesgo lo requiere
+- **Comenta en el PR del player** con veredicto y tabla de resultados
+
+**Setup en el player repo:**
 ```yaml
-# .github/workflows/qa-pipeline.yml
-- name: QA Pipeline Analysis
+# En CI del player (on: pull_request):
+- name: Trigger QA Impact Analysis
   run: |
-    npx ts-node scripts/prepare-diff.ts ${{ github.event.pull_request.number }}
-    # Luego A1→A3 via Claude Code en modo --plan
-    # El test_plan resultante se usa para seleccionar qué correr
+    gh api repos/${{ vars.QA_REPO }}/dispatches \
+      -f event_type=player-pr \
+      -f client_payload='{"pr_number":"${{ github.event.pull_request.number }}","player_repo":"${{ github.repository }}"}'
+  env:
+    GH_TOKEN: ${{ secrets.QA_DISPATCH_TOKEN }}
 ```
 
 ### 4.9 OpenTelemetry para Observabilidad de Tests
@@ -540,7 +552,7 @@ Publicar como GitHub Pages con renderizado de los behavior.json → tabla visual
 | Fase 1: Estabilidad | 1–2 sem | 6/10 | 0 fallos, fixtures correctos | ✅ 2026-06-06 |
 | Fase 2: Cobertura | 2–4 sem | 8/10 | 23 MUST → 0, Knowledge System, AirPlay, nextEpisode, platform schema | ✅ 2026-06-06 |
 | Fase 3: Infraestructura | 2–3 sem | 9/10 | Sharding, ABR real, property testing | ✅ 2026-06-06 |
-| Fase 4: Avanzado | 3–4 sem | 10/10 | Chaos, SGAI mock, BrowserStack, Mutation | 🔄 2026-06-06 (4.1+4.3+4.6+4.7 ✅) |
+| Fase 4: Avanzado | 3–4 sem | 10/10 | Chaos, SGAI mock, BrowserStack, Mutation | 🔄 2026-06-06 (4.1+4.3+4.6+4.7+4.8 ✅) |
 | Fase 5: Continuo | ongoing | 10/10 | Auto-pipeline, sync mensual, test debt 0 | ⬜ |
 
 ---
