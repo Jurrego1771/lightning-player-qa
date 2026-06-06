@@ -130,7 +130,7 @@
       "when": "El player intenta cargar ads",
       "then": "Se emite adsError o adsAllAdsCompleted inmediato. Content continúa reproduciéndose sin interrupciones.",
       "priority": "MUST",
-      "covered_by": []
+      "covered_by": ["tests/integration/ads-ima-error.spec.ts"]
     },
     {
       "id": "AC-IMA-003",
@@ -139,7 +139,7 @@
       "when": "El player intenta cargar el SDK",
       "then": "El player no crashea. Content reproduce normalmente sin ads. No se emite 'error' fatal.",
       "priority": "MUST",
-      "covered_by": []
+      "covered_by": ["tests/integration/ads-ima-error.spec.ts"]
     },
     {
       "id": "AC-IMA-004",
@@ -148,7 +148,7 @@
       "when": "El ad se reproduce completo",
       "then": "Los beacons impression, firstQuartile, midpoint, thirdQuartile, complete se disparan exactamente una vez cada uno. Verificar con page.route() interceptando el tracking endpoint.",
       "priority": "MUST",
-      "covered_by": []
+      "covered_by": ["tests/integration/ads-ima-error.spec.ts"]
     },
     {
       "id": "AC-IMA-005",
