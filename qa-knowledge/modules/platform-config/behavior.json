@@ -44,7 +44,9 @@
       "when": "loadConfig() normaliza la respuesta",
       "then": "Config final tiene ads.map === 'https://...'. La clave adsMap es eliminada.",
       "priority": "MUST",
-      "covered_by": []
+      "covered_by": [
+        "tests/integration/duration-effect-ads.spec.ts"
+      ]
     },
     {
       "id": "AC-PLATFORMCONFIG-003",
@@ -53,7 +55,9 @@
       "when": "loadConfig() hace fetch",
       "then": "La promesa se rechaza con { fatal: true }. api.js captura el error y emite evento 'error'.",
       "priority": "MUST",
-      "covered_by": []
+      "covered_by": [
+        "tests/integration/error-recovery.spec.ts"
+      ]
     },
     {
       "id": "AC-PLATFORMCONFIG-004",

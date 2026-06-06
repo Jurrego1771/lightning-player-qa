@@ -49,7 +49,9 @@
       "when": "El player inicializa",
       "then": "El evento 'ready' se emite en menos de 10s. currentTime avanza al hacer play().",
       "priority": "MUST",
-      "covered_by": []
+      "covered_by": [
+        "tests/e2e/dash-playback.spec.ts"
+      ]
     },
     {
       "id": "AC-DASH-002",
@@ -58,7 +60,9 @@
       "when": "Se asigna player.level = 2",
       "then": "No hay error. No se emite levelchange. La calidad no cambia. player.level no es 2.",
       "priority": "MUST",
-      "covered_by": []
+      "covered_by": [
+        "tests/e2e/dash-playback.spec.ts"
+      ]
     },
     {
       "id": "AC-DASH-003",
@@ -67,7 +71,10 @@
       "when": "Se asigna player.currentTime = 15",
       "then": "Se emiten 'seeking' → 'seeked'. player.currentTime === 15 ± 1s.",
       "priority": "MUST",
-      "covered_by": []
+      "covered_by": [
+        "tests/e2e/dash-auto-detect.spec.ts",
+        "tests/e2e/dash-playback.spec.ts"
+      ]
     },
     {
       "id": "AC-DASH-004",
@@ -76,7 +83,9 @@
       "when": "El player emite 'playing'",
       "then": "player.seekable.start >= 0. player.seekable.end > player.seekable.start. La ventana representa el buffer DVR disponible.",
       "priority": "MUST",
-      "covered_by": [],
+      "covered_by": [
+        "tests/e2e/dash-dvr.spec.ts"
+      ],
       "notes": "DASH Live usa timeShiftBufferDepth en el MPD. dash.js expone el rango via MediaSource.seekable. Distinto de HLS DVR que usa EXT-X-PLAYLIST-TYPE:EVENT."
     },
     {
@@ -86,7 +95,9 @@
       "when": "Se asigna player.currentTime = seekable.start + 10",
       "then": "Se emiten 'seeking' → 'seeked'. El player reproduce desde la posición dentro del DVR. No emite error.",
       "priority": "MUST",
-      "covered_by": []
+      "covered_by": [
+        "tests/e2e/dash-dvr.spec.ts"
+      ]
     },
     {
       "id": "AC-DASH-006",

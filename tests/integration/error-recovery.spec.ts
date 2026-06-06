@@ -13,6 +13,7 @@
  * Fixture: isolatedPlayer (plataforma mockeada + streams locales — determinista en CI)
  */
 import { test, expect, MockContentIds, mockContentError, mockContentConfig, LocalStreams } from '../../fixtures'
+import { injectSegmentError } from '../../helpers/stream-injector'
 
 test.describe('Error Recovery — Content Config', { tag: ['@integration', '@error'] }, () => {
 
@@ -148,6 +149,79 @@ test.describe('Error Recovery — HLS Segments', { tag: ['@integration', '@error
     await player.waitForEvent('error', 25_000)
     const errors = await player.getErrors()
     expect(errors.length, 'getErrors() debe reportar el segmento faltante').toBeGreaterThan(0)
+  })
+
+})
+
+test.describe('Error Recovery — HTTP 503 Mid-Stream', { tag: ['@integration', '@error'] }, () => {
+
+  test('503 transitorio (3 segmentos): player recupera y continúa playing', async ({ isolatedPlayer: player, page }) => {
+    // Diferencia vs abort tests: 503 es error HTTP-level, no TCP-level.
+    // hls.js tiene lógica de retry separada para cada tipo:
+    //   abort → frag load error (network level)
+    //   503   → frag load error (HTTP level, retryable según config)
+    // Con 3 fallos transitorios el player debe recuperar y continuar.
+    const stop = await injectSegmentError(page, {
+      afterCount: 2,    // dejar pasar los primeros 2 segmentos (player inicia)
+      transient: true,
+      failCount: 3,     // fallar solo 3 segmentos (dentro del retry budget)
+      status: 503,
+    })
+
+    await player.goto({ type: 'media', id: MockContentIds.vod, autoplay: true })
+    await player.waitForEvent('playing', 40_000)
+    await player.assertIsPlaying()
+
+    await stop()
+  })
+
+  test('503 persistente: player emite error tras agotar retries HTTP', async ({ isolatedPlayer: player, page }) => {
+    // 503 en todos los segmentos desde el inicio.
+    // hls.js agotará su retry budget (diferente timing que abort — puede tardar más o menos).
+    test.setTimeout(90_000)
+
+    const stop = await injectSegmentError(page, { status: 503, afterCount: 0 })
+
+    await player.goto({ type: 'media', id: MockContentIds.vod, autoplay: true })
+    await player.waitForEvent('error', 60_000)
+
+    const errors = await player.getErrors()
+    const errorData: unknown = await page.evaluate(() => (window as any).__qa?.eventData?.error ?? null)
+    const playerStatus = await player.getStatus()
+
+    const hasError = errors.length > 0 || errorData != null || (playerStatus as string) === 'error'
+    expect(hasError, `player debe emitir error tras 503 persistente. status=${playerStatus}`).toBe(true)
+
+    await stop()
+  })
+
+  test('404 en segmento mid-stream: comportamiento igual a 503', async ({ isolatedPlayer: player, page }) => {
+    // 404 mid-stream (después de que el player ya está playing).
+    // hls.js trata 404 como error fatal sin retry (a diferencia de 503).
+    // El player debe emitir error inmediatamente sin buffering indefinido.
+    test.setTimeout(90_000)
+
+    const stop = await injectSegmentError(page, {
+      afterCount: 2,   // dejar pasar inicio de playback
+      status: 404,
+    })
+
+    await player.goto({ type: 'media', id: MockContentIds.vod, autoplay: true })
+
+    // Esperar que el player inicie antes de que llegue el 404
+    await player.waitForEvent('playing', 20_000)
+
+    // El 404 en el siguiente segmento debe triggerear error sin buffering indefinido
+    await player.waitForEvent('error', 30_000)
+
+    const errors = await player.getErrors()
+    const errorData: unknown = await page.evaluate(() => (window as any).__qa?.eventData?.error ?? null)
+    const playerStatus = await player.getStatus()
+
+    const hasError = errors.length > 0 || errorData != null || (playerStatus as string) === 'error'
+    expect(hasError, `player debe emitir error con 404 mid-stream. status=${playerStatus}`).toBe(true)
+
+    await stop()
   })
 
 })
