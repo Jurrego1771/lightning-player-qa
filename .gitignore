@@ -57,3 +57,7 @@ reports/
 # Allure
 allure-results/
 allure-report/
+
+# Stryker mutation reports
+reports/mutation/
+.stryker-tmp/
