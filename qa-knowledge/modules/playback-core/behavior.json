@@ -141,7 +141,7 @@
       "when": "Se llama player.seek(5) (asignando player.currentTime = 5)",
       "then": "Se emite 'seeking' → 'seeked' en ese orden. currentTime === 5 ± 0.5s",
       "priority": "MUST",
-      "covered_by": []
+      "covered_by": ["tests/integration/controls-api-edge.spec.ts"]
     },
     {
       "id": "AC-PLAYBACK-004",
@@ -159,7 +159,7 @@
       "when": "El contenido llega al final",
       "then": "Se emite evento 'ended'. player.paused === true después.",
       "priority": "MUST",
-      "covered_by": []
+      "covered_by": ["tests/integration/playback-core-edge.spec.ts"]
     },
     {
       "id": "AC-PLAYBACK-006",
@@ -168,7 +168,7 @@
       "when": "El player intenta cargar el contenido",
       "then": "Se emite evento 'error' con { fatal: true }. El player no crashea. Se puede llamar load() con URL válida y recuperar.",
       "priority": "MUST",
-      "covered_by": []
+      "covered_by": ["tests/integration/playback-core-edge.spec.ts"]
     },
     {
       "id": "AC-PLAYBACK-007",
