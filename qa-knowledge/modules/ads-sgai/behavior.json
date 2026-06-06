@@ -6,7 +6,7 @@
   "events": [
     {
       "name": "adsStarted",
-      "when": "SGAI ad break comienza — EXT-X-DATERANGE cue point alcanzado y ad iniciado",
+      "when": "SGAI ad break comienza — EXT-X-CUE-OUT cue point alcanzado y ad iniciado (ManifestParser usa CUE-OUT/SCTE35, no EXT-X-DATERANGE)",
       "payload_shape": { "duration": "number" },
       "optional": false
     },
@@ -52,8 +52,8 @@
   "acceptance_criteria": [
     {
       "id": "AC-SGAI-001",
-      "scenario": "Stream live con EXT-X-DATERANGE activa ad break",
-      "given": "Player con SGAI configurado (networkCode + customAssetKey) reproduciendo stream live con cue points EXT-X-DATERANGE",
+      "scenario": "Stream live con EXT-X-CUE-OUT activa ad break",
+      "given": "Player con SGAI configurado (networkCode + customAssetKey) reproduciendo stream live con cue points EXT-X-CUE-OUT (AWS Elemental format)",
       "when": "currentTime alcanza el cue point de un ad break",
       "then": "adsStarted es emitido. El ad break se reproduce. Después adsComplete y adsContentResumeRequested se emiten. Content reanuda.",
       "priority": "MUST",
@@ -61,6 +61,7 @@
     },
     {
       "id": "AC-SGAI-002",
+
       "scenario": "buffering state al llegar cue point → NO loop infinito",
       "given": "Player en estado buffering (waiting/stalled) cuando llega el cue point de un ad break",
       "when": "SGAI detecta el cue point durante buffering",
@@ -84,7 +85,7 @@
       "when": "Se llama player.destroy()",
       "then": "Todos los listeners de useGoogleSGAILifecycle son removidos. No hay errores en consola. No hay memory leaks detectables.",
       "priority": "MUST",
-      "covered_by": []
+      "covered_by": ["tests/integration/ads-sgai-lifecycle.spec.ts"]
     },
     {
       "id": "AC-SGAI-005",
@@ -102,7 +103,7 @@
       "when": "El player inicializa",
       "then": "SGAI no se inicializa. Content reproduce normalmente sin ads. No hay error.",
       "priority": "SHOULD",
-      "covered_by": []
+      "covered_by": ["tests/integration/ads-sgai-lifecycle.spec.ts"]
     }
   ],
   "known_bugs": [
