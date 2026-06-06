@@ -327,22 +327,14 @@ npm i -D @stryker-mutator/core @stryker-mutator/playwright-runner
 Target inicial: `tests/contract/player-api.spec.ts` contra fixtures.  
 Mutation score objetivo: ≥ 70% (industria: 60–80% es bueno para E2E).
 
-### 4.2 Embed / Cross-Origin Testing
+### 4.2 Embed / Cross-Origin Testing ✅ 2026-06-06
 
-El player se usa en iframes cross-origin. Escenario no testeado:
+Implementado en `tests/integration/embed.spec.ts` con origen real `:3001` vs `:3000`:
 
-```typescript
-// tests/integration/embed.spec.ts
-test('player en iframe cross-origin recibe postMessage correctamente', async ({ page }) => {
-  // Página en origin A embebe el player en iframe de origin B
-  // Verificar que window.postMessage con prefijo msp: llega al padre
-  await page.goto('http://localhost:3001/embed-test.html') // second origin
-  const frame = page.frameLocator('iframe[data-testid="player-frame"]')
-  // Verificar eventos via postMessage cross-origin
-})
-```
-
-Requiere: segundo webServer en `playwright.config.ts` (port 3001).
+- `harness/embed.html` — player target en :3000, relay de eventos via `window.parent.postMessage()`
+- `embed-harness/host.html` — host en :3001, captura mensajes `msp:*` en `window.__embedState`
+- Webserver :3001 (`embed-harness/`) + proyecto `embed` en playwright.config.ts
+- 4 tests: sin JS crashes en iframe · canal postMessage funciona (msp:ready) · platform mock intercepta requests del iframe · frameLocator accede DOM del player cross-origin
 
 ### 4.3 Accessibility Completo (WCAG 2.1 AA → 2.2 AA) ✅ 2026-06-06
 
@@ -552,7 +544,7 @@ Publicar como GitHub Pages con renderizado de los behavior.json → tabla visual
 | Fase 1: Estabilidad | 1–2 sem | 6/10 | 0 fallos, fixtures correctos | ✅ 2026-06-06 |
 | Fase 2: Cobertura | 2–4 sem | 8/10 | 23 MUST → 0, Knowledge System, AirPlay, nextEpisode, platform schema | ✅ 2026-06-06 |
 | Fase 3: Infraestructura | 2–3 sem | 9/10 | Sharding, ABR real, property testing | ✅ 2026-06-06 |
-| Fase 4: Avanzado | 3–4 sem | 10/10 | Chaos, SGAI mock, BrowserStack, Mutation | 🔄 2026-06-06 (4.1+4.3+4.6+4.7+4.8 ✅) |
+| Fase 4: Avanzado | 3–4 sem | 10/10 | Chaos, SGAI mock, BrowserStack, Mutation | 🔄 2026-06-06 (4.1+4.2+4.3+4.6+4.7+4.8 ✅) |
 | Fase 5: Continuo | ongoing | 10/10 | Auto-pipeline, sync mensual, test debt 0 | ⬜ |
 
 ---

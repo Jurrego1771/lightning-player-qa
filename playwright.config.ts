@@ -36,6 +36,14 @@ export default defineConfig({
       timeout: 30_000,
     },
     {
+      // Embed host served from a DIFFERENT origin (port 3001) for cross-origin tests.
+      // Used by tests/integration/embed.spec.ts to simulate real iframe embedding.
+      command: 'npx serve embed-harness -p 3001 --cors',
+      url: 'http://localhost:3001',
+      reuseExistingServer: !IS_CI,
+      timeout: 30_000,
+    },
+    {
       // fixtures/streams/ se genera con `npm run fixtures:generate` (requiere ffmpeg).
       // scripts/serve-streams.js crea el directorio si no existe (cross-platform)
       // para que el servidor arranque aunque los fixtures no existan aún.
@@ -114,6 +122,13 @@ export default defineConfig({
       name: 'performance',
       use: { ...devices['Desktop Chrome'], launchOptions: { args: CHROMIUM_ARGS } },
       testMatch: ['tests/performance/**'],
+    },
+
+    // ── Embed / Cross-Origin ──────────────────────────────────────────────
+    {
+      name: 'embed',
+      use: { ...devices['Desktop Chrome'], launchOptions: { args: CHROMIUM_ARGS } },
+      testMatch: ['tests/integration/embed.spec.ts'],
     },
 
     // ── Mobile simulado ───────────────────────────────────────────────────

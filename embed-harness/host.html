@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Lightning Player — Embed Host (Cross-Origin Test)</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #111; font-family: monospace; color: #ccc; }
+    #player-frame { display: block; width: 1280px; height: 720px; border: 2px solid #333; }
+    #status { padding: 8px 12px; font-size: 12px; background: #1a1a1a; }
+    #log { padding: 4px 12px; font-size: 11px; color: #888; max-height: 120px; overflow-y: auto; }
+  </style>
+</head>
+<body>
+  <div id="status">⏳ Embed host — initializing iframe...</div>
+  <iframe
+    id="player-frame"
+    allow="autoplay"
+    title="Lightning Player embed"
+  ></iframe>
+  <div id="log"></div>
+
+  <script>
+    // Observable state — Playwright reads this via page.evaluate()
+    window.__embedState = {
+      messages: [],
+      lastMessage: null,
+      events: [],
+      playerReady: false,
+      errors: [],
+    }
+
+    var statusEl = document.getElementById('status')
+    var logEl = document.getElementById('log')
+
+    function log(msg) {
+      var line = document.createElement('div')
+      line.textContent = '[' + new Date().toISOString().slice(11, 23) + '] ' + msg
+      logEl.appendChild(line)
+      logEl.scrollTop = logEl.scrollHeight
+    }
+
+    // Receive postMessage events from player iframe
+    window.addEventListener('message', function(e) {
+      // Only accept from player harness origin
+      if (!e.origin || !e.origin.includes('localhost:3000')) return
+
+      var msg = e.data
+      if (!msg || msg.source !== 'lightning-player') return
+
+      window.__embedState.messages.push(msg)
+      window.__embedState.lastMessage = msg
+      window.__embedState.events.push(msg.event)
+
+      log('received: ' + msg.event)
+
+      if (msg.event === 'msp:ready') {
+        window.__embedState.playerReady = true
+        statusEl.textContent = '✅ Player ready — embed channel working'
+        statusEl.style.color = '#0f0'
+      }
+
+      if (msg.event === 'msp:error') {
+        window.__embedState.errors.push(msg.data)
+        statusEl.textContent = '❌ Player error: ' + (msg.data && msg.data.message || 'unknown')
+        statusEl.style.color = '#f44'
+      }
+    })
+
+    // Build iframe URL from host URL params
+    var params = new URLSearchParams(window.location.search)
+    var iframeUrl = new URL('http://localhost:3000/embed.html')
+    iframeUrl.searchParams.set('type', params.get('type') || 'media')
+    iframeUrl.searchParams.set('id', params.get('id') || '')
+    iframeUrl.searchParams.set('autoplay', params.get('autoplay') || 'true')
+
+    // Forward scriptUrl if provided (allows tests to override the player version)
+    var scriptUrl = params.get('scriptUrl')
+    if (scriptUrl) {
+      iframeUrl.searchParams.set('scriptUrl', scriptUrl)
+    }
+
+    var frame = document.getElementById('player-frame')
+    frame.src = iframeUrl.toString()
+    log('iframe → ' + iframeUrl.toString())
+  </script>
+</body>
+</html>
