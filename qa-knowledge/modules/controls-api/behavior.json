@@ -97,7 +97,7 @@
       "when": "Se llaman dos player.play() simultáneamente",
       "then": "Solo una ejecución llega al playerHandler. El evento 'playing' se emite exactamente una vez.",
       "priority": "MUST",
-      "covered_by": []
+      "covered_by": ["tests/integration/controls-api-edge.spec.ts"]
     },
     {
       "id": "AC-CONTROLS-004",
@@ -124,7 +124,7 @@
       "when": "Se asigna player.currentTime = 10",
       "then": "Se emiten eventos 'seeking' → 'seeked'. player.currentTime === 10 ± 0.5s",
       "priority": "MUST",
-      "covered_by": []
+      "covered_by": ["tests/integration/controls-api-edge.spec.ts"]
     },
     {
       "id": "AC-CONTROLS-007",

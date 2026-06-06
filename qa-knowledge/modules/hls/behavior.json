@@ -95,7 +95,7 @@
       "when": "hls.js intenta cargar el segmento",
       "then": "hls.js reintenta 3 veces. Si todos fallan, emite 'error' con fatal:true. El player no queda en loop infinito.",
       "priority": "MUST",
-      "covered_by": []
+      "covered_by": ["tests/integration/hls-edge.spec.ts"]
     },
     {
       "id": "AC-HLS-006",
@@ -113,7 +113,7 @@
       "when": "El player alcanza el punto de discontinuidad",
       "then": "El player no crashea. La reproducción continúa. Puede haber un pequeño glitch visual pero no error fatal.",
       "priority": "MUST",
-      "covered_by": []
+      "covered_by": ["tests/integration/hls-edge.spec.ts"]
     }
   ],
   "known_bugs": [],

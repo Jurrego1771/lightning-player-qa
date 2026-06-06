@@ -134,6 +134,7 @@ export const LocalStreams = {
     vod: 'http://localhost:9001/vod/master.m3u8',
     audio: 'http://localhost:9001/audio/index.m3u8',
     withError: 'http://localhost:9001/vod-with-error/index.m3u8',
+    withDiscontinuity: 'http://localhost:9001/vod-with-discontinuity/index.m3u8',
   },
 } as const
 
