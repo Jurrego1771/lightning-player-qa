@@ -114,7 +114,11 @@
             'fullscreenchange', 'enterpictureinpicture', 'leavepictureinpicture',
           ]
 
-          var ALL_EVENTS = CUSTOM_EVENTS.concat(HTML5_EVENTS, AD_EVENTS, TRACK_EVENTS, NEXT_EPISODE_EVENTS, FULLSCREEN_EVENTS)
+          var AIRPLAY_EVENTS = [
+            'airPlayAvailabilityChange', 'airPlayConnected', 'airPlayDisconnected',
+          ]
+
+          var ALL_EVENTS = CUSTOM_EVENTS.concat(HTML5_EVENTS, AD_EVENTS, TRACK_EVENTS, NEXT_EPISODE_EVENTS, FULLSCREEN_EVENTS, AIRPLAY_EVENTS)
 
           ALL_EVENTS.forEach(function (eventName) {
             player.on(eventName, function (data) {
