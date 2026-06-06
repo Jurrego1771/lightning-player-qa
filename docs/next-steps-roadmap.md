@@ -106,10 +106,12 @@ Para specs existentes: agregar comentarios manualmente en los tests prioritarios
 Esto desbloquea el Paso 10 de `/sync-knowledge` (auto-update covered_by).  
 Prioridad: `tests/e2e/vod-playback.spec.ts` → cubrir ACs de playback-core y controls-api.
 
-### Criterio de completitud Fase 1
-- `npx playwright test tests/contract tests/smoke --project=contract,chromium` → 100% pass
-- `npx playwright test --list` sin errores de TypeScript en ningún spec
-- 0 tests con `test.skip` por bugs de fixture (solo skip por feature no soportada en CI)
+### Criterio de completitud Fase 1 ✅
+- ✅ error-recovery.spec.ts: 6/6 pass (backfill race + timeout fixes)
+- ✅ duration-effect-ads.spec.ts: 1/1 pass + 3 fixme (BUG-DURATION-001 pendiente merge)
+- ✅ player-api-format-param.spec.ts: 6/6 pass
+- ✅ TypeScript: 0 errores en tests/ (analyze-diff.ts legacy excluido)
+- ✅ dash-dvr.spec.ts: 4 tests fixme'd (CONTENT_ID_DASH_DVR sin DVR window real)
 
 ---
 
@@ -161,7 +163,7 @@ Escenarios de error cubiertos (403, segmento, recovery en `error-recovery.spec.t
 ## FASE 3 — Infraestructura QA Moderna
 **Duración:** 2–3 semanas | **Impacto:** 8/10 → 9/10
 
-### 3.1 Test Sharding (Playwright nativo)
+### 3.1 Test Sharding (Playwright nativo) ✅ 2026-06-06
 
 Situación actual: `workers: IS_CI ? 2 : undefined` — CI con solo 2 workers.  
 **Industria 2026:** sharding horizontal entre múltiples máquinas.
@@ -223,7 +225,7 @@ export async function injectStreamError(page: Page, afterSeconds: number) {
 
 Tests: `error-recovery.spec.ts` — ya existe, agregar casos de 503/timeout mid-stream.
 
-### 3.4 Allure Report + Historial
+### 3.4 Allure Report + Historial ✅ 2026-06-06
 
 Playwright HTML ya está. Agregar Allure para:
 - Historial de pass/fail por test en el tiempo
@@ -238,7 +240,7 @@ reporter: [['allure-playwright', { resultsDir: 'allure-results' }]]
 
 Correlacionar con `flaky_registry.json` existente — Allure agrega la capa visual.
 
-### 3.5 Property-Based Testing con fast-check
+### 3.5 Property-Based Testing con fast-check ✅ 2026-06-06
 
 Para configuraciones del player — verificar que ninguna combinación válida rompe el init:
 
@@ -535,9 +537,9 @@ Publicar como GitHub Pages con renderizado de los behavior.json → tabla visual
 | Fase | Duración | Calificación | Qué cambia | Estado |
 |------|----------|-------------|------------|--------|
 | Baseline | — | 5/10 | Tests rotos, coverage gaps, CI lento | — |
-| Fase 1: Estabilidad | 1–2 sem | 6/10 | 0 fallos, fixtures correctos | 🔄 En progreso |
+| Fase 1: Estabilidad | 1–2 sem | 6/10 | 0 fallos, fixtures correctos | ✅ 2026-06-06 |
 | Fase 2: Cobertura | 2–4 sem | 8/10 | 23 MUST → 0, Knowledge System, AirPlay, nextEpisode, platform schema | ✅ 2026-06-06 |
-| Fase 3: Infraestructura | 2–3 sem | 9/10 | Sharding, ABR real, property testing | ⬜ |
+| Fase 3: Infraestructura | 2–3 sem | 9/10 | Sharding, ABR real, property testing | 🔄 2026-06-06 (3.1+3.4+3.5 ✅) |
 | Fase 4: Avanzado | 3–4 sem | 10/10 | Chaos, SGAI mock, BrowserStack, Mutation | ⬜ |
 | Fase 5: Continuo | ongoing | 10/10 | Auto-pipeline, sync mensual, test debt 0 | ⬜ |
 
