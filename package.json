@@ -24,7 +24,8 @@
     "perf:update-baseline": "ts-node scripts/update-perf-baseline.ts",
     "test:performance:full": "playwright test tests/performance/ && npm run perf:compare",
     "flaky:analyze": "ts-node scripts/analyze-flakiness.ts",
-    "flaky:update-quarantine": "ts-node scripts/analyze-flakiness.ts --update"
+    "flaky:update-quarantine": "ts-node scripts/analyze-flakiness.ts --update",
+    "report:allure": "allure generate allure-results --clean -o allure-report && allure open allure-report"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.10.0",
@@ -34,6 +35,7 @@
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.0.0",
     "@typescript-eslint/parser": "^8.58.1",
+    "allure-playwright": "^3.9.0",
     "dotenv": "^16.4.0",
     "eslint": "^9.0.0",
     "eslint-plugin-playwright": "^2.10.1",

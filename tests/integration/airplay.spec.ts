@@ -188,11 +188,13 @@ test.describe('AirPlay — Connect / Disconnect (dispositivo real)', { tag: ['@i
     // Requiere: macOS + Safari real + Apple TV o AirPlay receiver en la misma red.
     // No ejecutable en CI headless. Testear manualmente con: npx playwright test --ui
     // y un dispositivo AirPlay disponible. El payload debe incluir { deviceName: string }.
+    async () => {}
   )
 
   test.fixme(
     'airPlayDisconnected se emite al desconectar del receptor AirPlay',
     // Mismo prerequisito que airPlayConnected.
     // Payload esperado: { deviceName: string } (nombre del receptor desconectado).
+    async () => {}
   )
 })

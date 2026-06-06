@@ -65,6 +65,7 @@ export default defineConfig({
     ['html', { outputFolder: 'playwright-report', open: 'never' }],
     ['json', { outputFile: 'playwright-report/report.json' }],
     ['./reporters/flakiness-reporter.ts'],
+    ['allure-playwright', { resultsDir: 'allure-results', detail: true, suiteTitle: true }],
     ...(IS_CI ? [['github'] as ['github']] : []),
   ],
 

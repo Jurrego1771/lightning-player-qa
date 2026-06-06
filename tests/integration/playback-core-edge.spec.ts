@@ -255,5 +255,6 @@ test.describe('Playback Core — play() antes de ready', {
     // AC-PLAYBACK-007: Player recién inicializado, sin haber recibido 'ready'.
     // Cuando se llama play() → debe arrojar Error con mensaje 'Player is not ready'.
     // No testeable con el harness actual (goto() garantiza ready antes de retornar).
+    async () => {}
   )
 })

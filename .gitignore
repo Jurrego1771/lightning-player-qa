@@ -53,3 +53,7 @@ tmp_b64.json
 qa-report*.html
 playwright-report-tv/
 reports/
+
+# Allure
+allure-results/
+allure-report/
