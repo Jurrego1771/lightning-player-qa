@@ -38,6 +38,7 @@
     "eslint": "^9.0.0",
     "eslint-plugin-playwright": "^2.10.1",
     "express": "^4.21.0",
+    "fast-check": "^4.8.0",
     "serve": "^14.2.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.7.0",
