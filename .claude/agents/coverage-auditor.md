@@ -39,21 +39,30 @@ Extraer:
 - `diff.files[]` → archivos con su módulo, `symbols_changed[]`, `events_touched[]`
 - `diff.cross_cutting_risk` → boolean
 
-Construir lista de archivos a auditar: solo los que pertenecen a módulos CRITICAL o HIGH.
-
-```python
-# Pseudo-código de filtrado
-files_to_audit = [
-    f for f in diff["files"]
-    if f["module"] in (modules_critical + modules_high)
-]
-```
+Construir lista de módulos a auditar: solo CRITICAL y HIGH.
 
 ---
 
-## PASO 2 — Buscar tests existentes para cada archivo modificado
+## PASO 1.5 — Consultar coverage-gaps via query-context.ts
 
-Para cada archivo en `files_to_audit`:
+```bash
+CRITICAL_MODS=$(python3 -c "import sys,json; d=json.load(open('state/session_state.json')); print(' '.join(d['risk_assessment'].get('modules_critical',[])))" 2>/dev/null)
+HIGH_MODS=$(python3 -c "import sys,json; d=json.load(open('state/session_state.json')); print(' '.join(d['risk_assessment'].get('modules_high',[])))" 2>/dev/null)
+npx ts-node scripts/query-context.ts coverage-gaps $CRITICAL_MODS $HIGH_MODS 2>/dev/null
+```
+
+Si `scripts/query-context.ts` existe y responde → usar su output como **fuente primaria** de gaps:
+- `priority: "MUST"` → AC sin ningún `covered_by` en módulo CRITICAL/HIGH
+- `priority: "SHOULD"` → AC con `covered_by` parcial (símbolo modificado no cubierto)
+- `priority: "NICE"` → ignorar en esta etapa
+
+Si no existe o falla → continuar al PASO 2 (grep fallback).
+
+---
+
+## PASO 2 — Buscar tests existentes (fallback si query-context no disponible)
+
+Ejecutar solo si PASO 1.5 no produjo output. Para cada archivo en módulos CRITICAL/HIGH:
 
 ```bash
 # Usar el skill si existe
@@ -88,7 +97,9 @@ ls tests/integration/*ads* tests/e2e/*ads* 2>/dev/null
 
 ## PASO 3 — Clasificar cada gap
 
-Para cada archivo auditado, determinar su nivel de cobertura:
+**Fuente primaria (PASO 1.5):** Si query-context.ts respondió, sus gaps ya están clasificados — usar directamente. Completar con `symbols_uncovered` y `events_uncovered` desde `diff.files[]`.
+
+**Fuente fallback (PASO 2):** Si query-context no respondió, clasificar según grep:
 
 ### Sin cobertura → gap MUST
 
@@ -233,9 +244,10 @@ Si no hay gaps:
 ## REGLAS
 
 1. **Solo auditar módulos CRITICAL y HIGH** — no auditar MEDIUM ni LOW (son el límite de esta etapa).
-2. **Un gap es MUST** si no hay absolutamente ningún test que mencione el archivo, el símbolo o el módulo. Si hay aunque sea un test tangencial → es SHOULD.
-3. **Gaps conocidos del proyecto** (`ads-sgai`, `sgai.spec.ts` inexistente) → siempre MUST con `known_gap: true`.
-4. **`suggested_spec_path`** debe ser un path real que pueda existir — no inventar rutas que contradigan la estructura del proyecto.
-5. **MERGE**: preservar `diff`, `risk_assessment`, `test_plan` al actualizar `session_state.json`.
-6. Si los tests/ no son accesibles por algún error → reportar el error y marcar todos los archivos auditados como MUST (conservativo).
-7. **No generar tests aquí** — solo identificar y documentar gaps. La generación es responsabilidad de A5 (test-generator).
+2. **Fuente primaria: query-context.ts coverage-gaps** (PASO 1.5) — AC sin `covered_by` = MUST; partial = SHOULD. Grep (PASO 2) es fallback.
+3. **Un gap es MUST** si no hay absolutamente ningún test que mencione el archivo, el símbolo o el módulo. Si hay aunque sea un test tangencial → es SHOULD.
+4. **Gaps conocidos del proyecto** (`ads-sgai`, `sgai.spec.ts` inexistente) → siempre MUST con `known_gap: true`.
+5. **`suggested_spec_path`** debe ser un path real que pueda existir — no inventar rutas que contradigan la estructura del proyecto.
+6. **MERGE**: preservar `diff`, `risk_assessment`, `test_plan` al actualizar `session_state.json`.
+7. Si los tests/ no son accesibles por algún error → reportar el error y marcar todos los archivos auditados como MUST (conservativo).
+8. **No generar tests aquí** — solo identificar y documentar gaps. La generación es responsabilidad de A5 (test-generator).

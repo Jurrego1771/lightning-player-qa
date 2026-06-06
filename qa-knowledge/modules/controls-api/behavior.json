@@ -1,0 +1,146 @@
+{
+  "schema_version": "1.0",
+  "module": "controls-api",
+  "status": "curated",
+  "last_verified": "2026-06-05",
+  "events": [
+    {
+      "name": "ready",
+      "when": "_playerReady=true && _viewReady=true, emitido por Controls._checkPlayerReady()",
+      "payload_shape": {},
+      "must_precede": ["playing"]
+    },
+    {
+      "name": "playing",
+      "when": "play() exitoso — videoElement.play() resolvió o adsManager.play() no retornó false",
+      "payload_shape": {}
+    },
+    {
+      "name": "pause",
+      "when": "pause() exitoso",
+      "payload_shape": {}
+    },
+    {
+      "name": "error",
+      "when": "play() arroja error de autoplay policy o error fatal del player",
+      "payload_shape": { "fatal": "boolean", "message": "string" },
+      "optional": true
+    }
+  ],
+  "api_contracts": [
+    {
+      "method": "play()",
+      "signature": "play(): Promise<void>",
+      "expected_behavior": "Si _hasAds y adsManager.play() no retorna false → delega a adsManager. Si no, llama playerHandler.play(). Guard _calledPlaying previene concurrencia. Espera _viewReady antes de ejecutar.",
+      "side_effects": ["emite 'playing' via internalEmitter", "paused = false"],
+      "error_behavior": "Throws Error('Player is not ready. Wait for ready event') si !state._ready. Error de autoplay policy → emite 'error', player sigue en estado valid."
+    },
+    {
+      "method": "pause()",
+      "signature": "pause(): Promise<void>",
+      "expected_behavior": "Si _hasAds y adsManager.pause() no retorna false → delega a adsManager. Si no, llama playerHandler.pause(). Guard _calledPause previene concurrencia.",
+      "side_effects": ["emite 'pause' via internalEmitter", "paused = true"],
+      "error_behavior": "Throws Error('Player is not ready. Wait for ready event') si !state._ready."
+    },
+    {
+      "method": "currentTime (getter)",
+      "signature": "get currentTime(): number",
+      "expected_behavior": "Retorna el currentTime del adsManager si hay ad activo, sino del playerHandler.",
+      "side_effects": [],
+      "error_behavior": "Retorna 0 si player no está listo."
+    },
+    {
+      "method": "currentTime (setter)",
+      "signature": "set currentTime(time: number): void",
+      "expected_behavior": "Asigna currentTime al adsManager si hay ad activo, sino al playerHandler (seek). Valores negativos → 0. Valores > duration → duration.",
+      "side_effects": ["emite 'seeking' → 'seeked'"],
+      "error_behavior": "No arroja error para valores fuera de rango — clampea silenciosamente."
+    },
+    {
+      "method": "paused (getter)",
+      "signature": "get paused(): boolean",
+      "expected_behavior": "Retorna true si el player está en pausa, false si está reproduciendo.",
+      "side_effects": [],
+      "error_behavior": "Retorna true si player no está listo."
+    },
+    {
+      "method": "isPlayingAd()",
+      "signature": "isPlayingAd(): boolean",
+      "expected_behavior": "Retorna true si hay un ad linear activo. Chequea adsManager.adInfo.isLinear y overrides.",
+      "side_effects": [],
+      "error_behavior": "Retorna false si no hay ads configurados."
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "id": "AC-CONTROLS-001",
+      "scenario": "play() antes de ready arroja error descriptivo",
+      "given": "Player inicializado pero sin haber recibido evento 'ready'",
+      "when": "Se llama player.play()",
+      "then": "La promesa es rechazada con Error('Player is not ready. Wait for `ready` event'). El player no entra en estado inválido.",
+      "priority": "MUST",
+      "covered_by": ["tests/contract/"]
+    },
+    {
+      "id": "AC-CONTROLS-002",
+      "scenario": "pause() antes de ready arroja error descriptivo",
+      "given": "Player inicializado pero sin haber recibido evento 'ready'",
+      "when": "Se llama player.pause()",
+      "then": "La promesa es rechazada con Error('Player is not ready. Wait for `ready` event').",
+      "priority": "MUST",
+      "covered_by": ["tests/contract/"]
+    },
+    {
+      "id": "AC-CONTROLS-003",
+      "scenario": "play() concurrente no causa doble reproducción",
+      "given": "Player en estado ready",
+      "when": "Se llaman dos player.play() simultáneamente",
+      "then": "Solo una ejecución llega al playerHandler. El evento 'playing' se emite exactamente una vez.",
+      "priority": "MUST",
+      "covered_by": []
+    },
+    {
+      "id": "AC-CONTROLS-004",
+      "scenario": "Firma de play/pause/load/destroy no puede cambiar",
+      "given": "Player instancia obtenida vía loadMSPlayer()",
+      "when": "Se inspecciona la API del objeto retornado",
+      "then": "player.play, player.pause, player.load, player.destroy son funciones. Sus firmas son compatibles con la versión anterior.",
+      "priority": "MUST",
+      "covered_by": ["tests/contract/"]
+    },
+    {
+      "id": "AC-CONTROLS-005",
+      "scenario": "paused getter refleja estado real",
+      "given": "Player reproduciendo contenido (playing emitido)",
+      "when": "Se lee player.paused",
+      "then": "player.paused === false. Después de pause(), player.paused === true.",
+      "priority": "MUST",
+      "covered_by": ["tests/e2e/vod-playback.spec.ts"]
+    },
+    {
+      "id": "AC-CONTROLS-006",
+      "scenario": "currentTime setter ejecuta seek",
+      "given": "Player reproduciendo VOD con suficiente buffer",
+      "when": "Se asigna player.currentTime = 10",
+      "then": "Se emiten eventos 'seeking' → 'seeked'. player.currentTime === 10 ± 0.5s",
+      "priority": "MUST",
+      "covered_by": []
+    },
+    {
+      "id": "AC-CONTROLS-007",
+      "scenario": "play() con ad configurado delega al adsManager",
+      "given": "Player con ads configurados (ads.map presente)",
+      "when": "Se llama player.play() al inicio del contenido",
+      "then": "adsManager.play() es llamado primero. Si retorna un valor distinto de false, playerHandler.play() NO es llamado.",
+      "priority": "SHOULD",
+      "covered_by": []
+    }
+  ],
+  "known_bugs": [],
+  "do_not_reflag": [],
+  "test_anti_patterns": [
+    "No acceder a Controls directamente — testear solo a través de la API pública del player",
+    "No mockear adsManager para testear play() — usar fixtures con ads reales o sin ads",
+    "No asumir que play() retorna inmediatamente — es async, esperar el evento 'playing'"
+  ]
+}

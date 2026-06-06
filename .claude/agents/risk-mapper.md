@@ -66,6 +66,24 @@ Si tampoco existe → usar la tabla de riesgo base embebida (ver sección de fal
 
 ---
 
+## PASO 2.5 — Consultar cascade de dependencias
+
+Para los módulos afectados, obtener datos de impacto en cascada:
+
+```bash
+MODULES=$(python3 -c "import sys,json; d=json.load(open('state/session_state.json')); print(' '.join(d['diff']['modules_affected']))" 2>/dev/null)
+npx ts-node scripts/query-context.ts impact-of $MODULES 2>/dev/null
+```
+
+Si `scripts/query-context.ts` no existe → omitir sin error, continuar.
+
+Extraer de cada módulo:
+- `depended_by[]` — módulos que dependen de este módulo
+- `cascade_risk` — true si ≥2 dependientes son CRITICAL
+- `breaks_if_changed[]` — desde `context.yaml`; usar como fuente de `breaks_if_not_tested` en PASO 6
+
+---
+
 ## PASO 3 — Calcular risk_score por módulo afectado
 
 Para cada módulo en `diff.modules_affected`:
@@ -82,6 +100,7 @@ Para cada módulo en `diff.modules_affected`:
 - Se detecta `events_touched` con un evento que aparece también en `constants.cjs`
 - Se eliminó una función exportada (línea empieza con `-export`)
 - Se cambió la firma de `play()`, `pause()`, `seek()`, `load()` en controles
+- `cascade_risk: true` desde PASO 2.5 (módulo tiene ≥2 dependientes CRITICAL)
 
 **Multiplicar × 1.3 (escala hasta CRITICAL) si:**
 - `lines_removed > lines_added × 2` (se eliminó más de lo que se añadió — posible breaking change)
@@ -180,6 +199,7 @@ Leer `state/session_state.json`, agregar el campo `risk_assessment` y reescribir
           "Beacons de tracking de ads no se disparan en el momento correcto",
           "adsStarted no se emite → listeners externos pierden el evento"
         ],
+        "_breaks_source": "context.yaml (preferido) | inferido del diff (fallback)",
         "related_issues": [
           {
             "number": 312,
@@ -278,9 +298,11 @@ Leer `state/session_state.json`, agregar el campo `risk_assessment` y reescribir
 ## REGLAS
 
 1. **cross_cutting_risk = true → CRITICAL global sin excepción**, aunque todos los módulos sean LOW.
-2. **Leer el diff real** para módulos HIGH/CRITICAL — no confiar solo en el score base del YAML.
-3. **`breaks_if_not_tested`** debe ser específico: menciona el caso de uso, no el módulo genérico.
-4. **Escalado es conservativo**: si hay duda entre HIGH y CRITICAL, escalar a CRITICAL.
-5. **Issues de GitHub**: solo si risk_label_global ∈ {CRITICAL, HIGH}. No buscar issues para módulos LOW o MEDIUM.
-6. **MERGE**: nunca sobreescribir campos ya escritos por A1 o etapas posteriores.
-7. Si `risk_map.yaml` no existe y no hay fallback → usar la tabla embebida y marcar `yaml_source: "embedded_fallback"` en el output.
+2. **cascade_risk = true → escalar módulo a CRITICAL** — si ≥2 dependientes son CRITICAL (PASO 2.5).
+3. **Leer el diff real** para módulos HIGH/CRITICAL — no confiar solo en el score base del YAML.
+4. **`breaks_if_not_tested`**: preferir `breaks_if_changed` de `context.yaml` (PASO 2.5); inferir del diff como fallback.
+5. **`breaks_if_not_tested`** debe ser específico: menciona el caso de uso, no el módulo genérico.
+6. **Escalado es conservativo**: si hay duda entre HIGH y CRITICAL, escalar a CRITICAL.
+7. **Issues de GitHub**: solo si risk_label_global ∈ {CRITICAL, HIGH}. No buscar issues para módulos LOW o MEDIUM.
+8. **MERGE**: nunca sobreescribir campos ya escritos por A1 o etapas posteriores.
+9. Si `risk_map.yaml` no existe y no hay fallback → usar la tabla embebida y marcar `yaml_source: "embedded_fallback"` en el output.

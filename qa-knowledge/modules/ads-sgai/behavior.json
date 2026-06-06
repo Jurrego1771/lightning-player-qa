@@ -1,0 +1,124 @@
+{
+  "schema_version": "1.0",
+  "module": "ads-sgai",
+  "status": "curated",
+  "last_verified": "2026-06-05",
+  "events": [
+    {
+      "name": "adsStarted",
+      "when": "SGAI ad break comienza — EXT-X-DATERANGE cue point alcanzado y ad iniciado",
+      "payload_shape": { "duration": "number" },
+      "optional": false
+    },
+    {
+      "name": "adsComplete",
+      "when": "SGAI ad break termina — todos los ads del break completados",
+      "payload_shape": {},
+      "must_follow": ["adsStarted"],
+      "optional": false
+    },
+    {
+      "name": "adsContentResumeRequested",
+      "when": "SGAI solicita reanudar el content después del ad break",
+      "payload_shape": {},
+      "must_follow": ["adsComplete"]
+    },
+    {
+      "name": "adsError",
+      "when": "Error durante carga o reproducción del SGAI ad break",
+      "payload_shape": { "code": "number", "message": "string" },
+      "optional": true
+    }
+  ],
+  "api_contracts": [
+    {
+      "method": "useGoogleSGAILifecycle(config, refs)",
+      "signature": "useGoogleSGAILifecycle(config: { networkCode, customAssetKey, contentId?, adBreakIdEndpoint? }, refs): void",
+      "expected_behavior": "Hook React que gestiona el lifecycle completo de SGAI. Inicializa el SDK cuando networkCode y customAssetKey están presentes. No hace nada si alguno falta.",
+      "side_effects": [
+        "Inyecta custom HLS loader para interceptar fragmentos",
+        "Registra listeners en internalEmitter para eventos de buffering y fragmentos",
+        "En cleanup: remueve todos los listeners, libera recursos"
+      ],
+      "error_behavior": "Si networkCode o customAssetKey faltan → no inicializa, content reproduce normalmente."
+    },
+    {
+      "method": "HLS custom pLoader",
+      "expected_behavior": "Intercepta requests de fragmentos HLS para detectar cue points SGAI (EXT-X-DATERANGE). Cuando detecta un cue point, notifica al AdBreakService.",
+      "side_effects": ["Fragmentos pasan por el loader antes de llegar al buffer HLS"],
+      "error_behavior": "Si el loader falla → fragmento se descarta, HLS hace retry normal."
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "id": "AC-SGAI-001",
+      "scenario": "Stream live con EXT-X-DATERANGE activa ad break",
+      "given": "Player con SGAI configurado (networkCode + customAssetKey) reproduciendo stream live con cue points EXT-X-DATERANGE",
+      "when": "currentTime alcanza el cue point de un ad break",
+      "then": "adsStarted es emitido. El ad break se reproduce. Después adsComplete y adsContentResumeRequested se emiten. Content reanuda.",
+      "priority": "MUST",
+      "covered_by": ["tests/integration/ads-sgai-mute-state-lifecycle.spec.ts"]
+    },
+    {
+      "id": "AC-SGAI-002",
+      "scenario": "buffering state al llegar cue point → NO loop infinito",
+      "given": "Player en estado buffering (waiting/stalled) cuando llega el cue point de un ad break",
+      "when": "SGAI detecta el cue point durante buffering",
+      "then": "El player NO entra en loop infinito alternando buffering ↔ ad break. El buffering se resuelve y el ad break se reproduce normalmente, O el ad break es skipped.",
+      "priority": "MUST",
+      "covered_by": []
+    },
+    {
+      "id": "AC-SGAI-003",
+      "scenario": "DVR + seek antes del ad → sgaiAdBreakSkipped",
+      "given": "Player DVR con SGAI, usuario hace seek a posición ANTES de un ad break ya visto",
+      "when": "El seek posiciona el player antes del cue point",
+      "then": "El ad break es marcado como skipped (no se reproduce de nuevo). Content continúa desde la posición del seek.",
+      "priority": "MUST",
+      "covered_by": []
+    },
+    {
+      "id": "AC-SGAI-004",
+      "scenario": "destroy() durante ad break — sin memory leak",
+      "given": "Player reproduciendo un SGAI ad break",
+      "when": "Se llama player.destroy()",
+      "then": "Todos los listeners de useGoogleSGAILifecycle son removidos. No hay errores en consola. No hay memory leaks detectables.",
+      "priority": "MUST",
+      "covered_by": []
+    },
+    {
+      "id": "AC-SGAI-005",
+      "scenario": "Audio del content restaurado después de ad break",
+      "given": "Content reproduciendo con volumen X cuando llega un ad break SGAI",
+      "when": "El ad break termina",
+      "then": "El volumen del content se restaura exactamente a X. No hay diferencia de volumen audible.",
+      "priority": "SHOULD",
+      "covered_by": ["tests/integration/ads-sgai-mute-state-lifecycle.spec.ts"]
+    },
+    {
+      "id": "AC-SGAI-006",
+      "scenario": "SGAI sin networkCode no inicializa",
+      "given": "Player con SGAI habilitado pero sin networkCode o customAssetKey",
+      "when": "El player inicializa",
+      "then": "SGAI no se inicializa. Content reproduce normalmente sin ads. No hay error.",
+      "priority": "SHOULD",
+      "covered_by": []
+    }
+  ],
+  "known_bugs": [
+    {
+      "id": "BUG-SGAI-001",
+      "title": "buffering state + DVR = loop infinito de ad breaks",
+      "status": "investigating",
+      "expected": "Cuando el player está en buffering y llega un cue point SGAI, el buffering se resuelve y el ad break se reproduce normalmente",
+      "observed": "El player queda atrapado alternando entre estado buffering y ad break state indefinidamente. Requiere reload para resolver.",
+      "workaround": "Evitar seeks agresivos en streams DVR durante buffering inicial"
+    }
+  ],
+  "do_not_reflag": ["BUG-SGAI-001"],
+  "test_anti_patterns": [
+    "No usar streams live reales de producción — los cue points no son reproducibles",
+    "Para testear SGAI usar fixture HLS con EXT-X-DATERANGE pre-configurado",
+    "No asumir que el ad break DVR siempre se reproduce — depende del estado del player"
+  ]
+}

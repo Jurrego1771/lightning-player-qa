@@ -1,0 +1,16 @@
+module: chromecast
+criticality: medium
+last_reviewed: "2026-06-05"
+paths: ["src/chromecast/"]
+depends_on: [events, state]
+depended_by: []
+breaks_if_changed:
+  - "Casting a dispositivo Chromecast no funciona"
+  - "castConnected / castDisconnected no se emiten"
+test_suites_required: []
+negative_cases:
+  - "No hay dispositivos Cast disponibles → castStateChange emitido con NO_DEVICES"
+known_gaps:
+  - "No testeable con Playwright — requiere dispositivo físico o Cast Simulator"
+external_dependencies:
+  - "Google Cast SDK (gstatic.com)"

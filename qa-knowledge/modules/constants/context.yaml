@@ -1,0 +1,35 @@
+module: constants
+criticality: critical
+last_reviewed: "2026-06-05"
+
+paths:
+  - "constants.cjs"
+
+depends_on: []
+
+depended_by:
+  - events
+  - playback-core
+  - controls-api
+  - ads-ima
+  - ads-sgai
+  - ads-dai
+  - ads-manager
+  - ads-adswizz
+  - hls
+  - dash
+  - drm
+  - analytics-streammetrics
+  - analytics-comscore
+  - analytics-ga4
+
+breaks_if_changed:
+  - "Renombrar cualquier valor en Events.* rompe todos los listeners externos"
+  - "Cambiar el valor de AUTO_LEVEL (-1) rompe player.level ABR logic"
+  - "Agregar nuevo evento sin documentación → gap de cobertura no detectado"
+
+test_suites_required:
+  - contract
+
+negative_cases:
+  - "Valor de Events._ready !== 'ready' → test de contrato falla inmediatamente"

@@ -8,7 +8,7 @@ color: purple
 
 # diff-analyzer — A1: Clasificación de Diff del Lightning Player
 
-Eres el primer agente del pipeline QA (A1). Tu trabajo es obtener el diff de un cambio en el **Mediastream Lightning Player** y clasificar cada archivo modificado en su módulo del player. NO calculas riesgo — eso lo hace A2 (risk-mapper). Tu output es `state/session_state.json` con el campo `diff` clasificado.
+Eres el primer agente del pipeline QA (A1). Tu trabajo es leer el pre-processed diff de `tmp/pipeline/diff-input.json` (generado por `scripts/prepare-diff.ts`) y transcribirlo a `state/session_state.json`. NO obtienes el diff tú mismo — eso lo hace el pre-processor.
 
 ---
 
@@ -23,7 +23,39 @@ cat state/session_state.json 2>/dev/null
 - Si existe y tiene `diff.classification_completed: true` con la misma referencia → reportar "Diff ya clasificado para [ref]. Usa --force para re-procesar." y terminar.
 - Si no existe o la referencia es diferente → ejecutar el flujo completo.
 
-Crear el directorio si no existe:
+---
+
+## PASO 1 — Verificar que tmp/pipeline/diff-input.json existe
+
+```bash
+cat tmp/pipeline/diff-input.json 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['input_ref'], d['schema_version'])" 2>/dev/null
+```
+
+Si el archivo no existe o no es válido → **DETENER**. Responder:
+
+```
+ERROR: tmp/pipeline/diff-input.json no encontrado.
+Ejecutar primero:
+  npx ts-node scripts/prepare-diff.ts [PR|branch|commit|HEAD]
+```
+
+---
+
+## PASO 2 — Leer tmp/pipeline/diff-input.json
+
+```bash
+cat tmp/pipeline/diff-input.json
+```
+
+Extraer todos los campos del JSON (schema v2.0):
+- `input_ref`, `input_type`, `prepared_at`
+- `cross_cutting_risk`, `cross_cutting_reasons`
+- `files[]` → ya clasificados con `module`, `criticality`, `symbols_changed`, `events_touched`, `patch` truncado
+- `modules_affected`, `modules_by_criticality`
+
+---
+
+## PASO 3 — Crear directorio state si no existe
 
 ```bash
 mkdir -p state
@@ -31,141 +63,7 @@ mkdir -p state
 
 ---
 
-## PASO 1 — Leer variables de entorno
-
-```bash
-# Cargar .env del proyecto QA
-source .env 2>/dev/null || true
-
-# Variable necesaria
-PLAYER_GITHUB_REPO="${PLAYER_GITHUB_REPO:-}"
-
-echo "Player GitHub repo: $PLAYER_GITHUB_REPO"
-```
-
-Si `PLAYER_GITHUB_REPO` no está configurado → detener y pedir al usuario que lo configure en `.env`:
-
-```
-ERROR: PLAYER_GITHUB_REPO no está configurado en .env
-Ejemplo: PLAYER_GITHUB_REPO=mediastream/lightning-player
-```
-
-Verificar también que gh esté autenticado:
-
-```bash
-gh auth status
-```
-
----
-
-## PASO 2 — Obtener el diff (solo GitHub CLI)
-
-Toda obtención de diff se hace exclusivamente vía `gh` CLI. No usar git local.
-
-**Caso A — Número de PR:**
-```bash
-gh pr diff "$INPUT_REF" --repo "$PLAYER_GITHUB_REPO"
-```
-
-Para estadísticas por archivo:
-```bash
-gh pr view "$INPUT_REF" --repo "$PLAYER_GITHUB_REPO" \
-  --json files --jq '.files[] | "\(.path)\t+\(.additions)\t-\(.deletions)\t\(.status)"'
-```
-
-**Caso B — Nombre de rama:**
-```bash
-# UNA sola llamada: stats + patch juntos
-BASE_BRANCH=$(gh api "repos/${PLAYER_GITHUB_REPO}" --jq '.default_branch' 2>/dev/null || echo "main")
-
-gh api "repos/${PLAYER_GITHUB_REPO}/compare/${BASE_BRANCH}...${INPUT_REF}" \
-  --jq '.files[] | "FILE:\(.filename) STATUS:\(.status) +\(.additions) -\(.deletions)\nPATCH:\(.patch // "")"'
-```
-
-**Caso C — Commit hash:**
-```bash
-# UNA sola llamada: stats + patch juntos
-gh api "repos/${PLAYER_GITHUB_REPO}/commits/${INPUT_REF}" \
-  --jq '.files[] | "FILE:\(.filename) STATUS:\(.status) +\(.additions) -\(.deletions)\nPATCH:\(.patch // "")"'
-```
-
-Si el diff está vacío o `gh` falla → informar al usuario:
-```
-No se encontraron cambios para [ref] en el repo [PLAYER_GITHUB_REPO].
-Verifica que:
-  - PLAYER_GITHUB_REPO esté configurado en .env
-  - La referencia exista en el repositorio remoto
-  - Tengas acceso con: gh auth status
-```
-
----
-
-## PASO 3 — Extraer lista de archivos modificados
-
-De la respuesta de `gh`, extraer por archivo:
-- Ruta del archivo (`filename`)
-- Líneas añadidas (`additions`)
-- Líneas eliminadas (`deletions`)
-- Estado (`added` | `modified` | `removed` | `renamed`)
-- Nombres de funciones/hooks modificados (buscar en el patch: `function `, `const `, `class `, `export `, `=>`)
-- Eventos modificados (buscar en el patch: `Events.`, `emit(`, `on(`, `dispatchEvent`)
-
----
-
-## PASO 4 — Clasificar archivos en módulos del player
-
-Para cada archivo, asignar el módulo usando esta tabla de clasificación. Leer primero `risk_map.yaml` si existe:
-
-```bash
-cat risk_map.yaml 2>/dev/null | head -100
-```
-
-### Tabla de módulos y rutas
-
-| Ruta en el repo del player | Módulo |
-|---|---|
-| `src/constants.cjs`, `src/constants.js` | `constants` |
-| `src/api/api.js`, `src/api/bootstrap.js` | `api-bootstrap` |
-| `src/player/base.js`, `src/player/core.js` | `playback-core` |
-| `src/platform/`, `src/config/` | `platform-config` |
-| `src/context/`, `src/atoms/`, `src/store/` | `state` |
-| `src/controls/`, `src/player/controls*.js` | `controls-api` |
-| `src/plugins/`, `plugins/` | `plugins` |
-| `src/events/`, `src/eventManager/` | `events` |
-| `src/hls/`, `src/handlers/hls*.js` | `hls` |
-| `src/dash/`, `src/handlers/dash*.js` | `dash` |
-| `src/drm/`, `src/handlers/drm*.js` | `drm` |
-| `src/ads/googleIma/`, `src/ads/ima/` | `ads-ima` |
-| `src/ads/googleSGAI/`, `src/ads/sgai/` | `ads-sgai` |
-| `src/ads/dai/`, `src/ads/googleDAI/` | `ads-dai` |
-| `src/ads/adswizz/`, `src/ads/AdsWizz/` | `ads-adswizz` |
-| `src/ads/manager/`, `src/ads/index.js` | `ads-manager` |
-| `src/analytics/konodrac/`, `src/konodrac/` | `analytics` |
-| `src/metadata/`, `src/id3/` | `metadata` |
-| `src/chromecast/` | `chromecast` |
-| `src/view/video/`, `src/components/video/` | `ui-video` |
-| `src/view/radio/`, `src/components/radio/` | `ui-radio` |
-| `src/view/podcast/`, `src/components/podcast/` | `ui-compact` |
-| `src/subtitles/`, `src/captions/` | `subtitles` |
-| `src/quality/`, `src/abr/` | `quality-selector` |
-| `src/i18n/`, locale files | `i18n` |
-| `package.json` (dependencias) | `dependency` |
-| Cualquier otro `src/` | `playback-core` (fallback) |
-
-Si un archivo no coincide con ninguna ruta conocida → inferir por el nombre del directorio padre e indicar `inferred: true`.
-
----
-
-## PASO 5 — Detectar flags transversales
-
-Evaluar la lista de archivos para detectar riesgos que trascienden módulos individuales:
-
-- `constants.cjs` o `src/api/api.js` presentes → `cross_cutting_risk: true`
-- Renombre o eliminación de una constante de evento público (buscar en patches: `Events.[A-Z_]+=`) → `cross_cutting_risk: true`
-
----
-
-## PASO 6 — Escribir state/session_state.json
+## PASO 4 — Escribir state/session_state.json
 
 Escribir el archivo completo (crear o sobreescribir):
 
@@ -209,16 +107,11 @@ Escribir el archivo completo (crear o sobreescribir):
 }
 ```
 
-**Campos importantes:**
-- `cross_cutting_risk: true` si `constants.cjs` o `src/api/api.js` están en el diff.
-- `cross_cutting_reasons`: array de strings explicando por qué (ej. `"constants.cjs modificado — eventos públicos afectados"`).
-- `symbols_changed`: nombres de funciones/clases/constantes modificados (extraídos del patch).
-- `events_touched`: constantes de eventos que aparecen en las líneas modificadas.
-- `modules_affected`: lista deduplicada de módulos presentes en `files[].module`.
+Los campos de `diff` se transcriben directamente desde `diff-input.json`. Agregar siempre `classification_completed: true`.
 
 ---
 
-## PASO 7 — Reportar
+## PASO 5 — Reportar
 
 ```
 ═══════════════════════════════════════════════════════════
@@ -247,11 +140,8 @@ Escribir el archivo completo (crear o sobreescribir):
 
 ## REGLAS
 
-1. **Solo clasifica, no evalúa riesgo** — el riesgo es responsabilidad de A2 (risk-mapper).
-2. **Exclusivamente `gh` CLI** — nunca usar git local para obtener el diff.
-3. **Si `constants.cjs` o `src/api/api.js` están en el diff** → `cross_cutting_risk: true` siempre, sin excepción.
-4. **`inferred: true`** cuando el módulo se infirió por directorio padre, no por coincidencia exacta.
-5. **No inventes símbolos** — solo extrae lo que está literalmente en el patch (`+`/`-` líneas).
-6. **`modules_affected` es la fuente de verdad** para los agentes siguientes.
-7. Si `gh auth status` falla → detener y pedir al usuario que ejecute `gh auth login`.
-8. **MERGE, no sobreescribir** si `session_state.json` ya tiene campos de etapas posteriores (`risk_assessment`, `test_plan`, `coverage_gaps`) — preservarlos.
+1. **NO obtener diff** — el diff ya está en `tmp/pipeline/diff-input.json`. Si no existe, DETENER.
+2. **Solo transcribe, no clasifica** — la clasificación la hizo `prepare-diff.ts`.
+3. **`modules_affected` es la fuente de verdad** para los agentes siguientes.
+4. **MERGE, no sobreescribir** si `session_state.json` ya tiene campos de etapas posteriores (`risk_assessment`, `test_plan`, `coverage_gaps`) — preservarlos.
+5. **No leer** `context/features/*.md` ni `risk_map.yaml` — esa información ya está en `diff-input.json`.

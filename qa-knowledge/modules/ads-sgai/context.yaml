@@ -1,0 +1,40 @@
+module: ads-sgai
+criticality: high
+last_reviewed: "2026-06-05"
+
+paths:
+  - "src/ads/googleSGAI/"
+
+depends_on:
+  - events
+  - state
+  - hls
+  - platform-config
+
+depended_by: []
+
+breaks_if_changed:
+  - "Stream live con EXT-X-DATERANGE no activa ad breaks"
+  - "useGoogleSGAILifecycle no inicializa correctamente con networkCode + customAssetKey"
+  - "Player queda en loop infinito de buffering durante ad break en stream DVR"
+  - "destroy() durante ad break causa memory leak"
+  - "Audio del content no se restaura después del ad break"
+
+test_suites_required:
+  - integration
+
+negative_cases:
+  - "buffering state cuando llega cue point → ad break NO causa loop infinito (BUG-SGAI-001)"
+  - "DVR + seek antes del ad → sgaiAdBreakSkipped (no sgaiAdBreakStart)"
+  - "networkCode o customAssetKey faltante → SGAI no inicializa, content reproduce normalmente"
+  - "SGAI SDK CDN falla → content reproduce sin ads"
+  - "destroy() durante ad break → no memory leak, no errores"
+
+known_gaps:
+  - "useGoogleSGAILifecycle.js — estados buffering+DVR sin testear"
+  - "No existen tests de integración completos para SGAI (solo mute state)"
+
+external_dependencies:
+  - "Google DAI SGAI SDK"
+  - "HLS.js custom pLoader"
+  - "Ad break ID endpoint (opcional)"

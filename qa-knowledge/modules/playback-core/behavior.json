@@ -1,0 +1,208 @@
+{
+  "schema_version": "1.0",
+  "module": "playback-core",
+  "status": "curated",
+  "last_verified": "2026-06-05",
+  "events": [
+    {
+      "name": "loaded",
+      "when": "Dependencias del player cargadas, antes de ready",
+      "payload_shape": {},
+      "must_precede": ["ready"]
+    },
+    {
+      "name": "ready",
+      "when": "Player inicializado y listo para recibir llamadas a métodos. _playerReady=true y _viewReady=true.",
+      "payload_shape": {},
+      "must_follow": ["loaded"],
+      "must_precede": ["playing", "error"]
+    },
+    {
+      "name": "playing",
+      "when": "video.paused === false && currentTime > 0. Después de play() exitoso o autoplay.",
+      "payload_shape": {},
+      "must_follow": ["ready"]
+    },
+    {
+      "name": "pause",
+      "when": "El audio/video ha sido pausado",
+      "payload_shape": {},
+      "must_follow": ["playing"]
+    },
+    {
+      "name": "seeking",
+      "when": "Usuario inicia movimiento a nueva posición",
+      "payload_shape": {}
+    },
+    {
+      "name": "seeked",
+      "when": "Usuario terminó de moverse a nueva posición",
+      "payload_shape": {},
+      "must_follow": ["seeking"]
+    },
+    {
+      "name": "ended",
+      "when": "currentTime === duration, contenido terminó",
+      "payload_shape": {},
+      "must_follow": ["playing"]
+    },
+    {
+      "name": "error",
+      "when": "Error fatal durante carga o reproducción",
+      "payload_shape": { "fatal": "boolean", "message": "string", "code": "number" },
+      "optional": true
+    },
+    {
+      "name": "buffering",
+      "when": "Player sin buffer para reproducir, solicitando datos",
+      "payload_shape": {},
+      "optional": true
+    },
+    {
+      "name": "sourcechange",
+      "when": "La fuente de contenido cambió",
+      "payload_shape": {},
+      "optional": true
+    },
+    {
+      "name": "timeupdate",
+      "when": "currentTime cambió, ~250ms de frecuencia durante reproducción",
+      "payload_shape": {},
+      "optional": true
+    }
+  ],
+  "api_contracts": [
+    {
+      "method": "play()",
+      "signature": "play(): Promise<void>",
+      "expected_behavior": "Inicia reproducción. Si hay ads configurados, delega a adsManager.play() primero. Si el player no está ready, arroja Error.",
+      "side_effects": ["emite 'playing'", "paused = false"],
+      "error_behavior": "Throws Error('Player is not ready') si llamado antes de ready. Throws Error si videoElement.play() es rechazado."
+    },
+    {
+      "method": "pause()",
+      "signature": "pause(): Promise<void>",
+      "expected_behavior": "Pausa la reproducción. Si hay ads activos, pausa el ad. Guard _calledPause previene ejecuciones concurrentes.",
+      "side_effects": ["emite 'pause'", "paused = true"],
+      "error_behavior": "Throws Error('Player is not ready') si llamado antes de ready."
+    },
+    {
+      "method": "currentTime (setter)",
+      "signature": "set currentTime(time: number): void",
+      "expected_behavior": "Seek a la posición indicada en segundos. Si hay ads activos, el seek puede ser ignorado o redirigido.",
+      "side_effects": ["emite 'seeking' → 'seeked'", "currentTime = time ± tolerancia"],
+      "error_behavior": "Valores negativos clampeados a 0. Valores mayores que duration → seek al final."
+    },
+    {
+      "method": "load(config)",
+      "signature": "load(options: PlayerConfig): void",
+      "expected_behavior": "Carga nuevo contenido. Resetea estado del player. Vuelve a emitir secuencia loaded → ready.",
+      "side_effects": ["emite 'sourcechange'", "resetea ads", "_ready = false hasta nuevo ready"],
+      "error_behavior": "Si config es inválido, emite error con fatal:true."
+    },
+    {
+      "method": "destroy()",
+      "signature": "destroy(): void",
+      "expected_behavior": "Elimina el elemento DOM del player, remueve todos los listeners, libera recursos. No emite eventos.",
+      "side_effects": ["DOM element eliminado", "todos los listeners removidos", "memoria liberada"],
+      "error_behavior": "No-op si ya fue destruido."
+    },
+    {
+      "method": "on(event, handler)",
+      "signature": "on(event: string, handler: Function): void",
+      "expected_behavior": "Registra listener para evento. Solo acepta eventos definidos en Events.*. Eventos no válidos ignorados silenciosamente.",
+      "side_effects": [],
+      "error_behavior": "Si event no está en Events.*, silenciosamente no registra."
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "id": "AC-PLAYBACK-001",
+      "scenario": "Reproducción VOD básica",
+      "given": "Player inicializado con contenido VOD válido y autoplay: false",
+      "when": "Se espera el evento 'ready' y se llama player.play()",
+      "then": "Se emite evento 'playing' en menos de 5s y player.currentTime avanza por encima de 0",
+      "priority": "MUST",
+      "covered_by": ["tests/e2e/vod-playback.spec.ts"]
+    },
+    {
+      "id": "AC-PLAYBACK-002",
+      "scenario": "Evento ready emitido antes de playing",
+      "given": "Player inicializado con cualquier tipo de contenido",
+      "when": "El player completa la inicialización",
+      "then": "El evento 'ready' se emite ANTES de cualquier 'playing'. El orden loaded → ready → playing se mantiene.",
+      "priority": "MUST",
+      "covered_by": ["tests/contract/"]
+    },
+    {
+      "id": "AC-PLAYBACK-003",
+      "scenario": "Seek dentro del buffer",
+      "given": "Player reproduciendo VOD con al menos 10s de buffer",
+      "when": "Se llama player.seek(5) (asignando player.currentTime = 5)",
+      "then": "Se emite 'seeking' → 'seeked' en ese orden. currentTime === 5 ± 0.5s",
+      "priority": "MUST",
+      "covered_by": []
+    },
+    {
+      "id": "AC-PLAYBACK-004",
+      "scenario": "Pausa y reanudación",
+      "given": "Player reproduciendo contenido VOD",
+      "when": "Se llama player.pause() y luego player.play()",
+      "then": "Se emite 'pause' → 'playing'. player.paused === false después de play()",
+      "priority": "MUST",
+      "covered_by": ["tests/e2e/vod-playback.spec.ts"]
+    },
+    {
+      "id": "AC-PLAYBACK-005",
+      "scenario": "Evento ended al completar VOD",
+      "given": "Player reproduciendo VOD cerca del final (duration - currentTime < 3s)",
+      "when": "El contenido llega al final",
+      "then": "Se emite evento 'ended'. player.paused === true después.",
+      "priority": "MUST",
+      "covered_by": []
+    },
+    {
+      "id": "AC-PLAYBACK-006",
+      "scenario": "Error fatal manejado",
+      "given": "Player inicializado con URL de contenido inválida (404)",
+      "when": "El player intenta cargar el contenido",
+      "then": "Se emite evento 'error' con { fatal: true }. El player no crashea. Se puede llamar load() con URL válida y recuperar.",
+      "priority": "MUST",
+      "covered_by": []
+    },
+    {
+      "id": "AC-PLAYBACK-007",
+      "scenario": "play() antes de ready arroja error",
+      "given": "Player recién inicializado, sin haber recibido evento 'ready'",
+      "when": "Se llama player.play()",
+      "then": "Arroja Error con mensaje 'Player is not ready'. No crash del player.",
+      "priority": "MUST",
+      "covered_by": ["tests/contract/"]
+    },
+    {
+      "id": "AC-PLAYBACK-008",
+      "scenario": "destroy() libera recursos",
+      "given": "Player reproduciendo contenido",
+      "when": "Se llama player.destroy()",
+      "then": "El elemento DOM del player es eliminado. No hay memory leaks. No se emiten eventos después de destroy().",
+      "priority": "SHOULD",
+      "covered_by": []
+    }
+  ],
+  "known_bugs": [
+    {
+      "id": "BUG-PLAYBACK-001",
+      "title": "seeking evento no se emite en seek a posición 0",
+      "status": "open",
+      "expected": "player.currentTime = 0 emite 'seeking' → 'seeked'",
+      "observed": "Solo emite 'seeked', omite 'seeking' cuando el target es 0"
+    }
+  ],
+  "do_not_reflag": ["BUG-PLAYBACK-001"],
+  "test_anti_patterns": [
+    "No usar waitForTimeout() — usar waitForEvent('ready') o expect.poll()",
+    "No acceder a internals del player handler directamente",
+    "No asumir que playing se emite sin haber esperado ready primero",
+    "No testear comportamiento de autoplay en CI — el autoplay policy del browser es inconsistente"
+  ]
+}

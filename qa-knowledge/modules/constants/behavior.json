@@ -1,0 +1,66 @@
+{
+  "schema_version": "1.0",
+  "module": "constants",
+  "status": "curated",
+  "last_verified": "2026-06-05",
+  "events": [],
+  "api_contracts": [
+    {
+      "method": "Events.* values",
+      "expected_behavior": "Each key in Events maps to the string value used in player.on(). Values must NOT change without a major version bump. Known stable values: ready='ready', playing='playing', pause='pause', ended='ended', error='error', seeking='seeking', seeked='seeked', buffering='buffering', adsStarted='adsStarted', adsComplete='adsComplete', adsError='adsError'."
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "id": "AC-CONSTANTS-001",
+      "scenario": "Events._ready === 'ready'",
+      "given": "constants.cjs importado",
+      "when": "Se lee Events._ready",
+      "then": "El valor es exactamente 'ready' (string).",
+      "priority": "MUST",
+      "covered_by": ["tests/contract/"]
+    },
+    {
+      "id": "AC-CONSTANTS-002",
+      "scenario": "Events._playing === 'playing'",
+      "given": "constants.cjs importado",
+      "when": "Se lee Events._playing",
+      "then": "El valor es exactamente 'playing' (string).",
+      "priority": "MUST",
+      "covered_by": ["tests/contract/"]
+    },
+    {
+      "id": "AC-CONSTANTS-003",
+      "scenario": "Events._adsStarted === 'adsStarted'",
+      "given": "constants.cjs importado",
+      "when": "Se lee Events._adsStarted",
+      "then": "El valor es exactamente 'adsStarted' (string).",
+      "priority": "MUST",
+      "covered_by": ["tests/contract/"]
+    },
+    {
+      "id": "AC-CONSTANTS-004",
+      "scenario": "Todos los valores de Events.* son strings únicos",
+      "given": "constants.cjs importado",
+      "when": "Se extraen todos los valores de Events.*",
+      "then": "No hay duplicados. Todos son strings no vacíos.",
+      "priority": "MUST",
+      "covered_by": ["tests/contract/"]
+    },
+    {
+      "id": "AC-CONSTANTS-005",
+      "scenario": "Events._error === 'error'",
+      "given": "constants.cjs importado",
+      "when": "Se lee Events._error",
+      "then": "El valor es exactamente 'error' (string).",
+      "priority": "MUST",
+      "covered_by": ["tests/contract/"]
+    }
+  ],
+  "known_bugs": [],
+  "do_not_reflag": [],
+  "test_anti_patterns": [
+    "No hardcodear strings de eventos en tests — importar desde constants o usar la API del player",
+    "No asumir que Events.* tiene un orden específico"
+  ]
+}

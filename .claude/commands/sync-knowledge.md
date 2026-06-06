@@ -215,13 +215,153 @@ en `.claude/memory/player_system.md` con la fecha de hoy (YYYY-MM-DD).
 
 ---
 
+---
+
+## Paso 7 — Detectar oracles desactualizados (behavior.json stale)
+
+Para cada `behavior.json` en `qa-knowledge/modules/*/behavior.json`:
+
+```bash
+python3 - <<'EOF'
+import os, json, datetime
+today = datetime.date.today()
+threshold = datetime.timedelta(days=90)
+stale = []
+for root, dirs, files in os.walk('qa-knowledge/modules'):
+    for f in files:
+        if f == 'behavior.json':
+            path = os.path.join(root, f)
+            try:
+                data = json.load(open(path))
+                lv = data.get('last_verified', '')
+                if lv:
+                    d = datetime.date.fromisoformat(lv)
+                    if (today - d) > threshold:
+                        stale.append((path, lv, data.get('status','?')))
+                else:
+                    stale.append((path, 'never', data.get('status','?')))
+            except Exception as e:
+                stale.append((path, 'parse-error', str(e)))
+for s in stale:
+    print(f'STALE: {s[0]} | last_verified={s[1]} | status={s[2]}')
+if not stale:
+    print('All behavior oracles up to date.')
+EOF
+```
+
+Para cada oracle marcado STALE:
+1. Actualizar `status: "stale"` en el `behavior.json`
+2. Agregar al reporte de Paso 5 bajo sección "Oracles desactualizados"
+3. No bloquear el pipeline — es advertencia
+
+---
+
+## Paso 8 — Detectar módulos nuevos sin context.yaml
+
+Comparar claves de `risk_map.yaml` vs directorios en `qa-knowledge/modules/`:
+
+```bash
+python3 - <<'EOF'
+import yaml, os
+risk_map = yaml.safe_load(open('risk_map.yaml'))
+known_modules = set(risk_map.get('modules', {}).keys())
+existing_dirs = set(
+    d for d in os.listdir('qa-knowledge/modules')
+    if os.path.isdir(os.path.join('qa-knowledge/modules', d))
+)
+missing = known_modules - existing_dirs
+extra = existing_dirs - known_modules
+if missing:
+    print('MISSING (no context.yaml):', sorted(missing))
+if extra:
+    print('EXTRA (not in risk_map.yaml):', sorted(extra))
+if not missing and not extra:
+    print('All modules have qa-knowledge directories.')
+EOF
+```
+
+Para módulos faltantes → listar en el reporte como "necesitan `context.yaml`".
+
+---
+
+## Paso 9 — Reporte de gaps de cobertura (ACs sin covered_by)
+
+Ejecutar para todos los módulos HIGH y CRITICAL:
+
+```bash
+# Obtener módulos HIGH y CRITICAL desde risk_map.yaml
+python3 -c "
+import yaml
+rm = yaml.safe_load(open('risk_map.yaml'))
+mods = [m for m,v in rm.get('modules',{}).items() if v.get('base_risk') in ('HIGH','CRITICAL')]
+print(' '.join(mods))
+" | xargs -I{} npx ts-node scripts/query-context.ts coverage-gaps {} 2>/dev/null
+```
+
+Si `query-context.ts` no existe → omitir sin error.
+
+Agregar al reporte de Paso 5 sección "ACs sin cobertura (coverage gaps actuales)".
+
+---
+
+## Paso 10 — Auto-actualizar covered_by en behavior.json
+
+Para cada AC en todos los `behavior.json`, buscar si ya existe un test que la cubre:
+
+```bash
+python3 - <<'EOF'
+import os, json, subprocess
+
+updated_files = []
+for root, dirs, files in os.walk('qa-knowledge/modules'):
+    for f in files:
+        if f != 'behavior.json':
+            continue
+        path = os.path.join(root, f)
+        data = json.load(open(path))
+        changed = False
+        for ac in data.get('acceptance_criteria', []):
+            ac_id = ac.get('id', '')
+            if not ac_id:
+                continue
+            # grep por AC ID en tests/
+            result = subprocess.run(
+                ['grep', '-r', ac_id, 'tests/', '--include=*.spec.ts', '-l'],
+                capture_output=True, text=True
+            )
+            found_files = [l.strip() for l in result.stdout.splitlines() if l.strip()]
+            if found_files:
+                existing = set(ac.get('covered_by', []))
+                new_files = set(found_files) - existing
+                if new_files:
+                    ac['covered_by'] = sorted(existing | new_files)
+                    changed = True
+        if changed:
+            json.dump(data, open(path, 'w'), indent=2)
+            json.dump('\n', open(path, 'a'))  # trailing newline
+            updated_files.append(path)
+
+if updated_files:
+    print('Updated covered_by in:', updated_files)
+else:
+    print('No covered_by updates needed.')
+EOF
+```
+
+Agregar archivos actualizados al reporte de Paso 5 bajo "covered_by actualizados".
+
+**Nunca remover** entradas existentes en `covered_by` — solo agregar.
+
+---
+
 ## Cuándo correr este skill
 
 - Cuando el player hace un release (nueva versión en su repo)
 - Antes de empezar a escribir tests para una feature nueva
 - Cuando un test falla de manera inesperada y sospechas que el player cambió su comportamiento
+- Después de agregar tests nuevos (para que Paso 10 actualice covered_by)
 - Como rutina mensual de mantenimiento
 
 ## Tiempo estimado
 
-5-15 minutos dependiendo de cuánto cambió el player.
+10-20 minutos dependiendo de cuánto cambió el player y cuántos oracles existen.

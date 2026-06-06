@@ -1,0 +1,66 @@
+{
+  "schema_version": "1.0",
+  "module": "platform-config",
+  "status": "curated",
+  "last_verified": "2026-06-05",
+  "events": [
+    {
+      "name": "error",
+      "when": "Plataforma API devuelve error (404, 500, red) o JSON inválido",
+      "payload_shape": { "fatal": "true", "message": "string" },
+      "optional": true
+    }
+  ],
+  "api_contracts": [
+    {
+      "method": "loadConfig(options)",
+      "signature": "loadConfig(options: { type, id, player, ... }): Promise<PlayerConfig>",
+      "expected_behavior": "Hace fetch a la Plataforma API con type/id, detecta el formato (HLS vs DASH), detecta requerimientos DRM, normaliza adsMap a ads.map. Retorna config completa lista para montar el player.",
+      "side_effects": ["HTTP GET a Plataforma API"],
+      "error_behavior": "Si Plataforma devuelve error → lanza error con { fatal: true } para que api.js lo capture."
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "id": "AC-PLATFORMCONFIG-001",
+      "scenario": "Config de VOD cargada correctamente",
+      "given": "type='media', id válido en la plataforma",
+      "when": "loadConfig() se ejecuta",
+      "then": "Config retornada tiene src (URL de manifest), type='media', y metadata del contenido.",
+      "priority": "MUST",
+      "covered_by": ["tests/contract/", "tests/e2e/vod-playback.spec.ts"]
+    },
+    {
+      "id": "AC-PLATFORMCONFIG-002",
+      "scenario": "adsMap en respuesta normalizado a ads.map",
+      "given": "Respuesta de plataforma contiene { adsMap: 'https://...' }",
+      "when": "loadConfig() normaliza la respuesta",
+      "then": "Config final tiene ads.map === 'https://...'. La clave adsMap es eliminada.",
+      "priority": "MUST",
+      "covered_by": ["tests/contract/"]
+    },
+    {
+      "id": "AC-PLATFORMCONFIG-003",
+      "scenario": "Plataforma 404 → error con fatal:true",
+      "given": "type='media', id que no existe en plataforma",
+      "when": "loadConfig() hace fetch",
+      "then": "La promesa se rechaza con { fatal: true }. api.js captura el error y emite evento 'error'.",
+      "priority": "MUST",
+      "covered_by": []
+    },
+    {
+      "id": "AC-PLATFORMCONFIG-004",
+      "scenario": "Detección de DRM correcta para stream protegido",
+      "given": "Respuesta de plataforma indica contenido con DRM Widevine",
+      "when": "loadConfig() procesa la respuesta",
+      "then": "Config final tiene drm.widevine configurado con license server URL.",
+      "priority": "SHOULD",
+      "covered_by": []
+    }
+  ],
+  "known_bugs": [],
+  "do_not_reflag": [],
+  "test_anti_patterns": [
+    "No mockear loadConfig — testear comportamiento observable desde el embed"
+  ]
+}

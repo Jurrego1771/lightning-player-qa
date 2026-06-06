@@ -1,0 +1,31 @@
+module: state
+criticality: critical
+last_reviewed: "2026-06-05"
+
+paths:
+  - "src/context/index.jsx"
+
+depends_on:
+  - events
+
+depended_by:
+  - playback-core
+  - controls-api
+  - ads-manager
+  - hls
+  - dash
+  - ui-video
+
+breaks_if_changed:
+  - "Atoms Jotai cambian shape → todos los módulos que los consumen rotos"
+  - "setData() no propaga cambios a los consumidores del contexto"
+  - "Estado del player (paused, currentTime, status) desincronizado"
+  - "playerStatus incorrecto después de error fatal"
+
+test_suites_required:
+  - e2e
+  - integration
+
+negative_cases:
+  - "Estado inconsistente después de destroy() → no errores al leer estado"
+  - "setData llamado con key desconocido → ignorado silenciosamente"

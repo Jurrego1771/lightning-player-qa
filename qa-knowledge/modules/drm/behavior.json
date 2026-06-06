@@ -1,0 +1,80 @@
+{
+  "schema_version": "1.0",
+  "module": "drm",
+  "status": "curated",
+  "last_verified": "2026-06-05",
+  "ci_testable": {
+    "widevine_dash": true,
+    "playready_dash": false,
+    "fairplay_hls": false,
+    "note": "FairPlay requiere Safari real — no disponible en Playwright WebKit headless. PlayReady requiere license server de entorno de prueba específico."
+  },
+  "events": [
+    {
+      "name": "ready",
+      "when": "License DRM obtenida exitosamente, buffer desencriptado disponible",
+      "payload_shape": {},
+      "must_precede": ["playing"]
+    },
+    {
+      "name": "error",
+      "when": "License server rechaza la solicitud o DRM no soportado",
+      "payload_shape": { "fatal": "true", "code": "DRM_LICENSE_ERROR|DRM_NOT_SUPPORTED", "message": "string" },
+      "optional": true
+    }
+  ],
+  "api_contracts": [
+    {
+      "method": "getDRMSupport()",
+      "signature": "getDRMSupport(): Promise<{ widevine: boolean, playready: boolean, fairplay: boolean }>",
+      "expected_behavior": "Retorna objeto indicando qué sistemas DRM soporta el browser actual. En Chromium: widevine=true, playready=false, fairplay=false. En Safari: fairplay=true, widevine=false.",
+      "side_effects": [],
+      "error_behavior": "Si la detección falla → retorna { widevine: false, playready: false, fairplay: false }."
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "id": "AC-DRM-001",
+      "scenario": "Widevine DASH con license server válido",
+      "given": "Player con stream DASH protegido con Widevine y license server válido configurado",
+      "when": "El player inicializa y solicita la license",
+      "then": "La license se obtiene. El evento 'ready' se emite en menos de 8s. La reproducción comienza.",
+      "priority": "MUST",
+      "covered_by": ["tests/e2e/"]
+    },
+    {
+      "id": "AC-DRM-002",
+      "scenario": "License server 403 → error DRM_LICENSE_ERROR",
+      "given": "Player con stream DASH protegido con Widevine y license server que retorna 403",
+      "when": "El player intenta obtener la license",
+      "then": "Se emite evento 'error' con { fatal: true, code: 'DRM_LICENSE_ERROR' }. El player no queda en loop de retries.",
+      "priority": "MUST",
+      "covered_by": []
+    },
+    {
+      "id": "AC-DRM-003",
+      "scenario": "getDRMSupport() en Chromium",
+      "given": "Player cargado en Chromium (no Safari, no Edge con PlayReady)",
+      "when": "Se llama getDRMSupport()",
+      "then": "Retorna { widevine: true, playready: false, fairplay: false }.",
+      "priority": "MUST",
+      "covered_by": ["tests/contract/"]
+    },
+    {
+      "id": "AC-DRM-004",
+      "scenario": "FairPlay HLS en Safari real",
+      "given": "Player con stream HLS protegido con FairPlay, corriendo en Safari real con certificado válido",
+      "when": "El player inicializa",
+      "then": "La license FairPlay se obtiene. La reproducción comienza.",
+      "priority": "SHOULD",
+      "covered_by": []
+    }
+  ],
+  "known_bugs": [],
+  "do_not_reflag": [],
+  "test_anti_patterns": [
+    "No testear FairPlay en CI headless — siempre fallará (WebKit de Playwright no tiene EME completo)",
+    "No mockear la license request — usar servidor de prueba real para DRM",
+    "No testear PlayReady en CI — requiere entorno específico con licencia de Microsoft"
+  ]
+}

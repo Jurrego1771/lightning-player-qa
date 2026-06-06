@@ -1,0 +1,68 @@
+{
+  "schema_version": "1.0",
+  "module": "dash",
+  "status": "curated",
+  "last_verified": "2026-06-05",
+  "events": [
+    {
+      "name": "ready",
+      "when": "Manifest DASH parseado, MSE inicializado, buffer disponible",
+      "payload_shape": {},
+      "must_precede": ["playing"]
+    },
+    {
+      "name": "error",
+      "when": "Error fatal DASH (manifest inválido, MSE error, license DRM rechazada)",
+      "payload_shape": { "fatal": "true", "message": "string" },
+      "optional": true
+    }
+  ],
+  "api_contracts": [
+    {
+      "method": "player.level (getter/setter)",
+      "expected_behavior": "ADVERTENCIA: player.level es NO-OP en DASH. DASH usa MSE nativo sin ABR controlable desde el player. Asignar player.level no tiene efecto. No emite levelchange.",
+      "side_effects": [],
+      "error_behavior": "No error — silenciosamente ignorado."
+    },
+    {
+      "method": "player.levels (getter)",
+      "expected_behavior": "Retorna array vacío o un solo nivel en DASH — no hay control de calidad ABR.",
+      "side_effects": []
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "id": "AC-DASH-001",
+      "scenario": "Stream DASH VOD inicia reproducción",
+      "given": "Player con stream DASH VOD válido (manifest .mpd)",
+      "when": "El player inicializa",
+      "then": "El evento 'ready' se emite en menos de 10s. currentTime avanza al hacer play().",
+      "priority": "MUST",
+      "covered_by": ["tests/integration/"]
+    },
+    {
+      "id": "AC-DASH-002",
+      "scenario": "player.level es no-op en DASH",
+      "given": "Player reproduciendo stream DASH",
+      "when": "Se asigna player.level = 2",
+      "then": "No hay error. No se emite levelchange. La calidad no cambia. player.level no es 2.",
+      "priority": "MUST",
+      "covered_by": ["tests/contract/"]
+    },
+    {
+      "id": "AC-DASH-003",
+      "scenario": "Seek en DASH funciona",
+      "given": "Player reproduciendo DASH VOD con al menos 30s de contenido",
+      "when": "Se asigna player.currentTime = 15",
+      "then": "Se emiten 'seeking' → 'seeked'. player.currentTime === 15 ± 1s.",
+      "priority": "MUST",
+      "covered_by": []
+    }
+  ],
+  "known_bugs": [],
+  "do_not_reflag": [],
+  "test_anti_patterns": [
+    "No testear ABR en DASH — no existe ABR controlable en esta implementación",
+    "No asumir que player.levels tiene múltiples niveles — en DASH puede ser vacío"
+  ]
+}

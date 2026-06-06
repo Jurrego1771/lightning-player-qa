@@ -1,0 +1,16 @@
+module: dependency
+criticality: high
+last_reviewed: "2026-06-05"
+paths: ["package.json"]
+depends_on: []
+depended_by:
+  - playback-core
+  - hls
+  - dash
+  - controls-api
+breaks_if_changed:
+  - "Bump mayor de hls.js puede romper API (events, config keys)"
+  - "Bump mayor de React puede romper hooks y context"
+  - "Bump mayor de Jotai puede cambiar atom API"
+test_suites_required: [contract]
+negative_cases: []

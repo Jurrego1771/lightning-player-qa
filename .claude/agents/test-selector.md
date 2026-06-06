@@ -45,6 +45,29 @@ Extraer:
 
 ---
 
+## PASO 1.5 — Consultar pipeline-context via query-context.ts
+
+```bash
+ALL_MODULES=$(python3 -c "import sys,json; d=json.load(open('state/session_state.json')); print(' '.join(d['diff']['modules_affected']))" 2>/dev/null)
+npx ts-node scripts/query-context.ts pipeline-context $ALL_MODULES 2>/dev/null
+```
+
+Si responde, extraer para cada módulo:
+- `test_suites_required[]` — suites que DEBEN incluirse en el plan (ej: `["contract","e2e"]`)
+- `criticality` — confirmar criticality del oracle vs risk_assessment
+- `behavior_status` — `curated | template | stale` (stale → advertir en reporte)
+- `uncovered_acs` — ACs sin covered_by (informativo; A4 ya los capturó)
+
+**Validar:** Para cada módulo CRITICAL o HIGH en `modules_affected`:
+```
+Si test_suites_required incluye una suite que NO está en el plan actual → ALERTAR:
+  ⚠️ Módulo [X] requiere suite [Y] (definido en context.yaml) — incluir en el plan.
+```
+
+Si `scripts/query-context.ts` no existe → omitir sin error; continuar con PASO 2.
+
+---
+
 ## PASO 2 — Buscar tests existentes por módulo
 
 Para cada módulo en `modules_critical` y `modules_high`, buscar specs relevantes:
@@ -277,10 +300,12 @@ Leer `state/session_state.json`, agregar `test_plan` y reescribir conservando to
 
 ## REGLAS
 
-1. **Contract es siempre bloqueante** cuando el módulo afectado toca la API pública (`controls-api`, `api-bootstrap`, `events`, `constants`).
-2. **Visual regression es automática** si `ui-video`, `ui-radio`, `ui-compact`, o `ui-common` están en `diff.modules_affected`, sin importar el risk_label.
-3. **Multi-browser solo en CRITICAL** con `cross_cutting_active = true`. Para HIGH y MEDIUM, solo chromium.
-4. **Smoke siempre al final** — nunca omitirlo, nunca ponerlo antes de los tests específicos.
-5. **Comandos exactos**: los comandos en `steps[].command` deben ser ejecutables desde la raíz del proyecto sin modificaciones.
-6. **MERGE**: preservar `diff` y `risk_assessment` al actualizar `session_state.json`.
-7. Si no se encuentran specs para un módulo → incluir smoke como mínimo y marcar `note: "no se encontraron specs para [módulo] — revisar coverage-auditor"`.
+1. **`test_suites_required` es vinculante** — si PASO 1.5 entregó datos, incluir obligatoriamente todas las suites listadas en `test_suites_required` para módulos CRITICAL/HIGH. No excluirlas aunque el risk_label sugiera menos.
+2. **Contract es siempre bloqueante** cuando el módulo afectado toca la API pública (`controls-api`, `api-bootstrap`, `events`, `constants`).
+3. **Visual regression es automática** si `ui-video`, `ui-radio`, `ui-compact`, o `ui-common` están en `diff.modules_affected`, sin importar el risk_label.
+4. **Multi-browser solo en CRITICAL** con `cross_cutting_active = true`. Para HIGH y MEDIUM, solo chromium.
+5. **Smoke siempre al final** — nunca omitirlo, nunca ponerlo antes de los tests específicos.
+6. **Comandos exactos**: los comandos en `steps[].command` deben ser ejecutables desde la raíz del proyecto sin modificaciones.
+7. **MERGE**: preservar `diff` y `risk_assessment` al actualizar `session_state.json`.
+8. **`behavior_status: stale`** — advertir en el reporte si algún módulo CRITICAL/HIGH tiene oracle desactualizado (>90 días), pero no bloquear el plan.
+9. Si no se encuentran specs para un módulo → incluir smoke como mínimo y marcar `note: "no se encontraron specs para [módulo] — revisar coverage-auditor"`.

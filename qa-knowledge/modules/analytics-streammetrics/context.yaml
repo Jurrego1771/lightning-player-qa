@@ -1,0 +1,21 @@
+module: analytics-streammetrics
+criticality: medium
+last_reviewed: "2026-06-05"
+
+paths:
+  - "src/analytics/streammetrics/"
+
+depends_on:
+  - events
+  - plugins
+
+depended_by: []
+
+breaks_if_changed:
+  - "Beacons de stream metrics no se envían"
+  - "Métricas de QoE incorrectas (buffering time, startup time)"
+
+test_suites_required: []
+
+negative_cases:
+  - "Endpoint de analytics no disponible → silencioso, no afecta reproducción"

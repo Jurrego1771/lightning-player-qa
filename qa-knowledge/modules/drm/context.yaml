@@ -1,0 +1,38 @@
+module: drm
+criticality: high
+last_reviewed: "2026-06-05"
+
+paths:
+  - "src/player/drm/"
+
+depends_on:
+  - events
+  - platform-config
+  - hls
+  - dash
+
+depended_by: []
+
+breaks_if_changed:
+  - "Widevine DASH con license server válido no reproduce"
+  - "License server 403 no produce evento error DRM_LICENSE_ERROR"
+  - "getDRMSupport() retorna valores incorrectos para el browser"
+  - "Resolución de DRM incorrecta: selecciona FairPlay en Chrome (debería ser Widevine)"
+
+test_suites_required:
+  - e2e
+
+negative_cases:
+  - "License server retorna 403 → error con código DRM_LICENSE_ERROR, no crash"
+  - "License server no disponible → error fatal, player no queda en estado roto"
+  - "Content sin DRM cargado con configuración DRM → reproduce normalmente"
+  - "FairPlay en navegador que no lo soporta → error claro, no crash"
+
+known_gaps:
+  - "FairPlay HLS no testeable en CI (requiere Safari real)"
+  - "PlayReady no testeable en CI (requiere license de entorno de prueba)"
+
+external_dependencies:
+  - "License server Widevine (para tests CI)"
+  - "License server FairPlay (solo Safari real)"
+  - "License server PlayReady (solo Edge/IE con DRM)"

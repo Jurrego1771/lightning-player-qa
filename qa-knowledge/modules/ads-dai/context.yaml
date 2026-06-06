@@ -1,0 +1,33 @@
+module: ads-dai
+criticality: high
+last_reviewed: "2026-06-05"
+
+paths:
+  - "src/ads/googleDAI/"
+  - "src/ads/mediaTailorDAI/"
+
+depends_on:
+  - events
+  - state
+  - hls
+  - ads-manager
+
+depended_by: []
+
+breaks_if_changed:
+  - "Stream DAI muestra cortes visibles en boundaries de ad"
+  - "vp_mute sync falla — ad arranca con volumen incorrecto"
+  - "Seek dentro de un ad DAI no es ignorado o redirigido correctamente"
+  - "Transición content→ad→content visible (no seamless)"
+
+test_suites_required:
+  - integration
+
+negative_cases:
+  - "vp_mute=true en content → ad arranca muted"
+  - "Seek dentro de ad → seek ignorado o redirigido al inicio del ad"
+  - "DAI stream no disponible → graceful fallback, no crash"
+
+external_dependencies:
+  - "Google DAI SDK"
+  - "AWS Elemental MediaTailor (para mediaTailorDAI)"

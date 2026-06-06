@@ -1,0 +1,39 @@
+module: api-bootstrap
+criticality: critical
+last_reviewed: "2026-06-05"
+
+paths:
+  - "src/api/api.js"
+  - "src/api/player.jsx"
+
+depends_on:
+  - platform-config
+  - events
+  - plugins
+  - controls-api
+
+depended_by: []
+
+breaks_if_changed:
+  - "Ningún player carga — embed script tag no inicializa"
+  - "loadMSPlayer() no retorna instancia del player"
+  - "data-* attributes no se parsean a config correctamente"
+  - "data-custom-* attributes se pierden"
+  - "playerloaded event no se dispara en el script tag"
+  - "Segunda llamada a loadMSPlayer() no destruye la instancia anterior"
+  - "Error de plataforma (404 en config) no produce evento error"
+
+test_suites_required:
+  - contract
+  - e2e
+  - smoke
+
+negative_cases:
+  - "Script en HEAD sin data-container → error claro, no crash silencioso"
+  - "data-id apunta a contenido inexistente (404) → emite error, no loop de retries"
+  - "api.js cargado dos veces → segunda instancia usa instancia existente, no duplica"
+  - "loadMSPlayer() sin data-id → solo inicializa, espera llamada explícita"
+  - "container element no existe → error claro con el id del container"
+
+external_dependencies:
+  - "Mediastream Platform API (config endpoint)"

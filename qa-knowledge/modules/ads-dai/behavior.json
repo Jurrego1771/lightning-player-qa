@@ -1,0 +1,73 @@
+{
+  "schema_version": "1.0",
+  "module": "ads-dai",
+  "status": "curated",
+  "last_verified": "2026-06-05",
+  "events": [
+    {
+      "name": "adsStarted",
+      "when": "Boundary de entrada a ad segment en el stream DAI",
+      "payload_shape": { "duration": "number" },
+      "optional": true
+    },
+    {
+      "name": "adsComplete",
+      "when": "Boundary de salida del ad segment",
+      "payload_shape": {},
+      "optional": true
+    },
+    {
+      "name": "adsError",
+      "when": "Error al cargar el stream DAI o al procesar metadata de ads",
+      "payload_shape": { "code": "number", "message": "string" },
+      "optional": true
+    }
+  ],
+  "api_contracts": [
+    {
+      "method": "vp_mute sync",
+      "expected_behavior": "Si el content estaba muted antes del ad boundary, el ad arranca muted. Si el content estaba con volumen X, el ad arranca con volumen X.",
+      "side_effects": ["volumen del ad sincronizado con volumen del content antes del boundary"]
+    },
+    {
+      "method": "Seek dentro de ad DAI",
+      "expected_behavior": "El seek puede ser ignorado (ad se sigue reproduciendo) o redirigido al inicio del ad boundary, dependiendo de la configuración del stream DAI.",
+      "side_effects": ["currentTime puede ser redirigido por el servidor DAI"]
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "id": "AC-DAI-001",
+      "scenario": "Stream DAI carga y reproduce sin cortes visibles",
+      "given": "Player con stream DAI configurado (URL de manifest DAI)",
+      "when": "El stream alcanza un boundary de ad",
+      "then": "La transición content→ad→content no tiene corte visual. No hay buffering visible en el boundary.",
+      "priority": "MUST",
+      "covered_by": ["tests/integration/ads-dai-vpmute-sync.spec.ts"]
+    },
+    {
+      "id": "AC-DAI-002",
+      "scenario": "vp_mute sync — content muted → ad arranca muted",
+      "given": "Player reproduciendo content con volumen muted (volume === 0)",
+      "when": "El stream alcanza un ad boundary",
+      "then": "El ad arranca con volumen 0 (muted). No hay 'flash' de audio.",
+      "priority": "MUST",
+      "covered_by": ["tests/integration/ads-dai-vpmute-sync.spec.ts"]
+    },
+    {
+      "id": "AC-DAI-003",
+      "scenario": "Seek dentro de ad DAI → comportamiento definido",
+      "given": "Player reproduciendo un ad segment en stream DAI",
+      "when": "Se asigna player.currentTime a una posición fuera del ad",
+      "then": "El seek es ignorado O redirigido al inicio del ad. El ad continúa reproduciéndose hasta el final. No hay crash.",
+      "priority": "SHOULD",
+      "covered_by": []
+    }
+  ],
+  "known_bugs": [],
+  "do_not_reflag": [],
+  "test_anti_patterns": [
+    "No usar streams DAI de producción — los boundaries cambian",
+    "Para testear vp_mute usar fixture de stream DAI con boundary controlado"
+  ]
+}

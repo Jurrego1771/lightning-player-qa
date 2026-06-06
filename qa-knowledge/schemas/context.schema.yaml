@@ -1,0 +1,71 @@
+# Schema para qa-knowledge/modules/[módulo]/context.yaml
+# Versión: 1.0
+
+required:
+  - module
+  - criticality
+  - paths
+  - depends_on
+  - breaks_if_changed
+  - test_suites_required
+  - negative_cases
+
+fields:
+  module:
+    type: string
+    description: "Nombre del módulo. Debe coincidir con el key en risk_map.yaml"
+
+  criticality:
+    type: enum
+    values: [critical, high, medium, low]
+    description: "Nivel de criticidad. Debe coincidir con risk_label en risk_map.yaml"
+
+  paths:
+    type: list[string]
+    description: "Rutas en el repo del player. Glob-compatible."
+    example: ["src/ads/googleIma/", "src/ads/googleIma/*.js"]
+
+  depends_on:
+    type: list[string]
+    description: "Módulos del player de los que este depende"
+    example: [events, state, platform-config]
+
+  depended_by:
+    type: list[string]
+    description: "Módulos que dependen de este"
+    optional: true
+
+  breaks_if_changed:
+    type: list[string]
+    description: "Casos de uso que fallan si este módulo cambia sin testear. Específicos."
+    example:
+      - "ads no se pausan cuando el usuario hace seek durante un ad break"
+      - "beacon adsComplete no se dispara en ads de menos de 3 segundos"
+
+  test_suites_required:
+    type: list[enum]
+    values: [contract, integration, e2e, visual, a11y, performance, smoke]
+    description: "Qué suites DEBEN cubrir este módulo"
+
+  negative_cases:
+    type: list[string]
+    description: "Casos negativos obligatorios para este módulo"
+    example:
+      - "VAST responde 500 → player no crashea, emite adError"
+      - "IMA SDK no carga (CDN falla) → reproducción continúa sin ads"
+
+  known_gaps:
+    type: list[string]
+    description: "Gaps de cobertura documentados y pendientes"
+    optional: true
+
+  external_dependencies:
+    type: list[string]
+    description: "SDKs externos, CDNs, servicios de los que depende"
+    optional: true
+    example: ["Google IMA SDK 3.x (CDN)", "VAST endpoint"]
+
+  last_reviewed:
+    type: date
+    format: "YYYY-MM-DD"
+    description: "Última vez que un humano verificó este archivo"

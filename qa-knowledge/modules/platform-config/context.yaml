@@ -1,0 +1,36 @@
+module: platform-config
+criticality: critical
+last_reviewed: "2026-06-05"
+
+paths:
+  - "src/platform/loadConfig.js"
+
+depends_on:
+  - events
+
+depended_by:
+  - api-bootstrap
+  - playback-core
+  - hls
+  - dash
+  - drm
+  - ads-manager
+
+breaks_if_changed:
+  - "Config de plataforma no se carga → ningún player inicializa"
+  - "Formato de contenido detectado incorrectamente (HLS vs DASH)"
+  - "DRM requerido no detectado → contenido protegido falla"
+  - "Shape del objeto config incorrecto → todos los módulos que lo consumen rotos"
+  - "ads.map no se propaga correctamente desde la respuesta de plataforma"
+
+test_suites_required:
+  - contract
+
+negative_cases:
+  - "Plataforma responde 404 → error manejado, no crash"
+  - "Plataforma responde JSON malformado → error manejado"
+  - "Config sin type ni id → player en modo loadMSPlayer, sin fetch a plataforma"
+  - "adsMap en respuesta normalizado a ads.map en config final"
+
+external_dependencies:
+  - "Mediastream Platform API"

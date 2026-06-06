@@ -1,0 +1,87 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Module Behavior Oracle",
+  "description": "Fuente de verdad del comportamiento esperado de un módulo del player",
+  "version": "1.0",
+  "required": ["schema_version", "module", "status", "last_verified", "events", "api_contracts", "acceptance_criteria"],
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "module": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["curated", "template", "stale"],
+      "description": "curated=humano verificó. template=generado, sin verificar. stale=no actualizado en 90d"
+    },
+    "last_verified": { "type": "string", "format": "date" },
+    "events": {
+      "type": "array",
+      "description": "Eventos que este módulo emite, con orden y condiciones",
+      "items": {
+        "required": ["name", "when", "payload_shape"],
+        "properties": {
+          "name": { "type": "string" },
+          "when": { "type": "string" },
+          "payload_shape": { "type": "object" },
+          "must_precede": { "type": "array", "items": { "type": "string" } },
+          "must_follow": { "type": "array", "items": { "type": "string" } },
+          "optional": { "type": "boolean", "default": false }
+        }
+      }
+    },
+    "api_contracts": {
+      "type": "array",
+      "items": {
+        "required": ["method", "expected_behavior"],
+        "properties": {
+          "method": { "type": "string" },
+          "signature": { "type": "string" },
+          "expected_behavior": { "type": "string" },
+          "side_effects": { "type": "array", "items": { "type": "string" } },
+          "error_behavior": { "type": "string" }
+        }
+      }
+    },
+    "acceptance_criteria": {
+      "type": "array",
+      "items": {
+        "required": ["id", "scenario", "given", "when", "then"],
+        "properties": {
+          "id": { "type": "string", "description": "AC-[MÓDULO]-NNN" },
+          "scenario": { "type": "string" },
+          "given": { "type": "string" },
+          "when": { "type": "string" },
+          "then": { "type": "string" },
+          "priority": { "type": "string", "enum": ["MUST", "SHOULD", "NICE"] },
+          "covered_by": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "known_bugs": {
+      "type": "array",
+      "items": {
+        "required": ["id", "title", "status", "expected", "observed"],
+        "properties": {
+          "id": { "type": "string", "description": "BUG-[MÓDULO]-NNN" },
+          "title": { "type": "string" },
+          "status": { "type": "string", "enum": ["open", "fixed", "wontfix", "investigating"] },
+          "expected": { "type": "string" },
+          "observed": { "type": "string" },
+          "workaround": { "type": "string" }
+        }
+      }
+    },
+    "do_not_reflag": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "IDs de known_bugs que A8 NO debe crear como nuevos issues"
+    },
+    "test_anti_patterns": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "ci_testable": {
+      "type": "object",
+      "description": "Opcional — para módulos DRM u otros con restricciones de entorno CI"
+    }
+  }
+}

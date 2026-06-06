@@ -1,0 +1,26 @@
+module: metadata
+criticality: medium
+last_reviewed: "2026-06-05"
+
+paths:
+  - "src/metadata/"
+
+depends_on:
+  - events
+  - state
+  - hls
+
+depended_by:
+  - subtitles
+
+breaks_if_changed:
+  - "ID3 tags de streams live no se procesan"
+  - "now-playing metadata no se emite (radio)"
+  - "metadataloaded no se emite cuando metadata está lista"
+
+test_suites_required:
+  - e2e
+
+negative_cases:
+  - "ID3 tag malformado → ignorado, no crash"
+  - "Firestore no disponible → metadata no carga, player funciona sin metadata"

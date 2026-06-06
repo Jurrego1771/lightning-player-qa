@@ -1,0 +1,28 @@
+module: subtitles
+criticality: medium
+last_reviewed: "2026-06-05"
+
+paths:
+  - "src/metadata/"
+  - "src/view/video/"
+
+depends_on:
+  - hls
+  - events
+  - state
+
+depended_by: []
+
+breaks_if_changed:
+  - "Subtítulos WebVTT no se muestran"
+  - "Cambio de pista de subtítulos no funciona (texttrackchange no se emite)"
+  - "CEA-608/708 (solo hls.js full) no se muestran en streams live"
+  - "Subtítulos no cumplen WCAG 1.2.2"
+
+test_suites_required:
+  - a11y
+
+negative_cases:
+  - "Archivo WebVTT con timestamps incorrectos → subtítulos en posición incorrecta, no crash"
+  - "URL de subtítulo inválida → error manejado, player continúa sin subtítulos"
+  - "Deshabilitar subtítulos (mode='disabled') → no se muestran"

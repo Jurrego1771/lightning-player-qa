@@ -1,0 +1,43 @@
+module: events
+criticality: critical
+last_reviewed: "2026-06-05"
+
+paths:
+  - "src/events/index.js"
+
+depends_on:
+  - constants
+
+depended_by:
+  - playback-core
+  - controls-api
+  - ads-manager
+  - ads-ima
+  - ads-sgai
+  - ads-dai
+  - hls
+  - dash
+  - drm
+  - plugins
+  - analytics-streammetrics
+  - analytics-comscore
+  - analytics-ga4
+
+breaks_if_changed:
+  - "player.on(event, fn) deja de funcionar para cualquier evento"
+  - "postMessage deja de emitirse — integraciones externas no reciben eventos"
+  - "Eventos de otra instancia MSP no se filtran — multi-instancia rota"
+  - "internalEmitter.emit ya no propaga a window.postMessage"
+  - "ExternalEmitter filtra eventos válidos como inválidos (renombrar constante en Events)"
+
+test_suites_required:
+  - contract
+  - e2e
+
+negative_cases:
+  - "player.on('eventoInventado', fn) → silenciosamente no registra, no error"
+  - "postMessage desde origen diferente → ignorado"
+  - "Eventos de la propia instancia vía msp: → no re-emitidos en la misma instancia"
+  - "internalEmitter.reset() → todos los listeners eliminados, no memory leak"
+
+external_dependencies: []

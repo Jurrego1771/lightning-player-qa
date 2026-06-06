@@ -1,0 +1,83 @@
+{
+  "schema_version": "1.0",
+  "module": "quality-selector",
+  "status": "curated",
+  "last_verified": "2026-06-05",
+  "events": [
+    {
+      "name": "levelchange",
+      "when": "Cambio de nivel solicitado (manual o ABR) — antes de que el buffer tenga el nuevo nivel",
+      "payload_shape": { "level": "number" },
+      "optional": true
+    },
+    {
+      "name": "levelchanged",
+      "when": "Nuevo nivel disponible en el buffer y reproduciéndose",
+      "payload_shape": { "level": "number" },
+      "must_follow": ["levelchange"],
+      "optional": true
+    }
+  ],
+  "api_contracts": [
+    {
+      "method": "player.level (getter)",
+      "expected_behavior": "Nivel de calidad actual. -1 = ABR auto. En DASH: siempre retorna valor no significativo.",
+      "side_effects": []
+    },
+    {
+      "method": "player.level (setter)",
+      "expected_behavior": "En HLS: si n === -1 habilita ABR. Si n >= 0 fija nivel. Si n > max nivel disponible → no-op o nivel max. En DASH: no-op silencioso.",
+      "side_effects": ["emite levelchange en HLS"],
+      "error_behavior": "No arroja error para valores inválidos."
+    },
+    {
+      "method": "player.levels (getter)",
+      "expected_behavior": "En HLS: array de { height, bitrate, name } después de ready. En DASH: array vacío o un elemento.",
+      "side_effects": []
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "id": "AC-QUALITY-001",
+      "scenario": "player.levels disponible después de ready",
+      "given": "Player HLS reproduciendo stream con múltiples calidades",
+      "when": "Se lee player.levels después de evento 'ready'",
+      "then": "player.levels tiene al menos 2 elementos con height y bitrate.",
+      "priority": "MUST",
+      "covered_by": ["tests/e2e/"]
+    },
+    {
+      "id": "AC-QUALITY-002",
+      "scenario": "player.level = N fija nivel y emite levelchange",
+      "given": "Player HLS reproduciendo con ABR (player.level === -1)",
+      "when": "Se asigna player.level = 1",
+      "then": "Se emite levelchange con level=1. ABR queda deshabilitado.",
+      "priority": "MUST",
+      "covered_by": ["tests/e2e/"]
+    },
+    {
+      "id": "AC-QUALITY-003",
+      "scenario": "player.level = -1 re-habilita ABR",
+      "given": "Player HLS con nivel fijo (player.level === 2)",
+      "when": "Se asigna player.level = -1",
+      "then": "ABR se re-habilita. El nivel puede cambiar automáticamente.",
+      "priority": "MUST",
+      "covered_by": ["tests/e2e/"]
+    },
+    {
+      "id": "AC-QUALITY-004",
+      "scenario": "player.level es no-op en DASH",
+      "given": "Player DASH reproduciendo",
+      "when": "Se asigna player.level = 2",
+      "then": "No hay error. No se emite levelchange. player.level no cambia a 2.",
+      "priority": "MUST",
+      "covered_by": ["tests/contract/"]
+    }
+  ],
+  "known_bugs": [],
+  "do_not_reflag": [],
+  "test_anti_patterns": [
+    "No testear ABR sin simular condiciones de red degradadas",
+    "player.levels solo disponible después del evento 'ready'"
+  ]
+}

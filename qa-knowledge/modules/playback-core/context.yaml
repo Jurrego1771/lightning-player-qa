@@ -1,0 +1,44 @@
+module: playback-core
+criticality: critical
+last_reviewed: "2026-06-05"
+
+paths:
+  - "src/player/base.js"
+  - "src/player/video.js"
+  - "src/player/audio.js"
+
+depends_on:
+  - events
+  - state
+  - platform-config
+  - plugins
+
+depended_by:
+  - hls
+  - dash
+  - drm
+  - ads-manager
+  - controls-api
+
+breaks_if_changed:
+  - "La reproducción de cualquier tipo de contenido (VOD, Live, DVR) falla completamente"
+  - "Los eventos ready/playing/paused/ended no se emiten en el orden correcto"
+  - "player.play() / player.pause() no responden"
+  - "El estado paused/currentTime/duration es incorrecto"
+  - "Handler selection incorrecta (HLS asigna DASH handler o viceversa)"
+  - "El player no maneja el caso error fatal y queda en estado roto sin recovery"
+
+test_suites_required:
+  - contract
+  - integration
+  - e2e
+  - smoke
+
+negative_cases:
+  - "Llamar play() antes de ready → error manejado, no crash"
+  - "load() con URL inválida → emite error, player en estado recoverable"
+  - "destroy() durante buffering → no memory leak, no error"
+  - "src vacío o nulo → emite error con mensaje claro"
+  - "Tipo de contenido desconocido → fallback a native handler"
+
+external_dependencies: []

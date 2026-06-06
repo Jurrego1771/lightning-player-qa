@@ -1,0 +1,47 @@
+{
+  "schema_version": "1.0",
+  "module": "metadata",
+  "status": "template",
+  "last_verified": "2026-06-05",
+  "events": [
+    {
+      "name": "metadataloading",
+      "when": "Metadata está siendo cargada (radio: now-playing fetch en progreso)",
+      "payload_shape": {},
+      "optional": true
+    },
+    {
+      "name": "metadataloaded",
+      "when": "Metadata cargada exitosamente",
+      "payload_shape": { "title": "string", "artist": "string", "album": "string", "artwork": "string" },
+      "optional": true
+    },
+    {
+      "name": "metadatachanged",
+      "when": "Metadata cambió (nueva canción en radio)",
+      "payload_shape": { "title": "string", "artist": "string" },
+      "optional": true
+    },
+    {
+      "name": "metadata",
+      "when": "ID3 tag recibido en stream HLS live",
+      "payload_shape": { "varies": "por tipo de tag" },
+      "optional": true
+    }
+  ],
+  "api_contracts": [],
+  "acceptance_criteria": [
+    {
+      "id": "AC-METADATA-001",
+      "scenario": "Now-playing metadata de radio se emite",
+      "given": "Player tipo 'radio' con estación que provee now-playing",
+      "when": "El stream cambia de canción",
+      "then": "Se emite metadatachanged con title y artist actualizados.",
+      "priority": "SHOULD",
+      "covered_by": ["tests/e2e/radio-nowplaying-metadata.spec.ts"]
+    }
+  ],
+  "known_bugs": [],
+  "do_not_reflag": [],
+  "test_anti_patterns": []
+}
