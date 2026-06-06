@@ -20,6 +20,7 @@ test.describe('DASH DVR — Seek en ventana live', { tag: ['@e2e'] }, () => {
   // expect.poll() para esperar que duration > 0 antes de hacer seek.
 
   test('player DVR con DASH: isDVR retorna true', async ({ player }) => {
+    test.fixme(true, 'CONTENT_ID_DASH_DVR (6a0f2956a2a6f91404c3cc0c) = mismo ID que dashLive, sin ventana DVR — stream no llega a playing o isDVR() retorna false. Configurar un ID con DVR real en .env')
     // Arrange — cargar stream DVR que no requiere token
     await player.goto({
       type: 'dvr',

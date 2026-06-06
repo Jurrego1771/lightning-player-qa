@@ -7,14 +7,20 @@
     {
       "name": "levelchange",
       "when": "Cambio de nivel solicitado (manual o ABR) — antes de que el buffer tenga el nuevo nivel",
-      "payload_shape": { "level": "number" },
+      "payload_shape": {
+        "level": "number"
+      },
       "optional": true
     },
     {
       "name": "levelchanged",
       "when": "Nuevo nivel disponible en el buffer y reproduciéndose",
-      "payload_shape": { "level": "number" },
-      "must_follow": ["levelchange"],
+      "payload_shape": {
+        "level": "number"
+      },
+      "must_follow": [
+        "levelchange"
+      ],
       "optional": true
     }
   ],
@@ -27,7 +33,9 @@
     {
       "method": "player.level (setter)",
       "expected_behavior": "En HLS: si n === -1 habilita ABR. Si n >= 0 fija nivel. Si n > max nivel disponible → no-op o nivel max. En DASH: no-op silencioso.",
-      "side_effects": ["emite levelchange en HLS"],
+      "side_effects": [
+        "emite levelchange en HLS"
+      ],
       "error_behavior": "No arroja error para valores inválidos."
     },
     {
@@ -44,7 +52,7 @@
       "when": "Se lee player.levels después de evento 'ready'",
       "then": "player.levels tiene al menos 2 elementos con height y bitrate.",
       "priority": "MUST",
-      "covered_by": ["tests/e2e/"]
+      "covered_by": []
     },
     {
       "id": "AC-QUALITY-002",
@@ -53,7 +61,7 @@
       "when": "Se asigna player.level = 1",
       "then": "Se emite levelchange con level=1. ABR queda deshabilitado.",
       "priority": "MUST",
-      "covered_by": ["tests/e2e/"]
+      "covered_by": []
     },
     {
       "id": "AC-QUALITY-003",
@@ -62,7 +70,7 @@
       "when": "Se asigna player.level = -1",
       "then": "ABR se re-habilita. El nivel puede cambiar automáticamente.",
       "priority": "MUST",
-      "covered_by": ["tests/e2e/"]
+      "covered_by": []
     },
     {
       "id": "AC-QUALITY-004",
@@ -71,7 +79,7 @@
       "when": "Se asigna player.level = 2",
       "then": "No hay error. No se emite levelchange. player.level no cambia a 2.",
       "priority": "MUST",
-      "covered_by": ["tests/contract/"]
+      "covered_by": []
     }
   ],
   "known_bugs": [],

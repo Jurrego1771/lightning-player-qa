@@ -8,7 +8,9 @@
     {
       "method": "loadPlugins(options)",
       "expected_behavior": "Carga los plugins relevantes para la config dada. Los plugins se cargan lazy (import()). El orden de inicialización es determinístico.",
-      "side_effects": ["Plugins montados como componentes React"],
+      "side_effects": [
+        "Plugins montados como componentes React"
+      ],
       "error_behavior": "Si un plugin falla → ese plugin no se monta. Los demás plugins no se ven afectados."
     }
   ],
@@ -29,7 +31,7 @@
       "when": "El player inicializa",
       "then": "El evento 'ready' se emite. Todos los plugins configurados están activos.",
       "priority": "SHOULD",
-      "covered_by": ["tests/contract/"]
+      "covered_by": []
     }
   ],
   "known_bugs": [],

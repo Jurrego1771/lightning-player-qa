@@ -8,12 +8,17 @@
       "name": "ready",
       "when": "Manifest DASH parseado, MSE inicializado, buffer disponible",
       "payload_shape": {},
-      "must_precede": ["playing"]
+      "must_precede": [
+        "playing"
+      ]
     },
     {
       "name": "error",
       "when": "Error fatal DASH (manifest inválido, MSE error, license DRM rechazada)",
-      "payload_shape": { "fatal": "true", "message": "string" },
+      "payload_shape": {
+        "fatal": "true",
+        "message": "string"
+      },
       "optional": true
     },
     {
@@ -44,7 +49,7 @@
       "when": "El player inicializa",
       "then": "El evento 'ready' se emite en menos de 10s. currentTime avanza al hacer play().",
       "priority": "MUST",
-      "covered_by": ["tests/integration/"]
+      "covered_by": []
     },
     {
       "id": "AC-DASH-002",
@@ -53,7 +58,7 @@
       "when": "Se asigna player.level = 2",
       "then": "No hay error. No se emite levelchange. La calidad no cambia. player.level no es 2.",
       "priority": "MUST",
-      "covered_by": ["tests/contract/"]
+      "covered_by": []
     },
     {
       "id": "AC-DASH-003",

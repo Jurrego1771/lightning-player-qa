@@ -18,7 +18,7 @@
       "when": "Se lee Events._ready",
       "then": "El valor es exactamente 'ready' (string).",
       "priority": "MUST",
-      "covered_by": ["tests/contract/"]
+      "covered_by": []
     },
     {
       "id": "AC-CONSTANTS-002",
@@ -27,7 +27,7 @@
       "when": "Se lee Events._playing",
       "then": "El valor es exactamente 'playing' (string).",
       "priority": "MUST",
-      "covered_by": ["tests/contract/"]
+      "covered_by": []
     },
     {
       "id": "AC-CONSTANTS-003",
@@ -36,7 +36,7 @@
       "when": "Se lee Events._adsStarted",
       "then": "El valor es exactamente 'adsStarted' (string).",
       "priority": "MUST",
-      "covered_by": ["tests/contract/"]
+      "covered_by": []
     },
     {
       "id": "AC-CONSTANTS-004",
@@ -45,7 +45,7 @@
       "when": "Se extraen todos los valores de Events.*",
       "then": "No hay duplicados. Todos son strings no vacíos.",
       "priority": "MUST",
-      "covered_by": ["tests/contract/"]
+      "covered_by": []
     },
     {
       "id": "AC-CONSTANTS-005",
@@ -54,7 +54,7 @@
       "when": "Se lee Events._error",
       "then": "El valor es exactamente 'error' (string).",
       "priority": "MUST",
-      "covered_by": ["tests/contract/"]
+      "covered_by": []
     }
   ],
   "known_bugs": [],

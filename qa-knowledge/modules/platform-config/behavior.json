@@ -7,7 +7,10 @@
     {
       "name": "error",
       "when": "Plataforma API devuelve error (404, 500, red) o JSON inválido",
-      "payload_shape": { "fatal": "true", "message": "string" },
+      "payload_shape": {
+        "fatal": "true",
+        "message": "string"
+      },
       "optional": true
     }
   ],
@@ -16,7 +19,9 @@
       "method": "loadConfig(options)",
       "signature": "loadConfig(options: { type, id, player, ... }): Promise<PlayerConfig>",
       "expected_behavior": "Hace fetch a la Plataforma API con type/id, detecta el formato (HLS vs DASH), detecta requerimientos DRM, normaliza adsMap a ads.map. Retorna config completa lista para montar el player.",
-      "side_effects": ["HTTP GET a Plataforma API"],
+      "side_effects": [
+        "HTTP GET a Plataforma API"
+      ],
       "error_behavior": "Si Plataforma devuelve error → lanza error con { fatal: true } para que api.js lo capture."
     }
   ],
@@ -28,7 +33,9 @@
       "when": "loadConfig() se ejecuta",
       "then": "Config retornada tiene src (URL de manifest), type='media', y metadata del contenido.",
       "priority": "MUST",
-      "covered_by": ["tests/contract/", "tests/e2e/vod-playback.spec.ts"]
+      "covered_by": [
+        "tests/e2e/vod-playback.spec.ts"
+      ]
     },
     {
       "id": "AC-PLATFORMCONFIG-002",
@@ -37,7 +44,7 @@
       "when": "loadConfig() normaliza la respuesta",
       "then": "Config final tiene ads.map === 'https://...'. La clave adsMap es eliminada.",
       "priority": "MUST",
-      "covered_by": ["tests/contract/"]
+      "covered_by": []
     },
     {
       "id": "AC-PLATFORMCONFIG-003",

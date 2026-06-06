@@ -7,13 +7,20 @@
     {
       "name": "playerloaded",
       "when": "Player totalmente inicializado y listo. Disparado en el script tag como CustomEvent.",
-      "payload_shape": { "detail": "PlayerInstance" },
-      "must_follow": ["ready"]
+      "payload_shape": {
+        "detail": "PlayerInstance"
+      },
+      "must_follow": [
+        "ready"
+      ]
     },
     {
       "name": "error",
       "when": "Error fatal durante carga de config de plataforma (404, red, etc.)",
-      "payload_shape": { "fatal": "true", "message": "string" },
+      "payload_shape": {
+        "fatal": "true",
+        "message": "string"
+      },
       "optional": true
     }
   ],
@@ -22,14 +29,20 @@
       "method": "Script tag embed",
       "signature": "<script src='api.js' data-type='media' data-id='ABC123' ...></script>",
       "expected_behavior": "Al cargar el script, se parsean los data-* attributes, se carga la config de plataforma, se monta el player en el DOM. Dispara playerloaded en el script tag.",
-      "side_effects": ["DOM player element creado", "playerloaded CustomEvent disparado"],
+      "side_effects": [
+        "DOM player element creado",
+        "playerloaded CustomEvent disparado"
+      ],
       "error_behavior": "Si id no existe (404 en plataforma), emite error event con fatal:true. No hace loop de retries."
     },
     {
       "method": "loadMSPlayer(container, options)",
       "signature": "loadMSPlayer(container: string|HTMLElement, options?: PlayerConfig): Promise<PlayerAPI>",
       "expected_behavior": "Monta el player en el container indicado. Si ya hay una instancia, la destruye primero. Retorna Promise que resuelve con la API del player.",
-      "side_effects": ["Instancia anterior destruida si existe", "Nueva instancia montada"],
+      "side_effects": [
+        "Instancia anterior destruida si existe",
+        "Nueva instancia montada"
+      ],
       "error_behavior": "Si container no existe, Promise rejected con error descriptivo."
     },
     {
@@ -43,7 +56,9 @@
       "method": "destroy()",
       "signature": "destroy(): void",
       "expected_behavior": "Elimina el elemento DOM del player, libera recursos. Segunda llamada a loadMSPlayer() la invoca automáticamente.",
-      "side_effects": ["DOM element eliminado"],
+      "side_effects": [
+        "DOM element eliminado"
+      ],
       "error_behavior": "No-op si ya destruido."
     }
   ],
@@ -55,7 +70,10 @@
       "when": "El script se carga en el browser",
       "then": "El player se monta en el DOM. Se emite evento 'ready'. Se dispara 'playerloaded' en el script tag con la instancia del player.",
       "priority": "MUST",
-      "covered_by": ["tests/e2e/vod-playback.spec.ts"]
+      "covered_by": [
+        "tests/contract/api-bootstrap.spec.ts",
+        "tests/e2e/vod-playback.spec.ts"
+      ]
     },
     {
       "id": "AC-BOOTSTRAP-002",
@@ -64,7 +82,9 @@
       "when": "Se llama window.loadMSPlayer('container-id', { type: 'media', id: 'ABC' })",
       "then": "Promise resuelve con objeto player que tiene métodos on, play, pause, destroy.",
       "priority": "MUST",
-      "covered_by": ["tests/e2e/vod-playback.spec.ts", "tests/contract/"]
+      "covered_by": [
+        "tests/e2e/vod-playback.spec.ts"
+      ]
     },
     {
       "id": "AC-BOOTSTRAP-003",
@@ -73,7 +93,9 @@
       "when": "El script intenta cargar la config",
       "then": "Se emite evento 'error' con fatal:true. No hay loop de retries infinito. El player queda en estado de error sin crashear.",
       "priority": "MUST",
-      "covered_by": ["tests/contract/api-bootstrap.spec.ts"]
+      "covered_by": [
+        "tests/contract/api-bootstrap.spec.ts"
+      ]
     },
     {
       "id": "AC-BOOTSTRAP-004",
@@ -100,7 +122,9 @@
       "when": "El player termina de inicializarse",
       "then": "myCallback es invocado con la instancia del player. El evento 'playerloaded' es disparado en el script tag.",
       "priority": "MUST",
-      "covered_by": ["tests/contract/api-bootstrap.spec.ts"]
+      "covered_by": [
+        "tests/contract/api-bootstrap.spec.ts"
+      ]
     }
   ],
   "known_bugs": [],

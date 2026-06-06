@@ -8,7 +8,9 @@
       "name": "ready",
       "when": "_playerReady=true && _viewReady=true, emitido por Controls._checkPlayerReady()",
       "payload_shape": {},
-      "must_precede": ["playing"]
+      "must_precede": [
+        "playing"
+      ]
     },
     {
       "name": "playing",
@@ -23,7 +25,10 @@
     {
       "name": "error",
       "when": "play() arroja error de autoplay policy o error fatal del player",
-      "payload_shape": { "fatal": "boolean", "message": "string" },
+      "payload_shape": {
+        "fatal": "boolean",
+        "message": "string"
+      },
       "optional": true
     }
   ],
@@ -32,14 +37,20 @@
       "method": "play()",
       "signature": "play(): Promise<void>",
       "expected_behavior": "Si _hasAds y adsManager.play() no retorna false → delega a adsManager. Si no, llama playerHandler.play(). Guard _calledPlaying previene concurrencia. Espera _viewReady antes de ejecutar.",
-      "side_effects": ["emite 'playing' via internalEmitter", "paused = false"],
+      "side_effects": [
+        "emite 'playing' via internalEmitter",
+        "paused = false"
+      ],
       "error_behavior": "Throws Error('Player is not ready. Wait for ready event') si !state._ready. Error de autoplay policy → emite 'error', player sigue en estado valid."
     },
     {
       "method": "pause()",
       "signature": "pause(): Promise<void>",
       "expected_behavior": "Si _hasAds y adsManager.pause() no retorna false → delega a adsManager. Si no, llama playerHandler.pause(). Guard _calledPause previene concurrencia.",
-      "side_effects": ["emite 'pause' via internalEmitter", "paused = true"],
+      "side_effects": [
+        "emite 'pause' via internalEmitter",
+        "paused = true"
+      ],
       "error_behavior": "Throws Error('Player is not ready. Wait for ready event') si !state._ready."
     },
     {
@@ -53,7 +64,9 @@
       "method": "currentTime (setter)",
       "signature": "set currentTime(time: number): void",
       "expected_behavior": "Asigna currentTime al adsManager si hay ad activo, sino al playerHandler (seek). Valores negativos → 0. Valores > duration → duration.",
-      "side_effects": ["emite 'seeking' → 'seeked'"],
+      "side_effects": [
+        "emite 'seeking' → 'seeked'"
+      ],
       "error_behavior": "No arroja error para valores fuera de rango — clampea silenciosamente."
     },
     {
@@ -79,7 +92,10 @@
       "when": "Se llama player.play()",
       "then": "La promesa es rechazada con Error('Player is not ready. Wait for `ready` event'). El player no entra en estado inválido.",
       "priority": "MUST",
-      "covered_by": ["tests/contract/"]
+      "covered_by": [
+        "tests/integration/playback-core-edge.spec.ts"
+      ],
+      "notes": "fixme � harness limitation shared with AC-PLAYBACK-007"
     },
     {
       "id": "AC-CONTROLS-002",
@@ -88,7 +104,10 @@
       "when": "Se llama player.pause()",
       "then": "La promesa es rechazada con Error('Player is not ready. Wait for `ready` event').",
       "priority": "MUST",
-      "covered_by": ["tests/contract/"]
+      "covered_by": [
+        "tests/integration/playback-core-edge.spec.ts"
+      ],
+      "notes": "fixme � same harness limitation as AC-CONTROLS-001"
     },
     {
       "id": "AC-CONTROLS-003",
@@ -97,7 +116,9 @@
       "when": "Se llaman dos player.play() simultáneamente",
       "then": "Solo una ejecución llega al playerHandler. El evento 'playing' se emite exactamente una vez.",
       "priority": "MUST",
-      "covered_by": ["tests/integration/controls-api-edge.spec.ts"]
+      "covered_by": [
+        "tests/integration/controls-api-edge.spec.ts"
+      ]
     },
     {
       "id": "AC-CONTROLS-004",
@@ -106,7 +127,9 @@
       "when": "Se inspecciona la API del objeto retornado",
       "then": "player.play, player.pause, player.load, player.destroy son funciones. Sus firmas son compatibles con la versión anterior.",
       "priority": "MUST",
-      "covered_by": ["tests/contract/"]
+      "covered_by": [
+        "tests/contract/api-bootstrap.spec.ts"
+      ]
     },
     {
       "id": "AC-CONTROLS-005",
@@ -115,7 +138,9 @@
       "when": "Se lee player.paused",
       "then": "player.paused === false. Después de pause(), player.paused === true.",
       "priority": "MUST",
-      "covered_by": ["tests/e2e/vod-playback.spec.ts"]
+      "covered_by": [
+        "tests/e2e/vod-playback.spec.ts"
+      ]
     },
     {
       "id": "AC-CONTROLS-006",
@@ -124,7 +149,9 @@
       "when": "Se asigna player.currentTime = 10",
       "then": "Se emiten eventos 'seeking' → 'seeked'. player.currentTime === 10 ± 0.5s",
       "priority": "MUST",
-      "covered_by": ["tests/integration/controls-api-edge.spec.ts"]
+      "covered_by": [
+        "tests/integration/controls-api-edge.spec.ts"
+      ]
     },
     {
       "id": "AC-CONTROLS-007",
@@ -133,7 +160,9 @@
       "when": "Se llama player.play() al inicio del contenido",
       "then": "adsManager.play() es llamado primero. Si retorna un valor distinto de false, playerHandler.play() NO es llamado.",
       "priority": "SHOULD",
-      "covered_by": []
+      "covered_by": [
+        "tests/integration/ad-beacons.spec.ts"
+      ]
     }
   ],
   "known_bugs": [],

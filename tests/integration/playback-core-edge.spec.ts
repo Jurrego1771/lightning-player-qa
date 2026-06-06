@@ -231,3 +231,29 @@ test.describe('Playback Core — error fatal con stream HLS inaccesible', {
     ).toBe(true)
   })
 })
+
+// ── AC-PLAYBACK-007: play() antes de ready arroja error ───────────────────────
+
+test.describe('Playback Core — play() antes de ready', {
+  tag: ['@integration', '@playback'],
+}, () => {
+  // Cubre: AC-PLAYBACK-007 (fixme — harness limitation)
+  // El player debe arrojar "Player is not ready" si se llama play() antes del evento ready.
+  //
+  // Limitación de harness: goto() espera window.__qa.initialized === true antes de retornar.
+  // El flag initialized se setea en la última línea del .then() de loadMSPlayer — DESPUÉS de
+  // que el player está ready. No hay forma de obtener la instancia del player antes de ready
+  // a través del flujo normal.
+  //
+  // Para testear esto se requiere uno de:
+  //   a) Un hook de pre-ready en el harness (window.__preReadyPlayer hook)
+  //   b) Un test de iframe sin harness que llame play() en el mismo tick que loadMSPlayer()
+  //   c) Que el player exponga una API sincrónica de instancia (no Promise-based)
+
+  test.fixme(
+    'play() llamado antes del evento ready arroja error "Player is not ready"',
+    // AC-PLAYBACK-007: Player recién inicializado, sin haber recibido 'ready'.
+    // Cuando se llama play() → debe arrojar Error con mensaje 'Player is not ready'.
+    // No testeable con el harness actual (goto() garantiza ready antes de retornar).
+  )
+})
