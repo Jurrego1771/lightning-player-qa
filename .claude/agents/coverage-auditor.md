@@ -46,9 +46,22 @@ Construir lista de módulos a auditar: solo CRITICAL y HIGH.
 ## PASO 1.5 — Consultar coverage-gaps via query-context.ts
 
 ```bash
-CRITICAL_MODS=$(python3 -c "import sys,json; d=json.load(open('state/session_state.json')); print(' '.join(d['risk_assessment'].get('modules_critical',[])))" 2>/dev/null)
-HIGH_MODS=$(python3 -c "import sys,json; d=json.load(open('state/session_state.json')); print(' '.join(d['risk_assessment'].get('modules_high',[])))" 2>/dev/null)
-npx ts-node scripts/query-context.ts coverage-gaps $CRITICAL_MODS $HIGH_MODS 2>/dev/null
+# Una sola lectura de session_state.json — dos listas en un proceso python3
+_MODS=$(python3 -c "
+import json
+d = json.load(open('state/session_state.json'))
+ra = d.get('risk_assessment', {})
+print('CRITICAL=' + ' '.join(ra.get('modules_critical', [])))
+print('HIGH=' + ' '.join(ra.get('modules_high', [])))
+" 2>/dev/null)
+CRITICAL_MODS=$(echo "$_MODS" | grep '^CRITICAL=' | cut -d= -f2-)
+HIGH_MODS=$(echo "$_MODS" | grep '^HIGH=' | cut -d= -f2-)
+
+# Capturar exit code — no suprimir errores silenciosamente
+QC_OUT=$(npx ts-node scripts/query-context.ts coverage-gaps $CRITICAL_MODS $HIGH_MODS 2>&1)
+QC_EXIT=$?
+[ $QC_EXIT -ne 0 ] && echo "⚠️  query-context.ts exit $QC_EXIT — proceder a PASO 1.6" >&2
+echo "$QC_OUT"
 ```
 
 Si `scripts/query-context.ts` existe y responde → usar su output como **fuente primaria** de gaps:
@@ -56,13 +69,46 @@ Si `scripts/query-context.ts` existe y responde → usar su output como **fuente
 - `priority: "SHOULD"` → AC con `covered_by` parcial (símbolo modificado no cubierto)
 - `priority: "NICE"` → ignorar en esta etapa
 
-Si no existe o falla → continuar al PASO 2 (grep fallback).
+Si falla → continuar al PASO 1.6 (behavior.json directo — sin grep).
 
 ---
 
-## PASO 2 — Buscar tests existentes (fallback si query-context no disponible)
+## PASO 1.6 — Leer covered_by[] directamente desde behavior.json
 
-Ejecutar solo si PASO 1.5 no produjo output. Para cada archivo en módulos CRITICAL/HIGH:
+Ejecutar si PASO 1.5 falló o retornó vacío. Lee archivos estructurados ya existentes — sin grep, sin spawn adicional por módulo:
+
+```bash
+for MODULE in $CRITICAL_MODS $HIGH_MODS; do
+  BFILE="qa-knowledge/modules/$MODULE/behavior.json"
+  [ ! -f "$BFILE" ] && echo "⚠️  Sin behavior.json para $MODULE — diferir a PASO 2" && continue
+  echo "=== $MODULE ==="
+  python3 -c "
+import json
+data = json.load(open('$BFILE'))
+for ac in data.get('acceptance_criteria', []):
+    cov = ac.get('covered_by', [])
+    pri = ac.get('priority', 'NICE')
+    if pri not in ('MUST', 'SHOULD'):
+        continue
+    status = 'COVERED' if cov else 'GAP'
+    specs = ', '.join(cov) if cov else 'ninguno'
+    print(f'  {status}:{pri}:{ac[\"id\"]} specs={specs}')
+"
+done
+```
+
+Clasificar output:
+- `GAP:MUST:*` → gap MUST sin cobertura (ningún `covered_by` en AC de prioridad MUST)
+- `GAP:SHOULD:*` → gap SHOULD sin cobertura
+- `COVERED:*` → verificar que los spec paths listados existen en `tests/`
+
+Si `behavior.json` no existe para un módulo → pasar ese módulo al PASO 2 (grep).
+
+---
+
+## PASO 2 — Buscar tests existentes (grep — último recurso)
+
+Ejecutar solo si PASO 1.5 y PASO 1.6 no produjeron output para el módulo. Para cada archivo en módulos CRITICAL/HIGH:
 
 ```bash
 # Usar el skill si existe

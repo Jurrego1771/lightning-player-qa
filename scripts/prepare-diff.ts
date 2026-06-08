@@ -43,12 +43,23 @@ interface FileEntry {
   patch: string
 }
 
+interface PrMetadata {
+  title: string
+  body: string
+  head_branch: string
+  base_branch: string
+  labels: string[]
+  author: string
+  reviewer_comments: string[]
+}
+
 interface DiffInput {
   schema_version: string
   prepared_at: string
   input_ref: string
   input_type: 'pr' | 'branch' | 'commit' | 'head'
   player_github_repo: string
+  pr_metadata: PrMetadata | null
   cross_cutting_risk: boolean
   cross_cutting_reasons: string[]
   total_files_raw: number
@@ -84,6 +95,12 @@ const NOISE_PATTERNS = [
   /^tmp\//,
   /^blob-report\//,
   /^test-results\//,
+  /^\./,                                          // hidden: .github/, .claude/, .eslintrc, .nvmrc
+  /^(assets|bash|cli|docs|test)\//,              // top-level non-src dirs + player's own test/
+  /^webpack\./,                                   // webpack.common.cjs, webpack.prod.cjs, etc.
+  /^[^/]+\.(config\.(cjs|mjs|js|ts)|toml)$/,    // babel.config.cjs, vite.config.ts, rollup.config.*
+  /^(jsconfig|tsconfig[^/]*)\.json$/,            // tsconfig*.json in root
+  /^[^/]+\.md$/,                                 // root markdown: README, CHANGELOG, CodeReview
 ]
 
 const CROSS_CUTTING_FILES = ['constants.cjs', 'src/api/api.js']
@@ -190,32 +207,56 @@ interface RawFile {
   patch: string
 }
 
-function fetchPR(prNumber: string): RawFile[] {
-  const filesJson = exec(`gh pr view "${prNumber}" --repo "${PLAYER_GITHUB_REPO}" --json files`)
-  const files = JSON.parse(filesJson).files as Array<{
-    path: string
-    additions: number
-    deletions: number
-    status: string
-  }>
+interface FetchPRResult {
+  files: RawFile[]
+  metadata: PrMetadata
+}
 
-  // Get full patch via gh pr diff
+function fetchPR(prNumber: string): FetchPRResult {
+  // Single call — title, body, branches, labels, files, author
+  const prJson = exec(
+    `gh pr view "${prNumber}" --repo "${PLAYER_GITHUB_REPO}" --json title,body,headRefName,baseRefName,labels,files,author,comments`
+  )
+  const pr = JSON.parse(prJson) as {
+    title: string
+    body: string | null
+    headRefName: string
+    baseRefName: string
+    labels: Array<{ name: string }>
+    files: Array<{ path: string; additions: number; deletions: number; status: string }>
+    author: { login: string }
+    comments: Array<{ body: string }>
+  }
+
+  // Full patch via gh pr diff
   let patchText = ''
   try {
     patchText = exec(`gh pr diff "${prNumber}" --repo "${PLAYER_GITHUB_REPO}"`)
   } catch {
-    // patch is optional
+    // patch optional
   }
 
   const patches = parsePatchText(patchText)
 
-  return files.map(f => ({
+  const files: RawFile[] = pr.files.map(f => ({
     path: f.path,
     additions: f.additions,
     deletions: f.deletions,
     status: f.status,
     patch: patches.get(f.path) ?? '',
   }))
+
+  const metadata: PrMetadata = {
+    title:             pr.title ?? '',
+    body:              pr.body ?? '',
+    head_branch:       pr.headRefName ?? '',
+    base_branch:       pr.baseRefName ?? '',
+    labels:            (pr.labels ?? []).map(l => l.name),
+    author:            pr.author?.login ?? '',
+    reviewer_comments: (pr.comments ?? []).map(c => c.body).filter(b => b?.trim()).slice(-10),
+  }
+
+  return { files, metadata }
 }
 
 function fetchBranch(branchRef: string): RawFile[] {
@@ -309,9 +350,15 @@ async function main() {
   console.log(`Fetching diff for ${inputType}: ${inputRef} ...`)
 
   let rawFiles: RawFile[]
+  let prMetadata: PrMetadata | null = null
   try {
     switch (inputType) {
-      case 'pr':     rawFiles = fetchPR(inputRef); break
+      case 'pr': {
+        const result = fetchPR(inputRef)
+        rawFiles = result.files
+        prMetadata = result.metadata
+        break
+      }
       case 'branch': rawFiles = fetchBranch(inputRef); break
       case 'commit': rawFiles = fetchCommit(inputRef); break
       case 'head':   rawFiles = fetchHead(); break
@@ -361,8 +408,12 @@ async function main() {
     }
   })
 
-  // Build module sets
-  const moduleSet = new Set(files.map(f => f.module))
+  // Build module sets — only include modules that exist in risk_map.yaml (no path fragments)
+  const knownModules = new Set(Object.keys(riskMap.modules))
+  const moduleSet = new Set(
+    files.map(f => f.module).filter(m => knownModules.has(m))
+  )
+
   const byCriticality: Record<string, string[]> = { critical: [], high: [], medium: [], low: [] }
   for (const f of files) {
     const bucket = byCriticality[f.criticality] ?? (byCriticality[f.criticality] = [])
@@ -379,6 +430,7 @@ async function main() {
     input_ref: inputRef,
     input_type: inputType,
     player_github_repo: PLAYER_GITHUB_REPO,
+    pr_metadata: prMetadata,
     cross_cutting_risk: crossCuttingReasons.length > 0,
     cross_cutting_reasons: crossCuttingReasons,
     total_files_raw: totalRaw,
@@ -395,6 +447,11 @@ async function main() {
   console.log(`\n${'═'.repeat(60)}`)
   console.log(`  PREPARE-DIFF — ${inputRef} (${inputType})`)
   console.log('═'.repeat(60))
+  if (prMetadata) {
+    console.log(`  PR title:  ${prMetadata.title}`)
+    console.log(`  Branch:    ${prMetadata.head_branch} → ${prMetadata.base_branch}`)
+    if (prMetadata.labels.length > 0) console.log(`  Labels:    ${prMetadata.labels.join(', ')}`)
+  }
   console.log(`  Files raw: ${totalRaw} → filtered: ${relevant.length} (excluded: ${excluded.length})`)
   console.log(`  Modules affected: ${[...moduleSet].join(', ')}`)
   if (crossCuttingReasons.length > 0) {

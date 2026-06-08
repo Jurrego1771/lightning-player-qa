@@ -1,6 +1,11 @@
 module: metadata
 criticality: medium
-last_reviewed: "2026-06-05"
+last_reviewed: "2026-06-06"
+
+certification_source:
+  workbook: "NPAW QA 2026_04 - Caracol TV_ Web-Mediastream.xlsx"
+  sheet: "MetadataParams"
+  purpose: "Acceptance criteria de metadata para certificación NPAW/Youbora"
 
 paths:
   - "src/metadata/"

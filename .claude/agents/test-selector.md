@@ -49,7 +49,10 @@ Extraer:
 
 ```bash
 ALL_MODULES=$(python3 -c "import sys,json; d=json.load(open('state/session_state.json')); print(' '.join(d['diff']['modules_affected']))" 2>/dev/null)
-npx ts-node scripts/query-context.ts pipeline-context $ALL_MODULES 2>/dev/null
+QC_OUT=$(npx ts-node scripts/query-context.ts pipeline-context $ALL_MODULES 2>&1)
+QC_EXIT=$?
+[ $QC_EXIT -ne 0 ] && echo "⚠️  query-context.ts exit $QC_EXIT — test_suites_required no disponible, plan puede omitir suites obligatorias" >&2
+echo "$QC_OUT"
 ```
 
 Si responde, extraer para cada módulo:
@@ -64,7 +67,7 @@ Si test_suites_required incluye una suite que NO está en el plan actual → ALE
   ⚠️ Módulo [X] requiere suite [Y] (definido en context.yaml) — incluir en el plan.
 ```
 
-Si `scripts/query-context.ts` no existe → omitir sin error; continuar con PASO 2.
+Si `scripts/query-context.ts` no existe o falla → ⚠️ ADVERTENCIA: `test_suites_required` no disponible — el plan puede omitir suites obligatorias. Continuar con PASO 2 pero marcar `note: "test_suites_required no verificado"` en el test_plan.
 
 ---
 

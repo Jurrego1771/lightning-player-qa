@@ -17,6 +17,7 @@ modules:
     files:
       - src/api/api.js
       - src/api/player.jsx
+      - src/api/
     tests:
       - tests/contract/
       - tests/e2e/vod-playback.spec.ts
@@ -35,6 +36,7 @@ modules:
       ci_failure_rate: 0
     files:
       - src/events/index.js
+      - src/events/
     tests:
       - tests/contract/
       - tests/e2e/
@@ -53,6 +55,7 @@ modules:
       ci_failure_rate: 0
     files:
       - src/player/base.js
+      - src/player/
     tests:
       - tests/integration/
       - tests/e2e/vod-playback.spec.ts
@@ -71,6 +74,7 @@ modules:
       ci_failure_rate: 0
     files:
       - src/platform/loadConfig.js
+      - src/platform/
     tests:
       - tests/contract/
     acceptance_criteria: context/player_architecture.md
@@ -88,6 +92,7 @@ modules:
       ci_failure_rate: 0
     files:
       - src/context/index.jsx
+      - src/context/
     tests:
       - tests/e2e/
       - tests/integration/
@@ -106,6 +111,7 @@ modules:
       ci_failure_rate: 0
     files:
       - src/controls/
+      - src/hooks/
     tests:
       - tests/contract/
       - tests/e2e/
@@ -124,6 +130,7 @@ modules:
       ci_failure_rate: 0
     files:
       - src/plugins/index.js
+      - src/plugins/
     tests:
       - tests/contract/
     acceptance_criteria: context/player_architecture.md
@@ -141,6 +148,7 @@ modules:
       ci_failure_rate: 0
     files:
       - constants.cjs
+      - src/constants.js
     tests:
       - tests/contract/
     acceptance_criteria: context/player_architecture.md
@@ -246,6 +254,7 @@ modules:
       ci_failure_rate: 0
     files:
       - src/ads/googleDAI/
+      - src/ads/mediaTailorDAI/
     tests:
       - tests/integration/ads-dai-vpmute-sync.spec.ts
     acceptance_criteria: context/features/ads.md
@@ -280,6 +289,7 @@ modules:
       ci_failure_rate: 0
     files:
       - src/ads/manager/
+      - src/view/video/components/ads/
     tests:
       - tests/integration/
       - tests/e2e/ads-ima-tag-params.spec.ts
@@ -561,3 +571,160 @@ modules:
     acceptance_criteria: context/features/quality_selector.md
     notes: ABR solo en HLS handler. player.level=-1 (auto) o N (fijo). No-op silencioso en DASH.
     test_coverage_ratio: 0
+  ads-base:
+    risk_score: 0.72
+    risk_label: high
+    signals:
+      file_count: 4
+      commit_frequency_90d: 0
+      bugs_closed_90d: 0
+      bug_severity_avg: 0
+      test_coverage_ratio: 0
+      ci_failure_rate: 0
+    files:
+      - src/ads/
+    tests: []
+    notes: Foundational ad layer — API, adblocker detection, googletag. Failures affect all ad providers.
+  ads-itg:
+    risk_score: 0.68
+    risk_label: high
+    signals:
+      file_count: 7
+      commit_frequency_90d: 0
+      bugs_closed_90d: 0
+      bug_severity_avg: 0
+      test_coverage_ratio: 0
+      ci_failure_rate: 0
+    files:
+      - src/ads/itg/
+    tests: []
+    notes: Interactive Google Ads (ITG) provider — stateful control hooks, unique failure modes.
+  airplay:
+    risk_score: 0.55
+    risk_label: medium
+    signals:
+      file_count: 4
+      commit_frequency_90d: 0
+      bugs_closed_90d: 0
+      bug_severity_avg: 0
+      test_coverage_ratio: 0
+      ci_failure_rate: 0
+    files:
+      - src/airplay/
+    tests: []
+    notes: AirPlay casting for iOS/Mac — fails silently on unsupported devices, medium user impact.
+  analytics-base:
+    risk_score: 0.45
+    risk_label: medium
+    signals:
+      file_count: 3
+      commit_frequency_90d: 0
+      bugs_closed_90d: 0
+      bug_severity_avg: 0
+      test_coverage_ratio: 0
+      ci_failure_rate: 0
+    files:
+      - src/analytics/
+    tests: []
+    notes: Analytics coordinator (tracker, google). Failures hide metrics but don't break playback.
+  analytics-konodrac:
+    risk_score: 0.4
+    risk_label: medium
+    signals:
+      file_count: 2
+      commit_frequency_90d: 0
+      bugs_closed_90d: 0
+      bug_severity_avg: 0
+      test_coverage_ratio: 0
+      ci_failure_rate: 0
+    files:
+      - src/analytics/konodrac/
+    tests: []
+    notes: Konodrac-specific analytics provider — isolated integration, no core playback impact.
+  ui-common:
+    risk_score: 0.22
+    risk_label: low
+    signals:
+      file_count: 178
+      commit_frequency_90d: 0
+      bugs_closed_90d: 0
+      bug_severity_avg: 0
+      test_coverage_ratio: 0
+      ci_failure_rate: 0
+    files:
+      - src/view/common/
+    tests:
+      - tests/visual/
+    notes: Shared UI components and assets (fonts, icons). Visual-only impact if missing.
+  ui-reels:
+    risk_score: 0.5
+    risk_label: medium
+    signals:
+      file_count: 32
+      commit_frequency_90d: 0
+      bugs_closed_90d: 0
+      bug_severity_avg: 0
+      test_coverage_ratio: 0
+      ci_failure_rate: 0
+    files:
+      - src/view/reels/
+    tests:
+      - tests/visual/
+    notes: Reels short-form video UI — feature-specific, fails independently.
+  ui-core:
+    risk_score: 0.58
+    risk_label: medium
+    signals:
+      file_count: 2
+      commit_frequency_90d: 0
+      bugs_closed_90d: 0
+      bug_severity_avg: 0
+      test_coverage_ratio: 0
+      ci_failure_rate: 0
+    files:
+      - src/view/
+    tests:
+      - tests/visual/
+    notes: View layer coordinator and style loader — failures prevent UI rendering.
+  i18n:
+    risk_score: 0.18
+    risk_label: low
+    signals:
+      file_count: 18
+      commit_frequency_90d: 0
+      bugs_closed_90d: 0
+      bug_severity_avg: 0
+      test_coverage_ratio: 0
+      ci_failure_rate: 0
+    files:
+      - src/view/i18n/
+    tests: []
+    notes: Internationalization translations — missing strings fall back to keys, no core breakage.
+  error-handling:
+    risk_score: 0.28
+    risk_label: low
+    signals:
+      file_count: 2
+      commit_frequency_90d: 0
+      bugs_closed_90d: 0
+      bug_severity_avg: 0
+      test_coverage_ratio: 0
+      ci_failure_rate: 0
+    files:
+      - src/error/
+    tests: []
+    notes: Error display and handling — failures hide errors from users but don't cascade to playback.
+  helpers:
+    risk_score: 0.32
+    risk_label: low
+    signals:
+      file_count: 12
+      commit_frequency_90d: 0
+      bugs_closed_90d: 0
+      bug_severity_avg: 0
+      test_coverage_ratio: 0
+      ci_failure_rate: 0
+    files:
+      - src/helper/
+    tests: []
+    notes: Utility functions (binary search, DRM support checks, image helpers, request utils).

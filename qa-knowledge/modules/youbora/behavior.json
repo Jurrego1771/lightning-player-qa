@@ -256,7 +256,9 @@
       "then": "Suite behavior: Regardless of pre-roll Ads a View must be opened in the NPAW suite when the <play> button is clicked or the content autoplays.\n\nRequests received: A /start or /init request is sent at the very beginning (Regardless of whether the content has pre-roll Ads or not), followed by ad requests in the case of ads.\n\nExceptions: If the /init request has been sent, /start request is sent close to /jointime request\n\nWarning: Whenever a new video is played, if a video was already playing, the old View must be correctly closed with /stop, and no requests should continue being sent in that same View.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "PASSED",
-      "covered_by": []
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ]
     },
     {
       "id": "AC-YOUBORA-NPAW-1.2",
@@ -268,7 +270,9 @@
       "then": "/start (and/or /init) request is sent to NPAW suite when playback begins.",
       "priority": "MUST",
       "npaw_result_caracol_tv_2026_04": "PASSED",
-      "covered_by": []
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ]
     },
     {
       "id": "AC-YOUBORA-NPAW-1.3",
@@ -292,7 +296,9 @@
       "then": "Old view is closed with /stop. New view is opened with /start for the new content.",
       "priority": "MUST",
       "npaw_result_caracol_tv_2026_04": "LIMITATION",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "Observacion Caracol TV: UI doesn't allow to select a different content while one is being reproduced. | LIMITATION: Plataforma tiene restriccion UI que impide testear directamente."
     },
     {
@@ -305,7 +311,9 @@
       "then": "Old view closed with /stop. New view opened with /start for the next content.",
       "priority": "MUST",
       "npaw_result_caracol_tv_2026_04": "PASSED",
-      "covered_by": []
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ]
     },
     {
       "id": "AC-YOUBORA-NPAW-1.6",
@@ -317,7 +325,9 @@
       "then": "Current view is closed with /stop event and a new view is created on replay.",
       "priority": "MUST",
       "npaw_result_caracol_tv_2026_04": "PASSED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "Observacion Caracol TV: When we click on replay the content starts again, the current view is closed with /stop event and a new view is created."
     },
     {
@@ -356,7 +366,9 @@
       "then": "The 'code' parameter is the same for all events fired for the current view (including ads)",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "PASSED",
-      "covered_by": []
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ]
     },
     {
       "id": "AC-YOUBORA-NPAW-2.2",
@@ -368,7 +380,9 @@
       "then": "Device info is displayed for the view in Youbora Tracking section. Can be overridden via 'device.code'.",
       "priority": "MUST",
       "npaw_result_caracol_tv_2026_04": "PASSED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "Valores observados: VOD: {\"osVersion\":\"11\"}\nLIVE: {\"osVersion\":\"11\"}"
     },
     {
@@ -381,7 +395,9 @@
       "then": "Real content URL shown in NPAW Suite - 'media resource' parameter reported with /start. CDN detected correctly based on media resource. If 'parsing manifest' feature enabled, CDN detected using 'parsedManifest' parameter.",
       "priority": "MUST",
       "npaw_result_caracol_tv_2026_04": "PASSED",
-      "covered_by": []
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ]
     },
     {
       "id": "AC-YOUBORA-NPAW-2.4",
@@ -393,7 +409,9 @@
       "then": "Content type shown as Live or VoD in Tracking section.\n'live' parameter: false for VoD, true for Live.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "PASSED",
-      "covered_by": []
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ]
     },
     {
       "id": "AC-YOUBORA-NPAW-2.5",
@@ -405,7 +423,9 @@
       "then": "Title shown in NPAW Suite - Tracking section. 'title' parameter sent with /start and/or /init request.",
       "priority": "MUST",
       "npaw_result_caracol_tv_2026_04": "PASSED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "Valores observados: VOD: El ultimo cazador de brujas\nLIVE: Caracol TV"
     },
     {
@@ -418,7 +438,9 @@
       "then": "Media Duration shown in NPAW Suite and sent with /start. Represents content duration in seconds. 0 or -1 for Live content.",
       "priority": "MUST",
       "npaw_result_caracol_tv_2026_04": "PASSED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "Valores observados: VOD: 6393\nLIVE: -1"
     },
     {
@@ -431,7 +453,9 @@
       "then": "Name of the player used shown in NPAW Suite and reported with /start and/or /init.",
       "priority": "MUST",
       "npaw_result_caracol_tv_2026_04": "PASSED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "Valores observados: VOD: lightning-player\nLIVE: lightning-player"
     },
     {
@@ -444,7 +468,9 @@
       "then": "Version of the player shown in NPAW Suite and reported with /start and/or /init.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "PASSED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "Valores observados: VOD: 1.0.75\nLIVE: 1.0.75"
     },
     {
@@ -457,7 +483,9 @@
       "then": "pluginVersion is reported with /start and/or /init request.",
       "priority": "MUST",
       "npaw_result_caracol_tv_2026_04": "PASSED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "Valores observados: VOD: 7.3.28-generic-js\nLIVE: 7.3.28-generic-js"
     },
     {
@@ -470,7 +498,9 @@
       "then": "pluginInfo is reported with /start and/or /init request.",
       "priority": "MUST",
       "npaw_result_caracol_tv_2026_04": "PASSED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "Valores observados: {\"lib\":\"7.3.28\",\"adapter\":\"7.3.28-generic-js\",\"adAdapter\":\"7.3.28-generic-js\"}"
     },
     {
@@ -483,7 +513,9 @@
       "then": "App name shown in NPAW Suite and reported with /start and/or /init.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "PASSED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "Valores observados: lightning-player"
     },
     {
@@ -496,7 +528,9 @@
       "then": "App version shown in NPAW Suite and reported with /start and/or /init.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "PASSED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "Valores observados: 1.0.75"
     },
     {
@@ -509,7 +543,9 @@
       "then": "'rendition' is reported in /start event.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "PASSED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "Valores observados: VOD: 1920x1080@3414kbps\nLIVE: 1920x1080@4000kbps"
     },
     {
@@ -522,7 +558,9 @@
       "then": "View codes are different for both plays/views.",
       "priority": "MUST",
       "npaw_result_caracol_tv_2026_04": "PASSED",
-      "covered_by": []
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ]
     },
     {
       "id": "AC-YOUBORA-NPAW-2.15",
@@ -534,7 +572,9 @@
       "then": "New view opened in NPAW Suite. Metadata (title, media resource, duration, custom params) in /start corresponds to the new content.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "PASSED",
-      "covered_by": []
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ]
     },
     {
       "id": "AC-YOUBORA-NPAW-2.16",
@@ -546,7 +586,9 @@
       "then": "User id/username is reported in /start (and/or /init).",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "PASSED",
-      "covered_by": []
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ]
     },
     {
       "id": "AC-YOUBORA-NPAW-2.17",
@@ -558,7 +600,9 @@
       "then": "userType is reported in /start (and/or /init).",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "FAILED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "Observacion Caracol TV: Not reported. | FAILED en prueba Caracol TV 2026-04 - bug conocido, registrado en known_bugs."
     },
     {
@@ -571,7 +615,9 @@
       "then": "UUID is reported in /start (and/or /init).",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "PASSED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "Valores observados: 597a0a841d37f9a9910ebed0050bfc9d"
     },
     {
@@ -584,7 +630,9 @@
       "then": "Custom dimension params (param1-20) reported in /start (and/or /init) if configured.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "N/A",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "N/A: No aplica para este deployment / feature no disponible en Caracol TV."
     },
     {
@@ -597,7 +645,9 @@
       "then": "referer is reported in /start (and/or /init).",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "PASSED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "Valores observados: https://d1qweu0039a3nv.cloudfront.net/watch/media/69e7ada17e66a1a2e426bc92"
     },
     {
@@ -610,7 +660,9 @@
       "then": "content id is reported in /start (and/or /init).",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "PASSED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "Valores observados: VOD: 69e7ada17e66a1a2e426bc92\nLIVE: 69690d21fb30af150e58f11c"
     },
     {
@@ -623,7 +675,9 @@
       "then": "content type is reported in /start (and/or /init).",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "PASSED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "Valores observados: VOD: VOD\nLIVE: Live"
     },
     {
@@ -636,7 +690,9 @@
       "then": "program/title2 is reported in /start (and/or /init).",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "PASSED",
-      "covered_by": []
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ]
     },
     {
       "id": "AC-YOUBORA-NPAW-2.24",
@@ -648,7 +704,9 @@
       "then": "channel is reported in /start (and/or /init) if applicable.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "N/A",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "N/A: No aplica para este deployment / feature no disponible en Caracol TV."
     },
     {
@@ -661,7 +719,9 @@
       "then": "package is reported in /start (and/or /init) if configured.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "N/A",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "N/A: No aplica para este deployment / feature no disponible en Caracol TV."
     },
     {
@@ -674,7 +734,9 @@
       "then": "saga is reported in /start (and/or /init) if configured.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "N/A",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "N/A: No aplica para este deployment / feature no disponible en Caracol TV."
     },
     {
@@ -687,7 +749,9 @@
       "then": "tvShow is reported in /start (and/or /init) if configured.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "N/A",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "N/A: No aplica para este deployment / feature no disponible en Caracol TV."
     },
     {
@@ -700,7 +764,9 @@
       "then": "season is reported in /start (and/or /init) if configured.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "N/A",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "N/A: No aplica para este deployment / feature no disponible en Caracol TV."
     },
     {
@@ -713,7 +779,9 @@
       "then": "episodeTitle is reported in /start (and/or /init) if configured.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "N/A",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "N/A: No aplica para este deployment / feature no disponible en Caracol TV."
     },
     {
@@ -726,7 +794,9 @@
       "then": "genre is reported in /start (and/or /init) if configured.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "N/A",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "N/A: No aplica para este deployment / feature no disponible en Caracol TV."
     },
     {
@@ -739,7 +809,9 @@
       "then": "language is reported in /start (and/or /init) if configured.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "N/A",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "N/A: No aplica para este deployment / feature no disponible en Caracol TV."
     },
     {
@@ -752,7 +824,9 @@
       "then": "subtitles info is reported in /start (and/or /init) if applicable.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "N/A",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "N/A: No aplica para este deployment / feature no disponible en Caracol TV."
     },
     {
@@ -765,7 +839,9 @@
       "then": "playback type is reported in /start (and/or /init).",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "PASSED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "Valores observados: VOD: VoD\nLIVE: Live"
     },
     {
@@ -778,7 +854,9 @@
       "then": "drm info is reported in /start (and/or /init) if content is DRM protected.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "N/A",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "N/A: No aplica para este deployment / feature no disponible en Caracol TV."
     },
     {
@@ -791,7 +869,9 @@
       "then": "transaction code is reported in /start (and/or /init) if applicable.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "N/A",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "N/A: No aplica para este deployment / feature no disponible en Caracol TV."
     },
     {
@@ -804,7 +884,9 @@
       "then": "streaming protocol is reported in /start (and/or /init).",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "N/A",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "N/A: No aplica para este deployment / feature no disponible en Caracol TV."
     },
     {
@@ -817,7 +899,9 @@
       "then": "/joinTime request sent when video starts reproducing.\njoinDuration parameter from /joinTime corresponds to time player spends to start playing.\nplayhead value coherent with position when content started.\n/joinTime: playhead (seconds), joinDuration (milliseconds)",
       "priority": "MUST",
       "npaw_result_caracol_tv_2026_04": "PASSED",
-      "covered_by": []
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ]
     },
     {
       "id": "AC-YOUBORA-NPAW-3.2",
@@ -829,7 +913,9 @@
       "then": "View closed as EBVS in NPAW Suite Tracking section.\n/init or /start sent, /stop sent. /joinTime NOT sent.",
       "priority": "MUST",
       "npaw_result_caracol_tv_2026_04": "PASSED",
-      "covered_by": []
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ]
     },
     {
       "id": "AC-YOUBORA-NPAW-4.1",
@@ -841,7 +927,9 @@
       "then": "Buffer event shown in NPAW Suite.\n/bufferUnderrun request sent when buffering ends and playback resumes (1 event only).\nbufferDuration parameter corresponds to actual buffering time in milliseconds.\nplayhead parameter relates to position where buffer ends.\n\n/bufferUnderrun: bufferDuration (ms), playhead (seconds)\n/ping while buffering: bufferDuration (ms), playhead (seconds)",
       "priority": "MUST",
       "npaw_result_caracol_tv_2026_04": "PASSED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "Observacion Caracol TV: /bufferUnderrun event generated, but playhead reported as 0."
     },
     {
@@ -854,7 +942,9 @@
       "then": "/seek event shown in Youbora View Detailed Tracking section.\n/seek request sent with coherent seekDuration.\n/bufferUnderrun NOT sent after seek (unless that's how the player works).\n\n/seek: seekDuration (ms), playhead (seconds)\n/ping while seeking: seekDuration (ms), playhead (seconds)",
       "priority": "MUST",
       "npaw_result_caracol_tv_2026_04": "PASSED",
-      "covered_by": []
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ]
     },
     {
       "id": "AC-YOUBORA-NPAW-4.3",
@@ -866,7 +956,9 @@
       "then": "/seek event handled correctly. Playhead updates to new position without triggering buffer.",
       "priority": "MUST",
       "npaw_result_caracol_tv_2026_04": "PASSED",
-      "covered_by": []
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ]
     },
     {
       "id": "AC-YOUBORA-NPAW-5.1",
@@ -878,7 +970,9 @@
       "then": "Pause event shown in NPAW Suite / /pause request sent.\nResume event with coherent pauseDuration / /resume request sent.\npauseDuration corresponds to actual pause duration.\nPlayhead does not progress until content is resumed.\n/bufferUnderrun NOT sent (except for Live content edge cases).",
       "priority": "MUST",
       "npaw_result_caracol_tv_2026_04": "PASSED",
-      "covered_by": []
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ]
     },
     {
       "id": "AC-YOUBORA-NPAW-6.1",
@@ -890,7 +984,9 @@
       "then": "/ping requests sent every 5 seconds (unless set differently for the account). /pings sent until /stop is sent for that view.",
       "priority": "MUST",
       "npaw_result_caracol_tv_2026_04": "PASSED",
-      "covered_by": []
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ]
     },
     {
       "id": "AC-YOUBORA-NPAW-6.2",
@@ -902,7 +998,9 @@
       "then": "playhead parameter from /ping request corresponds to current content position in seconds. Increases while content advances, stays constant during ads, pause, and buffering.",
       "priority": "MUST",
       "npaw_result_caracol_tv_2026_04": "PASSED",
-      "covered_by": []
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ]
     },
     {
       "id": "AC-YOUBORA-NPAW-6.3",
@@ -914,7 +1012,9 @@
       "then": "pingTime and diffTime parameters from /ping correspond to estimated time between /ping requests.\npingTime (seconds), diffTime (milliseconds).",
       "priority": "MUST",
       "npaw_result_caracol_tv_2026_04": "PASSED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "Observacion Caracol TV: diffTime reported as lower than 4 seconds."
     },
     {
@@ -927,7 +1027,9 @@
       "then": "bitrate parameter from /ping corresponds to real bitrate in use. -1 if player doesn't report bitrate.\nAlternatively, totalBytes reported for transferred data; avg bitrate calculated from this.\nBoth parameters must NOT be sent simultaneously - only one.",
       "priority": "MUST",
       "npaw_result_caracol_tv_2026_04": "PASSED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "Observacion Caracol TV: Bitrate value reported as -1."
     },
     {
@@ -940,7 +1042,9 @@
       "then": "When rendition changes, entities parameter of first /ping after rendition change contains JSON with 'rendition' field. All rendition changes shown in NPAW Suite SmartTracking section.\nFormat: resolution@bitrate (e.g. 1920x720@900kbps)",
       "priority": "MUST",
       "npaw_result_caracol_tv_2026_04": "PASSED",
-      "covered_by": []
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ]
     },
     {
       "id": "AC-YOUBORA-NPAW-6.6",
@@ -952,7 +1056,9 @@
       "then": "After quality change, player does one of:\n- Close current view with /stop and open new view with new quality with /start\n- Send entities parameter with updated value in following /ping",
       "priority": "MUST",
       "npaw_result_caracol_tv_2026_04": "PASSED",
-      "covered_by": []
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ]
     },
     {
       "id": "AC-YOUBORA-NPAW-6.7",
@@ -964,7 +1070,9 @@
       "then": "throughput parameter from /ping corresponds to real network throughput. -1 if player doesn't report it.",
       "priority": "MUST",
       "npaw_result_caracol_tv_2026_04": "PASSED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "Observacion Caracol TV: throughput reported as -1."
     },
     {
@@ -989,7 +1097,9 @@
       "then": "Updated info reported in rendition section of Detailed View. 'entities' parameter with corresponding info reported in /ping request.",
       "priority": "MUST",
       "npaw_result_caracol_tv_2026_04": "PASSED",
-      "covered_by": []
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ]
     },
     {
       "id": "AC-YOUBORA-NPAW-7.1",
@@ -1001,7 +1111,9 @@
       "then": "Current view is closed in NPAW Suite Tracking section. /stop request sent when content ends. Stop event shown in Youbora View Detailed SmartTracking section.",
       "priority": "MUST",
       "npaw_result_caracol_tv_2026_04": "PASSED",
-      "covered_by": []
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ]
     },
     {
       "id": "AC-YOUBORA-NPAW-7.2",
@@ -1013,7 +1125,9 @@
       "then": "First view is closed in NPAW Suite Tracking section. /stop request sent when new video is selected.",
       "priority": "MUST",
       "npaw_result_caracol_tv_2026_04": "LIMITATION",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "Observacion Caracol TV: UI doesn't allow to select a different content while one is being reproduced. | LIMITATION: Plataforma tiene restriccion UI que impide testear directamente."
     },
     {
@@ -1026,7 +1140,9 @@
       "then": "First view is closed in NPAW Suite Tracking section. /stop request sent when new video starts.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "PASSED",
-      "covered_by": []
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ]
     },
     {
       "id": "AC-YOUBORA-NPAW-7.4",
@@ -1038,7 +1154,9 @@
       "then": "Current view is closed in NPAW Suite Tracking section. When player is closed, no more /ping requests sent.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "PASSED",
-      "covered_by": []
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ]
     },
     {
       "id": "AC-YOUBORA-NPAW-7.5",
@@ -1063,7 +1181,9 @@
       "then": "1. View with error status opened in NPAW Suite with corresponding error msg and code. /error request sent with device and content info.\n2. For fatal error: view closed with /stop.\n3. If player retries: new view opened with corresponding events (/joinTime if success, /error if another error). No infinite error loop.\nerrorCode and msg/errorMsg reported.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "N/A",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "N/A: No aplica para este deployment / feature no disponible en Caracol TV."
     },
     {
@@ -1076,7 +1196,9 @@
       "then": "/error request sent with errorCode and message. View closed with /stop after fatal error. No infinite error reporting.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "PASSED",
-      "covered_by": []
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ]
     },
     {
       "id": "AC-YOUBORA-NPAW-8.3",
@@ -1088,7 +1210,9 @@
       "then": "/error request sent during playback with errorCode and message. View closed with /stop for fatal errors.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "N/A",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "N/A: No aplica para este deployment / feature no disponible en Caracol TV."
     },
     {
@@ -1101,7 +1225,9 @@
       "then": "/error request sent with errorCode and message. View closed with /stop for fatal errors.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "PASSED",
-      "covered_by": []
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ]
     },
     {
       "id": "AC-YOUBORA-NPAW-8.5",
@@ -1113,7 +1239,9 @@
       "then": "/error request sent with errorCode and message. View closed with /stop for fatal errors.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "PASSED",
-      "covered_by": []
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ]
     },
     {
       "id": "AC-YOUBORA-NPAW-8.6",
@@ -1125,7 +1253,9 @@
       "then": "New view opened in NPAW Suite SmartTracking section when next content starts. /start request sent (regardless of pre-roll Ads, /start must be sent at the very beginning).",
       "priority": "MUST",
       "npaw_result_caracol_tv_2026_04": "PASSED",
-      "covered_by": []
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ]
     },
     {
       "id": "AC-YOUBORA-NPAW-A.1.1",
@@ -1137,7 +1267,9 @@
       "then": "/adManifest request is sent when the plugin receives an answer from the ad server or first ad is about to play or error has been sent for the ad.",
       "priority": "MUST",
       "npaw_result_caracol_tv_2026_04": "NOT_TESTED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "NOT_TESTED en Caracol TV 2026-04 — seccion de ads no ejecutada en ese ciclo de QA."
     },
     {
@@ -1150,7 +1282,9 @@
       "then": "/adBreakStart requests are sent for all ad breaks (pre, mid or post) once the ad break starts",
       "priority": "MUST",
       "npaw_result_caracol_tv_2026_04": "NOT_TESTED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "NOT_TESTED en Caracol TV 2026-04 — seccion de ads no ejecutada en ese ciclo de QA."
     },
     {
@@ -1163,7 +1297,9 @@
       "then": "/adBreakStop request is sent when last ad of the break ends and video content resumes or starts (unless its post-roll)",
       "priority": "MUST",
       "npaw_result_caracol_tv_2026_04": "NOT_TESTED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "NOT_TESTED en Caracol TV 2026-04 — seccion de ads no ejecutada en ese ciclo de QA."
     },
     {
@@ -1176,7 +1312,9 @@
       "then": "/adInit request is sent when the plugin doesn't have all the mandatory information in order to open a new view (e.g. missing mediaAdResource or adTitle, mediaAdDuration). When all this information has been retrieved, the plugin sends start event with all of the information.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "NOT_TESTED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "NOT_TESTED en Caracol TV 2026-04 — seccion de ads no ejecutada en ese ciclo de QA."
     },
     {
@@ -1189,7 +1327,9 @@
       "then": "/adStart request is sent for the current view. It is sent after the /start request. If the /adInit request has not been sent, /adStart request is sent at the very beginning. The ads appear in the SmartAds module of NPAW Suite's View Detailed of SmartTracking section in the same order in which they have been shown.",
       "priority": "MUST",
       "npaw_result_caracol_tv_2026_04": "NOT_TESTED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "NOT_TESTED en Caracol TV 2026-04 — seccion de ads no ejecutada en ese ciclo de QA."
     },
     {
@@ -1202,7 +1342,9 @@
       "then": "/adJoin request is sent when 1st frame of the ads is shown on the screen and ad starts to play. The adJoinDuration parameter from /adJoin is sent correctly. This duration corresponds with the time the player spends to play the ads.",
       "priority": "MUST",
       "npaw_result_caracol_tv_2026_04": "NOT_TESTED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "NOT_TESTED en Caracol TV 2026-04 — seccion de ads no ejecutada en ese ciclo de QA."
     },
     {
@@ -1215,7 +1357,9 @@
       "then": "/adStop request is sent when the ad ends",
       "priority": "MUST",
       "npaw_result_caracol_tv_2026_04": "NOT_TESTED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "NOT_TESTED en Caracol TV 2026-04 — seccion de ads no ejecutada en ese ciclo de QA."
     },
     {
@@ -1228,7 +1372,9 @@
       "then": "/adStop request is sent when the ad is skipped",
       "priority": "MUST",
       "npaw_result_caracol_tv_2026_04": "NOT_TESTED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "NOT_TESTED en Caracol TV 2026-04 — seccion de ads no ejecutada en ese ciclo de QA."
     },
     {
@@ -1241,7 +1387,9 @@
       "then": "Make sure the pre-roll ad is not included in joinDuration of /joinTime event.\nCSAI (Customer Side Ads Insertion): /joinTime is sent after the pre-roll /adBreakStop.\nSSAI (Server Side Ads Insertion): /joinTime is sent before the ad starts and before the pre-roll /adBreakStart.\nNote: Some server side ads joinTime is fired before pre-roll because there is no way to identify ad or video.",
       "priority": "MUST",
       "npaw_result_caracol_tv_2026_04": "NOT_TESTED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "NOT_TESTED en Caracol TV 2026-04 — seccion de ads no ejecutada en ese ciclo de QA."
     },
     {
@@ -1254,7 +1402,9 @@
       "then": "The 'givenBreaks' parameter corresponds with the number of breaks for that view. Make sure the value is the same as in the 'expectedBreaks' parameter.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "NOT_TESTED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "NOT_TESTED en Caracol TV 2026-04 — seccion de ads no ejecutada en ese ciclo de QA."
     },
     {
@@ -1267,7 +1417,9 @@
       "then": "The 'breaksTime' parameter values correspond with the ad breaks served for this view.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "NOT_TESTED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "NOT_TESTED en Caracol TV 2026-04 — seccion de ads no ejecutada en ese ciclo de QA."
     },
     {
@@ -1280,7 +1432,9 @@
       "then": "The 'expectedBreaks' parameter value corresponds with the number of breaks for that view.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "NOT_TESTED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "NOT_TESTED en Caracol TV 2026-04 — seccion de ads no ejecutada en ese ciclo de QA."
     },
     {
@@ -1293,7 +1447,9 @@
       "then": "The 'expectedPattern' parameter corresponds with the pattern of breaks and ads for the view.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "NOT_TESTED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "NOT_TESTED en Caracol TV 2026-04 — seccion de ads no ejecutada en ese ciclo de QA."
     },
     {
@@ -1306,7 +1462,9 @@
       "then": "The 'givenAds' value corresponds with the number of ads for that ad break. Make sure the value is the same as in the 'expectedAds' parameter.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "NOT_TESTED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "NOT_TESTED en Caracol TV 2026-04 — seccion de ads no ejecutada en ese ciclo de QA."
     },
     {
@@ -1319,7 +1477,9 @@
       "then": "The 'expectedAds' value corresponds with the number of ads for that ad break.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "NOT_TESTED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "NOT_TESTED en Caracol TV 2026-04 — seccion de ads no ejecutada en ese ciclo de QA."
     },
     {
@@ -1332,7 +1492,9 @@
       "then": "The 'breakNumber' parameter corresponds with the current number of break in the set of ads.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "NOT_TESTED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "NOT_TESTED en Caracol TV 2026-04 — seccion de ads no ejecutada en ese ciclo de QA."
     },
     {
@@ -1345,7 +1507,9 @@
       "then": "The 'position' parameter corresponds with the current ad position in the playback.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "NOT_TESTED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "NOT_TESTED en Caracol TV 2026-04 — seccion de ads no ejecutada en ese ciclo de QA."
     },
     {
@@ -1358,7 +1522,9 @@
       "then": "The 'adNumber' parameter from the /adStart request corresponds with the number of the current advertisement inside a set of ads. The value should be: 1, 2, 3, etc.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "NOT_TESTED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "NOT_TESTED en Caracol TV 2026-04 — seccion de ads no ejecutada en ese ciclo de QA."
     },
     {
@@ -1371,7 +1537,9 @@
       "then": "The 'adNumberInBreak' reflects the real number of the ad within the break.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "NOT_TESTED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "NOT_TESTED en Caracol TV 2026-04 — seccion de ads no ejecutada en ese ciclo de QA."
     },
     {
@@ -1410,7 +1578,9 @@
       "then": "The 'skippable' parameter value is true if there is a possibility to skip the ad.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "NOT_TESTED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "NOT_TESTED en Caracol TV 2026-04 — seccion de ads no ejecutada en ese ciclo de QA."
     },
     {
@@ -1449,7 +1619,9 @@
       "then": "The 'adResource' parameter from the /adStart request corresponds with resource of the advertisement.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "NOT_TESTED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "NOT_TESTED en Caracol TV 2026-04 — seccion de ads no ejecutada en ese ciclo de QA."
     },
     {
@@ -1462,7 +1634,9 @@
       "then": "The 'adTitle' parameter from the /adStart request corresponds with title of the advertisement.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "NOT_TESTED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "NOT_TESTED en Caracol TV 2026-04 — seccion de ads no ejecutada en ese ciclo de QA."
     },
     {
@@ -1475,7 +1649,9 @@
       "then": "The 'adDuration' parameter from the /adStart request corresponds with established duration of the advertisement.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "NOT_TESTED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "NOT_TESTED en Caracol TV 2026-04 — seccion de ads no ejecutada en ese ciclo de QA."
     },
     {
@@ -1514,7 +1690,9 @@
       "then": "The 'adJoinDuration' parameter from /adJoin is shown in NPAW Suite's View Detailed of SmartTracking section for the current view. This duration corresponds with the time the player spends to play the ads.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "NOT_TESTED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "NOT_TESTED en Caracol TV 2026-04 — seccion de ads no ejecutada en ese ciclo de QA."
     },
     {
@@ -1527,7 +1705,9 @@
       "then": "The 'adTotalDuration' parameter from /adStop corresponds with the duration of the ad visualization. It is sent for each ad (duration = from /adStart to /adStop).",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "NOT_TESTED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "NOT_TESTED en Caracol TV 2026-04 — seccion de ads no ejecutada en ese ciclo de QA."
     },
     {
@@ -1540,7 +1720,9 @@
       "then": "The 'adSkipped' parameter from the /adStop request is shown as true when the ad is skipped.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "NOT_TESTED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "NOT_TESTED en Caracol TV 2026-04 — seccion de ads no ejecutada en ese ciclo de QA."
     },
     {
@@ -1566,7 +1748,9 @@
       "then": "/adClick and /adPause requests are sent for the current view.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "NOT_TESTED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "NOT_TESTED en Caracol TV 2026-04 — seccion de ads no ejecutada en ese ciclo de QA."
     },
     {
@@ -1579,7 +1763,9 @@
       "then": "/adBufferUnderrun request is sent for the current view once the advertisement continues playing.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "NOT_TESTED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "NOT_TESTED en Caracol TV 2026-04 — seccion de ads no ejecutada en ese ciclo de QA."
     },
     {
@@ -1592,7 +1778,9 @@
       "then": "/adPause and /adResume requests are sent respectively. There is no /adBufferUnderrun request sent once the advertisement is resumed.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "NOT_TESTED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "NOT_TESTED en Caracol TV 2026-04 — seccion de ads no ejecutada en ese ciclo de QA."
     },
     {
@@ -1605,7 +1793,9 @@
       "then": "/adQuartile requests are sent when the ad playhead position is at 25%, 50% and 75% of the ad.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "NOT_TESTED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "NOT_TESTED en Caracol TV 2026-04 — seccion de ads no ejecutada en ese ciclo de QA."
     },
     {
@@ -1618,7 +1808,9 @@
       "then": "The 'adBufferDuration' parameter from /adBufferUnderrun corresponds with the time the advertisement is buffering.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "NOT_TESTED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "NOT_TESTED en Caracol TV 2026-04 — seccion de ads no ejecutada en ese ciclo de QA."
     },
     {
@@ -1631,7 +1823,9 @@
       "then": "The 'adURL' parameter from the /adClick request corresponds with the redirected URL opened in a new window.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "NOT_TESTED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "NOT_TESTED en Caracol TV 2026-04 — seccion de ads no ejecutada en ese ciclo de QA."
     },
     {
@@ -1644,7 +1838,9 @@
       "then": "The 'adPauseDuration' parameter from /adResume corresponds with the time the advertisement is paused.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "NOT_TESTED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "NOT_TESTED en Caracol TV 2026-04 — seccion de ads no ejecutada en ese ciclo de QA."
     },
     {
@@ -1657,7 +1853,9 @@
       "then": "The 'quartile' parameter corresponds with the number of the current /adQuartile request sent for this ad. 1 if sent at 25%, 2 for 50% and 3 for 75%.",
       "priority": "SHOULD",
       "npaw_result_caracol_tv_2026_04": "NOT_TESTED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "NOT_TESTED en Caracol TV 2026-04 — seccion de ads no ejecutada en ese ciclo de QA."
     },
     {
@@ -1696,7 +1894,9 @@
       "then": "/adError request is sent and the main content starts to play. errorCode and errorMsg are reported.",
       "priority": "MUST",
       "npaw_result_caracol_tv_2026_04": "NOT_TESTED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "NOT_TESTED en Caracol TV 2026-04 — seccion de ads no ejecutada en ese ciclo de QA."
     },
     {
@@ -1709,7 +1909,9 @@
       "then": "/adError request is sent and the main content starts to play. errorCode and errorMsg are reported.",
       "priority": "MUST",
       "npaw_result_caracol_tv_2026_04": "NOT_TESTED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "NOT_TESTED en Caracol TV 2026-04 — seccion de ads no ejecutada en ese ciclo de QA."
     },
     {
@@ -1722,7 +1924,9 @@
       "then": "/adError request is sent and the main content starts to play.",
       "priority": "MUST",
       "npaw_result_caracol_tv_2026_04": "NOT_TESTED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "NOT_TESTED en Caracol TV 2026-04 — seccion de ads no ejecutada en ese ciclo de QA."
     },
     {
@@ -1735,7 +1939,9 @@
       "then": "/adError request is sent and the main content starts to play.",
       "priority": "MUST",
       "npaw_result_caracol_tv_2026_04": "NOT_TESTED",
-      "covered_by": [],
+      "covered_by": [
+        "tests/integration/youbora.spec.ts"
+      ],
       "notes": "NOT_TESTED en Caracol TV 2026-04 — seccion de ads no ejecutada en ese ciclo de QA."
     }
   ],

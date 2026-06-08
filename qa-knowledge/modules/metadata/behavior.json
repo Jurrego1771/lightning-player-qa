@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "module": "metadata",
   "status": "template",
-  "last_verified": "2026-06-05",
+  "last_verified": "2026-06-06",
   "events": [
     {
       "name": "metadataloading",
@@ -39,6 +39,108 @@
       "then": "Se emite metadatachanged con title y artist actualizados.",
       "priority": "SHOULD",
       "covered_by": ["tests/e2e/radio-nowplaying-metadata.spec.ts"]
+    },
+    {
+      "id": "AC-METADATA-MP-001",
+      "scenario": "MetadataParams: create view /init y /start no rompen la carga del contenido",
+      "given": "Un caso base del workbook en el que el player crea la view para VoD",
+      "when": "Se inicializa el player y arranca la reproducción",
+      "then": "El flujo de metadata debe quedar listo para emitir el contexto base del contenido, incluyendo la apertura de la view en /init y /start sin perder el metadata payload inicial.",
+      "priority": "MUST",
+      "source_sheet": "MetadataParams",
+      "source_rows": ["1.1", "1.2"],
+      "covered_by": ["tests/e2e/vod-playback.spec.ts", "tests/e2e/player-api.spec.ts"]
+    },
+    {
+      "id": "AC-METADATA-MP-002",
+      "scenario": "MetadataParams: adblocker, cambio manual y cambio automático mantienen metadata válida",
+      "given": "Un flujo de reproducción donde el contenido puede cambiar por acción del usuario o por cambio automático",
+      "when": "Se activa la extensión AdBlocker o se cambia de video/canal manual o automáticamente",
+      "then": "La metadata debe seguir emitiéndose sin crash, y el nuevo contenido debe reemplazar el contexto anterior de forma consistente.",
+      "priority": "MUST",
+      "source_sheet": "MetadataParams",
+      "source_rows": ["1.3", "1.4", "1.5"],
+      "covered_by": ["tests/integration/error-recovery.spec.ts", "tests/e2e/player-api.spec.ts"]
+    },
+    {
+      "id": "AC-METADATA-MP-003",
+      "scenario": "MetadataParams: replay, multi-player y background preservan aislamiento y consistencia",
+      "given": "Un contenido terminado, más de un player en la misma página o la app en background",
+      "when": "Se repite un video, conviven varios players o la app/browsers pasa a background y luego vuelve",
+      "then": "La metadata debe reiniciarse correctamente al replay, no mezclarse entre players y recuperarse sin corrupción de estado al regresar desde background.",
+      "priority": "MUST",
+      "source_sheet": "MetadataParams",
+      "source_rows": ["1.6", "1.7", "1.8"],
+      "covered_by": ["tests/e2e/vod-playback.spec.ts", "tests/integration/player-init-methods.spec.ts"]
+    },
+    {
+      "id": "AC-METADATA-MP-004",
+      "scenario": "MetadataParams: campos base de contenido presentes y coherentes",
+      "given": "El payload inicial de metadata del workbook para VoD",
+      "when": "Se inspecciona el beacon /start o el objeto de metadata ya cargado",
+      "then": "Deben estar presentes y coherentes los campos base del contenido: timemark, adsExpected, rendition, live, title, mediaDuration, mediaResource, referral/referrer y contentId.",
+      "priority": "MUST",
+      "source_sheet": "MetadataParams",
+      "source_rows": ["2.1", "2.2", "2.3", "2.4", "2.5", "2.6", "2.7", "2.8", "2.9", "2.10", "2.11"],
+      "source_values": {
+        "timemark": "1.78062E+12",
+        "adsExpected": "FALSO",
+        "rendition": "1920x1080@3414kbps",
+        "live": "FALSO",
+        "title": "El último cazador de brujas",
+        "mediaDuration": "6393",
+        "mediaResource_contains": "https://mdstrm.com/video/69e7ada17e66a1a2e426bc92.mpd",
+        "referer": "https://d1qweu0039a3nv.cloudfront.net/watch/media/69e7ada17e66a1a2e426bc92"
+      },
+      "covered_by": ["tests/e2e/vod-playback.spec.ts", "tests/integration/youbora.spec.ts"]
+    },
+    {
+      "id": "AC-METADATA-MP-005",
+      "scenario": "MetadataParams: identidad del player y del SDK permanecen estables",
+      "given": "Un reproductor cargado con la configuración del workbook",
+      "when": "Se reporta metadata de runtime del tracker",
+      "then": "Los campos player, playerVersion, pluginVersion, appName, appReleaseVersion, accountCode, system, libVersion y pluginInfo deben coincidir con la versión/configuración activa del player y del SDK.",
+      "priority": "MUST",
+      "source_sheet": "MetadataParams",
+      "source_rows": ["2.12", "2.13", "2.14", "2.15", "2.16", "2.18", "2.19", "2.20", "2.23", "2.24", "2.25", "2.26"],
+      "source_values": {
+        "player": "lightning-player",
+        "playerVersion": "1.0.75",
+        "pluginVersion": "7.3.28-generic-js",
+        "appName": "lightning-player",
+        "appReleaseVersion": "1.0.75",
+        "accountCode": "caracoltvdev",
+        "system": "caracoltvdev",
+        "libVersion": "7.3.28-js-sdk",
+        "pluginInfo": "{\"lib\":\"7.3.28\",\"adapter\":\"7.3.28-generic-js\",\"adAdapter\":\"7.3.28-generic-js\"}"
+      },
+      "covered_by": ["tests/integration/youbora.spec.ts"]
+    },
+    {
+      "id": "AC-METADATA-MP-006",
+      "scenario": "MetadataParams: estructura de payload y runtime info deben existir",
+      "given": "El payload de metadata emitido por el player durante reproducción",
+      "when": "Se valida el contexto completo de telemetry",
+      "then": "Deben existir dimensions, properties, deviceInfo, pingTime, code, sessionRoot, obfuscateIp, playbackType, contentType, deviceUUID, p2pEnabled y playerStartupTime, aunque algunos valores puedan ser vacíos o falsy según la configuración.",
+      "priority": "MUST",
+      "source_sheet": "MetadataParams",
+      "source_rows": ["2.17", "2.21", "2.22", "2.27", "2.28", "2.29", "2.30", "2.31", "2.32", "2.33", "2.34", "2.35"],
+      "source_values": {
+        "dimensions": "{}",
+        "properties": "{}",
+        "deviceInfo": "{\"osVersion\":\"11\"}",
+        "pingTime": "5",
+        "code": "V_30041410_bn0dyms8238cm5ex_1780615626747",
+        "sessionRoot": "V_30041410_bn0dyms8238cm5ex",
+        "obfuscateIp": "FALSO",
+        "playbackType": "VoD",
+        "contentType": "VOD",
+        "contentId": "69e7ada17e66a1a2e426bc92",
+        "deviceUUID": "597a0a841d37f9a9910ebed0050bfc9d",
+        "p2pEnabled": "FALSO",
+        "playerStartupTime": "4726"
+      },
+      "covered_by": ["tests/integration/youbora.spec.ts", "tests/e2e/player-api.spec.ts"]
     }
   ],
   "known_bugs": [],

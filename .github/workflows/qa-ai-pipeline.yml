@@ -1,0 +1,368 @@
+name: QA — AI Pipeline (LangGraph)
+
+# Reemplaza qa-impact-analysis.yml con el pipeline orquestado por LangGraph.
+# Usa PostgreSQL + Qdrant como servicios de CI.
+# Neo4j: graceful fallback si no disponible.
+#
+# Trigger igual que el workflow legacy para coexistir durante migración.
+
+on:
+  workflow_dispatch:
+    inputs:
+      player_pr_number:
+        description: 'Player repo PR number'
+        required: true
+        type: string
+      player_repo:
+        description: 'Player GitHub repo (owner/repo)'
+        required: false
+        default: ''
+      dry_run:
+        description: 'Solo análisis — no correr tests'
+        required: false
+        type: boolean
+        default: false
+
+  repository_dispatch:
+    types: [player-pr-ai]
+
+env:
+  CI: true
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  MOCK_VAST_PORT: 9999
+  MOCK_VAST_BASE_URL: http://localhost:9999
+  POSTGRES_HOST: localhost
+  POSTGRES_PORT: 5432
+  POSTGRES_DB: qa_platform
+  POSTGRES_USER: qa_user
+  POSTGRES_PASSWORD: qa_password
+  QDRANT_URL: http://localhost:6333
+
+jobs:
+  # ── JOB 1: AI Pipeline — change analysis + risk + test selection + evaluator ──
+  ai-analyze:
+    name: AI Pipeline Analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: qa_platform
+          POSTGRES_USER: qa_user
+          POSTGRES_PASSWORD: qa_password
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U qa_user -d qa_platform"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      qdrant:
+        image: qdrant/qdrant:latest
+        ports: ["6333:6333"]
+        options: >-
+          --health-cmd "wget -q --spider http://localhost:6333/healthz || exit 1"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    outputs:
+      verdict:           ${{ steps.pipeline.outputs.verdict }}
+      coverage:          ${{ steps.pipeline.outputs.coverage }}
+      selected_tests:    ${{ steps.pipeline.outputs.selected_tests }}
+      risk_label:        ${{ steps.pipeline.outputs.risk_label }}
+      retry_count:       ${{ steps.pipeline.outputs.retry_count }}
+      trace_id:          ${{ steps.pipeline.outputs.trace_id }}
+      run_integration:   ${{ steps.pipeline.outputs.run_integration }}
+      run_e2e:           ${{ steps.pipeline.outputs.run_e2e }}
+      run_visual:        ${{ steps.pipeline.outputs.run_visual }}
+      pr_number:         ${{ steps.resolve.outputs.pr_number }}
+      player_repo:       ${{ steps.resolve.outputs.player_repo }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Cache node_modules
+        id: nm-cache
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: nm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install dependencies
+        if: steps.nm-cache.outputs.cache-hit != 'true'
+        run: npm ci
+
+      - name: Init PostgreSQL schema
+        run: psql -h localhost -U qa_user -d qa_platform -f src/db/schema.sql
+        env:
+          PGPASSWORD: qa_password
+
+      - name: Migrate knowledge to DB
+        run: npm run db:migrate
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        continue-on-error: true   # no fallar si behavior.json no está indexado aún
+
+      - name: Resolve PR inputs
+        id: resolve
+        run: |
+          if [[ "${{ github.event_name }}" == "repository_dispatch" ]]; then
+            PR="${{ github.event.client_payload.pr_number }}"
+            REPO="${{ github.event.client_payload.player_repo }}"
+          else
+            PR="${{ inputs.player_pr_number }}"
+            REPO="${{ inputs.player_repo }}"
+          fi
+          [[ -z "$REPO" ]] && REPO="${PLAYER_GITHUB_REPO}"
+          echo "pr_number=$PR" >> $GITHUB_OUTPUT
+          echo "player_repo=$REPO" >> $GITHUB_OUTPUT
+        env:
+          PLAYER_GITHUB_REPO: ${{ vars.PLAYER_GITHUB_REPO }}
+
+      - name: Run LangGraph pipeline
+        id: pipeline
+        run: |
+          PR="${{ steps.resolve.outputs.pr_number }}"
+          echo "Running AI pipeline for PR #$PR"
+
+          # Ejecutar pipeline — stdout = JSON, stderr = logs
+          OUTPUT=$(npm run pipeline --silent -- "{\"ref\":\"$PR\",\"type\":\"pr\"}" 2>pipeline-stderr.log)
+          echo "--- Pipeline logs ---"
+          cat pipeline-stderr.log
+
+          echo "$OUTPUT" > pipeline-output.json
+          cat pipeline-output.json
+
+          # Extraer campos para outputs
+          VERDICT=$(echo "$OUTPUT" | jq -r '.verdict // "UNKNOWN"')
+          COVERAGE=$(echo "$OUTPUT" | jq -r '.coverage // 0')
+          TESTS=$(echo "$OUTPUT" | jq -r '.selected_tests // 0')
+          RISK=$(echo "$OUTPUT" | jq -r '.risk_label // "medium"')
+          RETRIES=$(echo "$OUTPUT" | jq -r '.retry_count // 0')
+          TRACE=$(echo "$OUTPUT" | jq -r '.trace_id // ""')
+
+          echo "verdict=$VERDICT"           >> $GITHUB_OUTPUT
+          echo "coverage=$COVERAGE"         >> $GITHUB_OUTPUT
+          echo "selected_tests=$TESTS"      >> $GITHUB_OUTPUT
+          echo "risk_label=$RISK"           >> $GITHUB_OUTPUT
+          echo "retry_count=$RETRIES"       >> $GITHUB_OUTPUT
+          echo "trace_id=$TRACE"            >> $GITHUB_OUTPUT
+
+          # Flags de tests según verdict + coverage
+          if [[ "$VERDICT" == "PASS" && "$COVERAGE" -ge 85 ]]; then
+            case "$RISK" in
+              critical) RUN_INTEGRATION=true; RUN_E2E=true;  RUN_VISUAL=true  ;;
+              high)     RUN_INTEGRATION=true; RUN_E2E=true;  RUN_VISUAL=false ;;
+              medium)   RUN_INTEGRATION=true; RUN_E2E=false; RUN_VISUAL=false ;;
+              *)        RUN_INTEGRATION=false; RUN_E2E=false; RUN_VISUAL=false ;;
+            esac
+          else
+            # Evaluador no alcanzó cobertura → correr suite mínima igual
+            RUN_INTEGRATION=true; RUN_E2E=false; RUN_VISUAL=false
+          fi
+
+          echo "run_integration=$RUN_INTEGRATION" >> $GITHUB_OUTPUT
+          echo "run_e2e=$RUN_E2E"                 >> $GITHUB_OUTPUT
+          echo "run_visual=$RUN_VISUAL"            >> $GITHUB_OUTPUT
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+          LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          PLAYER_GITHUB_REPO: ${{ steps.resolve.outputs.player_repo }}
+
+      - name: Upload pipeline artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-pipeline-output
+          path: |
+            pipeline-output.json
+            pipeline-stderr.log
+          retention-days: 14
+
+      - name: Upload session state
+        uses: actions/upload-artifact@v4
+        with:
+          name: session-state
+          path: state/session_state.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # ── JOB 2: Integration (si run_integration == true) ──────────────────────────
+  integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: ai-analyze
+    if: |
+      needs.ai-analyze.outputs.run_integration == 'true' &&
+      inputs.dry_run != true
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-qa
+        with:
+          browser: chromium
+      - name: Download pipeline output
+        uses: actions/download-artifact@v4
+        with:
+          name: ai-pipeline-output
+      - name: Run integration tests
+        run: |
+          # Los selected_tests del pipeline guían la selección
+          TESTS=$(cat pipeline-output.json | jq -r '.selected_tests // 0')
+          echo "Running integration tests (AI selected: $TESTS specs)"
+          # Por ahora correr todos los integration — en Sprint siguiente filtrar por spec_file
+          npx playwright test tests/integration/ --project=chromium
+        env:
+          PLATFORM_API_TOKEN: ${{ secrets.PLATFORM_API_TOKEN }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: integration-report
+          path: playwright-report/
+          retention-days: 14
+
+  # ── JOB 3: E2E (si run_e2e == true) ──────────────────────────────────────────
+  e2e:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    needs: ai-analyze
+    if: |
+      needs.ai-analyze.outputs.run_e2e == 'true' &&
+      inputs.dry_run != true
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-qa
+        with:
+          browser: chromium
+      - name: E2E tests
+        run: npx playwright test tests/e2e/ --project=chromium
+        env:
+          PLATFORM_API_TOKEN: ${{ secrets.PLATFORM_API_TOKEN }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-report
+          path: playwright-report/
+          retention-days: 14
+
+  # ── JOB 4: Memory consolidation post-run ─────────────────────────────────────
+  memory-consolidate:
+    name: Consolidate Learnings
+    runs-on: ubuntu-latest
+    needs: [ai-analyze, integration, e2e]
+    if: always() && needs.ai-analyze.result == 'success'
+    timeout-minutes: 5
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: qa_platform
+          POSTGRES_USER: qa_user
+          POSTGRES_PASSWORD: qa_password
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U qa_user -d qa_platform"
+          --health-interval 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Restore DB state
+        run: psql -h localhost -U qa_user -d qa_platform -f src/db/schema.sql
+        env:
+          PGPASSWORD: qa_password
+        continue-on-error: true
+      - name: Consolidate learnings
+        run: npm run memory:consolidate
+        env:
+          POSTGRES_PASSWORD: qa_password
+        continue-on-error: true
+
+  # ── JOB 5: Report to PR ───────────────────────────────────────────────────────
+  report:
+    name: Report to PR
+    runs-on: ubuntu-latest
+    needs: [ai-analyze, integration, e2e]
+    if: always() && needs.ai-analyze.outputs.pr_number != ''
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download pipeline output
+        uses: actions/download-artifact@v4
+        with:
+          name: ai-pipeline-output
+          continue-on-error: true
+      - name: Post PR comment
+        run: |
+          PR_NUM="${{ needs.ai-analyze.outputs.pr_number }}"
+          PLAYER_REPO="${{ needs.ai-analyze.outputs.player_repo }}"
+          VERDICT="${{ needs.ai-analyze.outputs.verdict }}"
+          COVERAGE="${{ needs.ai-analyze.outputs.coverage }}"
+          TESTS="${{ needs.ai-analyze.outputs.selected_tests }}"
+          RISK="${{ needs.ai-analyze.outputs.risk_label }}"
+          RETRIES="${{ needs.ai-analyze.outputs.retry_count }}"
+          TRACE="${{ needs.ai-analyze.outputs.trace_id }}"
+
+          INT="${{ needs.integration.result }}"
+          E2E="${{ needs.e2e.result }}"
+
+          status_emoji() {
+            case "$1" in
+              success) echo "✅" ;;
+              failure) echo "❌" ;;
+              skipped) echo "⏭️" ;;
+              *) echo "⚪" ;;
+            esac
+          }
+
+          if [[ "$VERDICT" == "PASS" && "$INT" != "failure" && "$E2E" != "failure" ]]; then
+            OVERALL="✅ SAFE TO MERGE"
+            BADGE="![SAFE](https://img.shields.io/badge/QA-SAFE_TO_MERGE-green)"
+          else
+            OVERALL="❌ DO NOT MERGE"
+            BADGE="![FAIL](https://img.shields.io/badge/QA-DO_NOT_MERGE-red)"
+          fi
+
+          TRACE_LINK=""
+          [[ -n "$TRACE" ]] && TRACE_LINK=" | [Langfuse trace](https://cloud.langfuse.com/trace/$TRACE)"
+
+          BODY="## $BADGE
+
+          **AI Pipeline verdict:** \`$VERDICT\` | Coverage: **${COVERAGE}%** | Tests selected: **$TESTS** | Retries: $RETRIES
+          **Risk label:** \`$RISK\`$TRACE_LINK
+
+          | Suite | Result |
+          |-------|--------|
+          | Integration | $(status_emoji $INT) ${INT:-skipped} |
+          | E2E | $(status_emoji $E2E) ${E2E:-skipped} |
+
+          **$OVERALL**
+
+          > Powered by LangGraph pipeline — change-analysis → risk → dependency → test-selection → evaluator
+          > [Full run →](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+
+          if [[ -n "$PLAYER_REPO" && -n "$PR_NUM" ]]; then
+            gh pr comment "$PR_NUM" \
+              --repo "$PLAYER_REPO" \
+              --body "$BODY"
+          else
+            echo "$BODY"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}

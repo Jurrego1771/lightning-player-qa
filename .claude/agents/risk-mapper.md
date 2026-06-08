@@ -72,10 +72,13 @@ Para los módulos afectados, obtener datos de impacto en cascada:
 
 ```bash
 MODULES=$(python3 -c "import sys,json; d=json.load(open('state/session_state.json')); print(' '.join(d['diff']['modules_affected']))" 2>/dev/null)
-npx ts-node scripts/query-context.ts impact-of $MODULES 2>/dev/null
+QC_OUT=$(npx ts-node scripts/query-context.ts impact-of $MODULES 2>&1)
+QC_EXIT=$?
+[ $QC_EXIT -ne 0 ] && echo "⚠️  query-context.ts exit $QC_EXIT — cascade risk no disponible, inferir solo desde risk_map.yaml" >&2
+echo "$QC_OUT"
 ```
 
-Si `scripts/query-context.ts` no existe → omitir sin error, continuar.
+Si `scripts/query-context.ts` no existe o falla → emitir ⚠️ ADVERTENCIA. Sin datos de cascada, `cascade_risk` no puede activarse — conservativo: asumir cascade_risk=false.
 
 Extraer de cada módulo:
 - `depended_by[]` — módulos que dependen de este módulo
