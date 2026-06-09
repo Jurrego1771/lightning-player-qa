@@ -1,0 +1,172 @@
+version: "1.0"
+module: events
+last_updated: "2026-06-08"
+
+risks:
+
+  - id: EVT-RISK-001
+    severity: high
+    title: "Memory leak por listener no eliminado con player.off()"
+    description: >
+      player.on() no retorna una función de unsubscribe — el integrador debe guardar
+      la referencia exacta de la función pasada a on() para poder llamar off().
+      Si el integrador usa funciones anónimas inline (arrow functions en el call site),
+      es imposible eliminar el listener. En SPAs donde el componente se monta/desmonta
+      repetidamente, cada mount acumula un listener adicional sin que los anteriores
+      sean eliminados. Con eventos de alta frecuencia (timeupdate, progress) esto causa
+      degradación de rendimiento observable y eventual crash por OOM en sesiones largas.
+    affected_files:
+      - "src/events/index.js"
+    trigger: "player.on(event, () => { ... }) sin guardar la referencia para player.off()"
+    mitigation: >
+      Siempre guardar la referencia: const fn = () => {...}; player.on(event, fn);
+      y luego player.off(event, fn). En React: usar useEffect cleanup. En caso de
+      destroy del player, player.destroy() llama internalEmitter.reset() que elimina
+      todos los listeners internos, pero los listeners del integrador externos al
+      internalEmitter pueden quedar huérfanos si no se llama off() explícitamente.
+    industry_note: >
+      Este es el bug #1 más común en integraciones de reproductores de video en producción.
+      Vimeo player.js issue #500 documenta el mismo patrón. React-player issue #616 también
+      reporta el mismo problema. La industria recomienda el patrón 'unsubscribe return' o
+      AbortController para solucionar esto a nivel de API.
+    test_priority: MUST
+
+  - id: EVT-RISK-002
+    severity: high
+    title: "Race condition: listener registrado después de que el evento ya se emitió"
+    description: >
+      Ciertos eventos como 'ready' o 'loaded' se emiten una sola vez durante el ciclo
+      de vida del player. Si el integrador registra player.on('ready', fn) después de
+      que ready ya se emitió, fn nunca será invocada. Este patrón es especialmente
+      problemático cuando el script del integrador carga de forma asíncrona o cuando
+      el player se inicializa antes de que el integrador haya registrado sus listeners.
+      A diferencia de Promise.then(), no hay mecanismo de replay para eventos perdidos.
+    affected_files:
+      - "src/events/index.js"
+    trigger: "loadMSPlayer() resuelve muy rápido (desde caché) antes de que el integrador registre player.on('ready', fn)"
+    mitigation: >
+      Registrar todos los listeners ANTES de llamar loadMSPlayer() o en el callback de
+      inicialización. El harness QA usa un flag __qa.initialized con backfill de 'ready'.
+      No hay mecanismo de replay en el player — esto es una limitación de diseño.
+    industry_note: >
+      El patrón EventEmitter clásico (Node.js) no tiene replay. EventTarget tampoco.
+      La industria usa patrones como BehaviorSubject (RxJS) o Promises para eventos
+      que solo ocurren una vez. Reproductores modernos como Shaka Player y Video.js
+      proveen el estado actual via getters para mitigar esto.
+    test_priority: MUST
+
+  - id: EVT-RISK-003
+    severity: high
+    title: "Renombrar constante en Events.* rompe todos los integradores"
+    description: >
+      El valor string de cada evento (ej: Events._ready = 'ready') es el nombre que
+      usan los integradores en player.on('ready', fn). Si el player team renombra la
+      constante (ej: 'ready' → 'playerReady'), todos los integradores que usaban el
+      string antiguo dejan de recibir el evento silenciosamente. No hay error, no hay
+      warning — el listener simplemente nunca se invoca.
+    affected_files:
+      - "constants.cjs"
+    trigger: "Refactor de constantes en constants.cjs que cambia el string value de Events.*"
+    mitigation: >
+      El test de contrato tests/contract/player-api.spec.ts verifica indirectamente
+      que los eventos fundamentales se emiten. No hay snapshot explícito de todos los
+      string values de Events.*. Agregar test de contrato que haga snapshot completo
+      de Events.* como objeto es la mitigación recomendada.
+    industry_note: "Versioning semántico para eventos es una práctica estándar en SDKs públicos. La ausencia de un changelog de eventos es un riesgo de madurez del SDK."
+    test_priority: MUST
+
+  - id: EVT-RISK-004
+    severity: high
+    title: "postMessage sin filtro de uniqueId provoca eventos duplicados en multi-instancia"
+    description: >
+      El mecanismo de postMessage usa un uniqueId para que cada instancia filtre sus
+      propios eventos y no los re-procese. Si este filtro falla (ej: por bug en la
+      asignación del ID o si dos instancias tienen el mismo ID), una instancia podría
+      procesar sus propios eventos msp: causando bucles de retroalimentación o duplicación
+      de listeners. En multi-instancia, el riesgo es mayor porque ambas instancias
+      escuchan el mismo canal window.
+    affected_files:
+      - "src/events/index.js"
+    trigger: "Dos instancias del player en la misma página, especialmente si se destruye y reinicializa una instancia"
+    mitigation: "El test tests/integration/multi-instance.spec.ts cubre el aislamiento de eventos entre instancias."
+    industry_note: "La arquitectura de postMessage con uniqueId es una solución correcta. El riesgo está en la correcta generación de IDs únicos y en escenarios de reuso de containers."
+    test_priority: MUST
+
+  - id: EVT-RISK-005
+    severity: medium
+    title: "player.once() puede disparar en contexto incorrecto si hay reentrada"
+    description: >
+      Si el handler registrado con once() llama a una acción que dispara el mismo evento
+      (reentrada), el comportamiento depende de si el listener ya fue eliminado antes
+      de la invocación. En la mayoría de implementaciones de EventEmitter, once() elimina
+      el listener ANTES de invocar el handler, lo que previene la reentrada. Sin embargo,
+      si el EventEmitter subyacente no hace esto, puede haber invocaciones dobles.
+    affected_files:
+      - "src/events/index.js"
+    trigger: "player.once('timeupdate', fn) donde fn llama player.seekTo() que dispara otro timeupdate antes de retornar"
+    mitigation: "El Node.js EventEmitter elimina el listener de once() antes de llamar al handler. Verificar que el polyfill del bundle tiene el mismo comportamiento."
+    industry_note: "Node.js docs explicitan que once() listeners se eliminan antes de ser invocados para prevenir reentrada."
+    test_priority: SHOULD
+
+  - id: EVT-RISK-006
+    severity: medium
+    title: "Silencio en eventos inválidos oculta errores de integración"
+    description: >
+      player.on('eventoConTypo', fn) no arroja error y no loguea warning. El integrador
+      no sabe que su listener nunca fue registrado hasta que se da cuenta de que su
+      callback no se ejecuta. En producción, esto puede pasar inadvertido durante meses.
+    affected_files:
+      - "src/events/index.js"
+    trigger: "Typo en el nombre del evento, o uso de un nombre de evento de una versión anterior del player"
+    mitigation: "Documentar en guía de integración. El test EVT-AC-006 verifica el comportamiento. Potencial mejora: agregar console.warn en desarrollo cuando se registra un evento inválido."
+    industry_note: "Video.js y Shaka Player lanzan warning en desarrollo cuando se registra un evento desconocido. Es una práctica recomendada para DX."
+    test_priority: SHOULD
+
+  - id: EVT-RISK-007
+    severity: medium
+    title: "Orden de eventos no garantizado entre módulos en paralelo"
+    description: >
+      Cuando múltiples módulos emiten eventos casi simultáneamente (ej: fin de un ad
+      que desencadena adsComplete + adsAllAdsCompleted + adsContentResumeRequested),
+      el orden de llegada a los listeners del integrador depende del orden en que
+      los módulos llaman internalEmitter.emit(). Si este orden cambia en una refactorización,
+      el integrador puede recibir los eventos en orden diferente.
+    affected_files:
+      - "src/ads/ima/"
+      - "src/events/index.js"
+    trigger: "Refactor de flujo de ads que cambia el orden de los emit() en la secuencia de fin de ad"
+    mitigation: "Tests de integración de beacons (tests/integration/ad-beacons.spec.ts) verifican el orden de eventos de ads."
+    industry_note: "VAST 4.x y IAB especifican el orden esperado de beacons. Los tests de beacons deben verificar el orden, no solo la presencia."
+    test_priority: SHOULD
+
+  - id: EVT-RISK-008
+    severity: medium
+    title: "Listeners no eliminados sobreviven a destroy() si fueron registrados externamente"
+    description: >
+      player.destroy() llama internalEmitter.reset() que elimina todos los listeners
+      del emitter interno. Sin embargo, si el integrador registró listeners directamente
+      en el elemento DOM del video (ej: videoElement.addEventListener()) en lugar de
+      usar player.on(), estos NO son eliminados por destroy(). Tampoco se eliminan
+      listeners registrados en window (ej: para el postMessage) si el integrador
+      los registró manualmente.
+    affected_files:
+      - "src/events/index.js"
+    trigger: "Integrador mezcla player.on() con addEventListener() directamente sobre el elemento DOM"
+    mitigation: "API pública prohíbe acceso al DOM interno. Documentar que solo player.on() es soportado y garantiza cleanup."
+    industry_note: "Este es un riesgo de integración, no un bug del player. La documentación debe ser explícita sobre qué se limpia en destroy()."
+    test_priority: SHOULD
+
+  - id: EVT-RISK-009
+    severity: low
+    title: "disableMspEvents no documentado puede confundir a integradores de iframe"
+    description: >
+      La opción disableMspEvents suprime la propagación de eventos via window.postMessage.
+      Si un integrador de iframe activa esta opción por error (ej: al copiar config de
+      otro contexto), dejará de recibir todos los eventos del player sin ningún mensaje
+      de error.
+    affected_files:
+      - "src/events/index.js"
+    trigger: "disableMspEvents=true en config de player embebido en iframe"
+    mitigation: "Documentar claramente en la guía de integración cuándo usar disableMspEvents."
+    industry_note: "Patrón común en SDKs de reproductores — la configuración defensiva es una buena práctica cuando se controla el contexto de embedding."
+    test_priority: COULD

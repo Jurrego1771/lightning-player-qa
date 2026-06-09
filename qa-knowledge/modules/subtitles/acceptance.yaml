@@ -1,0 +1,132 @@
+version: "1.0"
+module: subtitles
+last_updated: "2026-06-08"
+
+acceptance_criteria:
+
+  # ── MUST ────────────────────────────────────────────────────────────────────
+
+  - id: SUB-AC-001
+    priority: MUST
+    scenario: "Seleccionar pista VTT activa subtítulos"
+    given: "Stream con pistas VTT disponibles"
+    when: "Usuario selecciona una pista desde el popover"
+    then:
+      - "track.mode === 'showing'"
+      - "evento subtitlechange emite el TextTrack seleccionado"
+      - "subtítulos visibles sobre el video"
+
+  - id: SUB-AC-002
+    priority: MUST
+    scenario: "Toggle On/Off desactiva pista activa"
+    given: "Pista VTT en modo showing"
+    when: "Usuario presiona toggle On/Off"
+    then:
+      - "track.mode === 'disabled'"
+      - "evento subtitlechange emite null"
+      - "subtítulos desaparecen del video"
+
+  - id: SUB-AC-003
+    priority: MUST
+    scenario: "Solo una pista activa simultáneamente"
+    given: "Stream con múltiples pistas de texto"
+    when: "Usuario selecciona una segunda pista mientras hay una activa"
+    then:
+      - "pista anterior queda en modo disabled"
+      - "solo la nueva pista en modo showing"
+
+  - id: SUB-AC-004
+    priority: MUST
+    scenario: "Pista ASS renderiza con ass-html5"
+    given: "Stream configurado con subtítulo .ass"
+    when: "Usuario activa la pista ASS"
+    then:
+      - "componente AssSubtitle se monta"
+      - "subtítulos ASS visibles con estilos correctos"
+      - "pista nativa no visible (modo hidden)"
+
+  - id: SUB-AC-005
+    priority: MUST
+    scenario: "subtitlechange no se emite en disable silencioso"
+    given: "Pista activa en modo showing"
+    when: "Se llama disableAllSubtitles con { silent: true }"
+    then:
+      - "todas las pistas en modo disabled"
+      - "evento subtitlechange NO se emite"
+
+  - id: SUB-AC-006
+    priority: MUST
+    scenario: "textTracks expuesta en API pública"
+    given: "Player inicializado"
+    when: "Se accede a player.textTracks"
+    then:
+      - "retorna TextTrackList proxy (no null)"
+      - "proxy refleja pistas del elemento <video>"
+
+  # ── SHOULD ──────────────────────────────────────────────────────────────────
+
+  - id: SUB-AC-007
+    priority: SHOULD
+    scenario: "Zoom VTT overlay cuando zoom activo"
+    given: "Zoom habilitado y scale > 1.001, pista VTT seleccionada"
+    when: "Usuario activa zoom"
+    then:
+      - "pista nativa forzada a hidden"
+      - "cues replicados en NativeVttZoomOverlay"
+      - "evento subtitlechange emite el track (no null)"
+
+  - id: SUB-AC-008
+    priority: SHOULD
+    scenario: "ASS excluido de lista Chromecast"
+    given: "Session Chromecast activa, stream con mezcla de VTT y ASS"
+    when: "Se abre el popover de subtítulos"
+    then:
+      - "lista muestra solo pistas VTT/TTML"
+      - "pistas .ass/.ssa no aparecen"
+
+  - id: SUB-AC-009
+    priority: SHOULD
+    scenario: "URL de subtítulo normalizada a HTTPS"
+    given: "Config con subtítulo usando URL http://"
+    when: "Player inicializa"
+    then:
+      - "src del <track> usa https://"
+      - "subtítulo carga sin error de mixed content"
+
+  - id: SUB-AC-010
+    priority: SHOULD
+    scenario: "EZTitles ASS normalizado correctamente"
+    given: "Archivo .ass con encabezado EZTitles (campo Marked, Effects plural)"
+    when: "ASS se renderiza"
+    then:
+      - "ass-html5 renderiza sin error"
+      - "subtítulos visibles (no pantalla en blanco)"
+
+  - id: SUB-AC-011
+    priority: SHOULD
+    scenario: "TV skin preserva selectedSubtitle al desactivar"
+    given: "Skin TV activa, usuario desactiva subtítulos"
+    when: "Se llama disableAllSubtitles"
+    then:
+      - "selectedSubtitle mantiene referencia a la pista (no null)"
+      - "modo de la pista es disabled"
+
+  # ── COULD ───────────────────────────────────────────────────────────────────
+
+  - id: SUB-AC-012
+    priority: COULD
+    scenario: "addTextTrack agrega pista programáticamente"
+    given: "Player inicializado sin subtítulos en config"
+    when: "Se llama player.addTextTrack('subtitles', 'Spanish', 'es')"
+    then:
+      - "nueva pista aparece en player.textTracks"
+      - "popover muestra la pista"
+
+  - id: SUB-AC-013
+    priority: COULD
+    scenario: "PlayResX/Y fallback para ASS sin resolución definida"
+    given: "Archivo .ass sin PlayResX ni PlayResY en [Script Info]"
+    when: "ASS se renderiza"
+    then:
+      - "se inyectan valores por defecto (640x360)"
+      - "subtítulos visibles (no desaparecen por resolución cero)"

@@ -1,0 +1,149 @@
+version: "1.0"
+module: drm
+last_updated: "2026-06-08"
+
+acceptance_criteria:
+  - id: DRM-AC-001
+    priority: MUST
+    scenario: "Widevine DASH con license server válido reproduce en Chromium"
+    given: "Player en Chromium con stream DASH protegido con Widevine y license server válido configurado en drm.widevine.serverURL"
+    when: "El player inicializa y DRMPlugin solicita la licencia"
+    then:
+      - "getDRMSupport() resuelve con 'com.widevine.alpha'"
+      - "DRMPluginRunner selecciona candidateUrls.mpd como src"
+      - "La licencia se obtiene del license server correctamente"
+      - "El evento 'ready' se emite en menos de 8 segundos"
+      - "La reproducción comienza y currentTime avanza"
+
+  - id: DRM-AC-002
+    priority: MUST
+    scenario: "License server 403 emite evento error con código DRM_LICENSE_ERROR"
+    given: "Player con stream DASH protegido con Widevine y license server que retorna 403"
+    when: "El player intenta obtener la licencia"
+    then:
+      - "Se emite evento 'error' con fatal=true y data='DRM_LICENSE_ERROR'"
+      - "El player no entra en loop de reintentos"
+      - "El player no queda en estado indefinido (buffering eterno)"
+      - "No se lanza ningún TypeError no capturado"
+
+  - id: DRM-AC-003
+    priority: MUST
+    scenario: "DRM no soportado en browser emite error DRM_NOT_SUPPORTED"
+    given: "Player en un browser sin ningún CDM disponible (EME no disponible)"
+    when: "getDRMSupport() falla al detectar cualquier key system"
+    then:
+      - "Se emite evento 'error' con fatal=true y data='DRM_NOT_SUPPORTED'"
+      - "PlayerInitError se lanza con mensaje 'DRM not supported'"
+      - "El player no crashea con excepción no capturada"
+
+  - id: DRM-AC-004
+    priority: MUST
+    scenario: "Selección correcta de candidateUrl: Chromium elige MPD (Widevine)"
+    given: "Player en Chromium con candidateUrls que incluye HLS y MPD"
+    when: "DRMPluginRunner resuelve el key system vía getDRMSupport()"
+    then:
+      - "getDRMSupport() retorna 'com.widevine.alpha'"
+      - "DRMPluginRunner selecciona candidateUrls.mpd como src"
+      - "selectedSrcType se establece como 'dash'"
+      - "El handler de playback es 'dash' o nativo"
+
+  - id: DRM-AC-005
+    priority: MUST
+    scenario: "Selección correcta de candidateUrl: Safari elige HLS (FairPlay)"
+    given: "Player en Safari con candidateUrls que incluye HLS y MPD"
+    when: "DRMPluginRunner resuelve el key system vía getDRMSupport()"
+    then:
+      - "getDRMSupport() retorna 'com.apple.fps.1_0'"
+      - "DRMPluginRunner selecciona candidateUrls.hls como src"
+      - "selectedSrcType se establece como 'hls'"
+      - "El player no intenta cargar el MPD en Safari"
+
+  - id: DRM-AC-006
+    priority: MUST
+    scenario: "Token auth incluido en header X-AxDRM-Message de la license request"
+    given: "drm.widevine.token está configurado como string no vacío"
+    when: "getDashProtectionData() construye el objeto protData"
+    then:
+      - "protData['com.widevine.alpha'].httpRequestHeaders['X-AxDRM-Message'] === token"
+      - "La license request enviada al servidor incluye el header X-AxDRM-Message"
+
+  - id: DRM-AC-007
+    priority: MUST
+    scenario: "httpRequestHeaders custom tienen precedencia sobre token"
+    given: "drm.widevine.httpRequestHeaders y drm.widevine.token están ambos configurados"
+    when: "getDashProtectionData() construye el objeto protData"
+    then:
+      - "protData usa httpRequestHeaders directamente sin agregar X-AxDRM-Message"
+      - "token es ignorado cuando httpRequestHeaders está presente"
+
+  - id: DRM-AC-008
+    priority: MUST
+    scenario: "candidateUrls vacío usa fallback sin crash"
+    given: "loadConfig retorna drm con _candidateUrls vacío (sin hls ni mpd)"
+    when: "DRMPlugin intenta resolver el src"
+    then:
+      - "DRMPluginRunner no resuelve ningún src candidato"
+      - "Se emite evento 'error' con data='DRM_NOT_SUPPORTED'"
+      - "No se lanza TypeError ni excepción no capturada"
+
+  - id: DRM-AC-009
+    priority: MUST
+    scenario: "Contenido sin DRM no activa el módulo DRM"
+    given: "loadConfig retorna contenido sin drm.enabled ni serverURL"
+    when: "El player inicializa"
+    then:
+      - "takeDrmPath es false — no se construyen candidateUrls"
+      - "DRMPlugin no renderiza DRMPluginRunner"
+      - "El player reproduce normalmente vía src.hls sin pasar por EME"
+      - "No hay solicitudes al license server"
+
+  - id: DRM-AC-010
+    priority: SHOULD
+    scenario: "FairPlay HLS en Safari real reproduce contenido protegido"
+    given: "Player en Safari real (no Playwright WebKit headless) con stream HLS protegido con FairPlay y certificado válido"
+    when: "DRMPluginRunner inicializa hls.js con emeEnabled=true y drmSystems"
+    then:
+      - "La licencia FairPlay se obtiene del license server"
+      - "El certificado FairPlay se descarga correctamente"
+      - "La reproducción comienza y currentTime avanza"
+
+  - id: DRM-AC-011
+    priority: SHOULD
+    scenario: "Widevine DASH: seek en contenido protegido no rompe la reproducción"
+    given: "Player en Chromium reproduciendo stream DASH con Widevine activo"
+    when: "Se hace seek a la mitad de la duración del contenido"
+    then:
+      - "El evento 'seeked' se emite"
+      - "La reproducción continúa después del seek"
+      - "No se emite evento 'error' tras el seek"
+
+  - id: DRM-AC-012
+    priority: SHOULD
+    scenario: "Google DAI + DRM: DRMPlugin espera manifest antes de resolver"
+    given: "Player con adInsertion.enabled=true y DRM configurado (deferSrcForGoogleDAI=true)"
+    when: "DRMPlugin inicializa"
+    then:
+      - "DRMPlugin no renderiza DRMPluginRunner hasta recibir _daiDeferredManifestUrl"
+      - "Tras 5s sin manifest, giveUpSession=true y DRMPluginRunner procede con candidateUrls"
+      - "No se produce crash durante la espera"
+
+  - id: DRM-AC-013
+    priority: SHOULD
+    scenario: "vkeySystem inválido (candidateUrls sin match): error controlado"
+    given: "candidateUrls contiene solo key systems que getDRMSupport no puede resolver"
+    when: "DRMPluginRunner busca un candidato compatible"
+    then:
+      - "getDRMSupport() rechaza (no hay key system válido)"
+      - "Se emite evento 'error' con data='DRM_NOT_SUPPORTED'"
+      - "No se lanza TypeError por vkeySystem null"
+
+  - id: DRM-AC-014
+    priority: COULD
+    scenario: "PlayReady DASH en Edge reproduce contenido protegido"
+    given: "Player en Microsoft Edge con CDM PlayReady activo y stream DASH con PlayReady configurado"
+    when: "DRMPlugin inicializa"
+    then:
+      - "getDRMSupport() retorna 'com.microsoft.playready'"
+      - "DRMPluginRunner selecciona candidateUrls.mpd"
+      - "La licencia PlayReady se obtiene correctamente"
+      - "La reproducción comienza"

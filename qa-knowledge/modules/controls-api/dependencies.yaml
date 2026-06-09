@@ -1,0 +1,77 @@
+version: "1.0"
+module: controls-api
+last_updated: "2026-06-08"
+
+internal:
+  - id: playback-core
+    reason: "playerHandler.play()/.pause()/.get()/.set() — destino final de todos los comandos de control cuando no hay ad activo"
+    coupling: high
+    files:
+      - "src/controls/index.js"
+    notes: "controls-api delega play/pause/get/set a playerHandler. Si playerHandler no está montado o falla, play() lanza. La condición _playerReady depende de que playerHandler emita 'canplay'."
+
+  - id: hls
+    reason: "level/levels/bandwidth/bitrate — propiedades expuestas en la API pública para selección de calidad, sólo válidas cuando sourceType === 'hls'"
+    coupling: medium
+    files:
+      - "src/controls/index.js"
+    notes: "El Controls.set('currentTime', v) llega finalmente a hls.js o al video element nativo. La precisión del seek depende de la posición del keyframe HLS."
+
+  - id: ads-manager
+    reason: "play()/pause()/get()/set() se delegan al adsManager cuando _hasAds es true. El adsManager tiene precedencia sobre playerHandler."
+    coupling: high
+    files:
+      - "src/controls/index.js"
+    notes: "Si adsManager.play() retorna un valor !== false, el playerHandler NO recibe play(). Este es el mecanismo principal de ad takeover. Controls también lee adInfo.isLinear para isPlayingAd()."
+
+  - id: events
+    reason: "Escucha eventos internos ('canplay', 'emptied', 'error', 'timeupdate', '_playing', '_adsStarted', '_adsResumed') y emite 'ready' al alcanzar estado listo"
+    coupling: high
+    files:
+      - "src/controls/index.js"
+    notes: "Usa internalEmitter (no externalEmitter). El evento 'ready' público es emitido por controls cuando _playerReady y _viewReady son true."
+
+  - id: state
+    reason: "Lee _autoplay, _src, _ads, _startPos del Context. Escribe _playerReady, _ready, _autoplayed vía this.props.setData y this.setState."
+    coupling: high
+    files:
+      - "src/controls/index.js"
+    notes: "Las actualizaciones de estado son async (React render cycle). Tests deben usar expect.poll() en lugar de assert directo."
+
+  - id: platform-resumePlaying
+    reason: "Lee progreso guardado (_startPos) al iniciar. Escribe progreso periódicamente cuando _shouldResumePosition es true."
+    coupling: low
+    files:
+      - "src/controls/index.js"
+      - "src/platform/resumePlaying.js"
+    notes: "Solo activo cuando el integrador pasa resumePosition: true en la config. No afecta el flujo de play/pause."
+
+  - id: api-bootstrap
+    reason: "api.js espera InternalEvents._controlsReady antes de resolver loadMSPlayer(). Este evento lo emite controls cuando el componente está montado y la API existe."
+    coupling: high
+    files:
+      - "src/api/api.js"
+      - "src/controls/index.js"
+    notes: "Si Controls no emite _controlsReady, loadMSPlayer() nunca resuelve. Timeout implícito de setInterval(100ms). Crítico para el bootstrap del player."
+
+external:
+  - id: react
+    package: "react@18.3.1"
+    version: "18.3.1"
+    reason: "Controls es un React.PureComponent. El ciclo de vida (componentDidMount, getDerivedStateFromProps, render) gestiona el estado de ready y autoplay."
+    risk: low
+    note: "Las actualizaciones de estado son async por el scheduler de React. Tests que lean player.status inmediatamente después de una acción pueden recibir el valor anterior."
+
+  - id: hls-js
+    package: "hls.js@1.6.13"
+    version: "1.6.13"
+    reason: "playerHandler interno. El seek (currentTime setter) y los eventos 'seeking'/'seeked' son procesados por hls.js antes de llegar al video element."
+    risk: medium
+    note: "El seek en HLS snaps al keyframe más cercano. La precisión típica es ±2s dependiendo del intervalo entre keyframes (GOP size). Streams con GOP grande (>4s) pueden tener seek poco preciso."
+
+  - id: google-ima-sdk
+    package: "https://imasdk.googleapis.com/js/sdkloader/ima3.js"
+    version: "IMA SDK v3 (latest)"
+    reason: "adsManager implementado con Google IMA SDK. Controls delega play/pause al adsManager cuando hay ads."
+    risk: medium
+    note: "IMA SDK se carga desde CDN externo. En entornos de test headless, el SDK puede no cargar o comportarse diferente. Usar mock-vast para tests de integración de ads."

@@ -1,0 +1,122 @@
+version: "1.0"
+module: ads-adswizz
+last_updated: "2026-06-08"
+
+learnings:
+  - id: AWZ-LEARN-001
+    title: "AdsWizz aquí es SSAI de audio + companion banner, NO un ad system con eventos"
+    discovery: "código fuente: src/ads/adswizz/index.jsx, src/platform/loadConfig.js"
+    detail: >
+      La integración tiene dos caras: (1) decoración de la URL del stream en loadConfig
+      para SSAI, y (2) un companion banner React. No hay emisión de eventos adsStarted/
+      adsComplete/adsError al internalEmitter. Los eventos listados en el behavior.json
+      legacy eran supuestos de plantilla, no comportamiento real del código.
+    impact_on_tests: >
+      No escribir tests que esperen eventos de ciclo de vida de aviso de AdsWizz. La única
+      señal observable del aviso es la aparición/ocultamiento del banner (showingBanner) y
+      la presencia de query params es/pz/listenerid en la URL del stream.
+
+  - id: AWZ-LEARN-002
+    title: "El SDK se envuelve en un Proxy que mezcla métodos propios y del SDK"
+    discovery: "código fuente: src/ads/adswizz/getAdswizzSDK.js líneas 6-19"
+    detail: >
+      AdswizzSDK devuelve un Proxy sobre window.adswizzSDK: si la prop existe en la clase
+      wrapper (p.ej. decorateURL) se usa esa; si no, cae al SDK real (init, setCompanionBannerConfig,
+      getVersion, resetSession, settings, MetadataConnection). decorateURL es del wrapper;
+      el resto viene del SDK.
+    impact_on_tests: >
+      Para mockear, el mock debe exponer tanto los métodos del wrapper (decorateURL) como
+      los del SDK real. Inyectar window.adswizzSDK con init/setCompanionBannerConfig/
+      getVersion/resetSession/settings/MetadataConnection antes de cargar el módulo.
+
+  - id: AWZ-LEARN-003
+    title: "getAdswizzSDK es un singleton perezoso compartido por SSAI y companion"
+    discovery: "código fuente: src/ads/adswizz/getAdswizzSDK.js líneas 32-43"
+    detail: >
+      La promesa del SDK se memoiza en module scope (adswizzSDK). loadConfig (SSAI) y el
+      componente Adswizz (banner) llaman a la misma getAdswizzSDK(), por lo que comparten
+      una única instancia/sesión del SDK.
+    impact_on_tests: >
+      En tests, el singleton persiste entre montajes dentro del mismo módulo. Resetear el
+      estado del módulo entre casos para evitar contaminación de una instancia previa.
+
+  - id: AWZ-LEARN-004
+    title: "decorateURL muta el objeto URL original por referencia"
+    discovery: "código fuente: src/ads/adswizz/getAdswizzSDK.js líneas 21-29"
+    detail: >
+      decorateURL construye una URL temporal hacia el edge server, deja que el SDK la
+      decore, y copia el .search resultante de vuelta al originalUrl pasado por parámetro.
+      No devuelve un valor; muta el argumento. loadConfig depende de ese efecto colateral.
+    impact_on_tests: >
+      Verificar la decoración inspeccionando el objeto URL pasado tras await, no un retorno.
+      Confirmar que el query final contiene los parámetros de sesión añadidos por el SDK.
+
+  - id: AWZ-LEARN-005
+    title: "Activación requiere hasAW AND afrUrl; SSAI requiere además edge_data.server"
+    discovery: "código fuente: src/view/common/components/adswizz.jsx, src/platform/loadConfig.js L197"
+    detail: >
+      El banner companion se monta solo si metadata.hasAW===true Y adswizz_companion.afrUrl.
+      La decoración SSAI ocurre solo si edge_data.server Y afrUrl. Son condiciones distintas:
+      puede haber companion sin SSAI si falta edge_data.server.
+    impact_on_tests: >
+      Cubrir las cuatro combinaciones: (hasAW+afrUrl+server), (hasAW+afrUrl sin server),
+      (hasAW sin afrUrl), (sin hasAW). Cada una activa un subconjunto distinto de la feature.
+
+  - id: AWZ-LEARN-006
+    title: "TIMED_POLLING + setUseSetTimeoutForSynchronization para navegadores sin EventSource"
+    discovery: "código fuente: index.jsx L110-111; investigación web: docs.sdk.adswizz.com"
+    detail: >
+      El código fija MetadataConnection.TIMED_POLLING y setUseSetTimeoutForSynchronization(true).
+      La doc del SDK indica que las opciones basadas en EventSource no funcionan en IE/Edge
+      legacy; el player elige explícitamente el camino compatible (polling con setTimeout).
+    impact_on_tests: >
+      Tests de la sincronización del banner deben simular el polling, no EventSource. La
+      Second Metadata Connection (SMC) es lo que hace funcionar el companion en contexto cookieless.
+
+  - id: AWZ-LEARN-007
+    title: "DAAST está deprecado; el estándar de audio moderno es VAST 4.1+ con adType=audio"
+    discovery: "investigación web: IAB Tech Lab — Digital Audio Ad Serving Template (DAAST)"
+    detail: >
+      IAB deprecó DAAST y lo fusionó dentro de VAST 4.1 (nov 2018), donde los avisos de
+      audio se expresan con un adType opcional 'audio'. AdsWizz soporta entrega de audio
+      vía VAST 4.x. El player no parsea el VAST directamente (es SSAI), pero QA del lado
+      servidor debe asumir VAST 4.1+ y no DAAST.
+    impact_on_tests: >
+      No diseñar fixtures de respuesta de aviso basados en el esquema DAAST legacy; usar
+      VAST 4.1+ adType=audio para cualquier mock de creativo audio en pruebas de extremo a extremo.
+
+  - id: AWZ-LEARN-008
+    title: "Session support (decorateURLAndCreateSession) es la vía cookieless recomendada"
+    discovery: "código fuente: getAdswizzSDK.js L25; investigación web: docs.sdk.adswizz.com"
+    detail: >
+      La doc del SDK indica usar decorateURLAndCreateSession (no el viejo decorateURL del SDK)
+      para habilitar la Second Metadata Connection en contexto de navegador cookieless. El player
+      ya usa el método de sesión, alineado con la práctica moderna. Requiere que la AIS tenga
+      activado el flag set-session-cookie.
+    impact_on_tests: >
+      Validar que el flujo crea sesión (decorateURLAndCreateSession) y no asume cookies de
+      terceros. Probar en contexto cookieless (iframe cross-origin, Safari ITP) donde las
+      cookies de terceros están bloqueadas.
+
+  - id: AWZ-LEARN-009
+    title: "AdsWizz vs TargetSpot vs Triton Digital — todos audio SSAI/DAI, contratos distintos"
+    discovery: "investigación web: panorama de ad insertion de audio (radio/podcast)"
+    detail: >
+      En el mercado de monetización de audio compiten AdsWizz (propiedad de SiriusXM/Pandora),
+      TargetSpot y Triton Digital. Todos hacen Dynamic Ad Insertion server-side para radio en
+      vivo y podcast, pero con SDKs y formatos de tracking propios. El player integra AdsWizz
+      específicamente; cambiar de proveedor implicaría otro SDK y otro flujo de decoración.
+    impact_on_tests: >
+      Los tests deben asumir el contrato específico de AdsWizz (decorateURLAndCreateSession,
+      setCompanionBannerConfig, es/pz/listenerid). No generalizar a un contrato de DAI agnóstico.
+
+  - id: AWZ-LEARN-010
+    title: "listenerConsent: true está hardcoded — el origen del ID no depende de una CMP"
+    discovery: "código fuente: index.jsx L89"
+    detail: >
+      init recibe listenerConsent: true fijo. Según la doc del SDK, true hace que el listenerId
+      venga de cookie; false generaría uno aleatorio. No hay integración con un Consent Management
+      Platform que module este valor.
+    impact_on_tests: >
+      Documentar como hallazgo de compliance. Tests de privacidad deben verificar el origen del
+      listenerId y dejar claro que hoy no responde al consentimiento real del oyente.

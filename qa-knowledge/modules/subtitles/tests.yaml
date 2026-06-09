@@ -1,0 +1,82 @@
+version: "1.0"
+module: subtitles
+last_updated: "2026-06-08"
+
+existing_tests: []
+
+coverage_gaps:
+
+  - id: GAP-SUB-001
+    priority: MUST
+    ac_ref: SUB-AC-001
+    title: "VTT track selection → subtitlechange event"
+    suggested_spec: "tests/integration/subtitles-vtt.spec.ts"
+    notes: "Flujo principal de selección. Verificar event payload = TextTrack object."
+
+  - id: GAP-SUB-002
+    priority: MUST
+    ac_ref: SUB-AC-002
+    title: "Toggle On/Off → subtitlechange null"
+    suggested_spec: "tests/integration/subtitles-vtt.spec.ts"
+    notes: "Verificar que event emite null (no track con mode disabled)."
+
+  - id: GAP-SUB-003
+    priority: MUST
+    ac_ref: [SUB-AC-001, SUB-AC-003]
+    title: "Un solo track activo cuando hay múltiples pistas"
+    suggested_spec: "tests/integration/subtitles-vtt.spec.ts"
+    notes: "Stream con ≥2 pistas VTT. Cambiar entre ellas y verificar exclusividad."
+
+  - id: GAP-SUB-004
+    priority: MUST
+    ac_ref: SUB-AC-003
+    title: "DAI elimina subtítulos externos"
+    risk_ref: SUB-RISK-003
+    suggested_spec: "tests/integration/subtitles-dai.spec.ts"
+    notes: >
+      Requiere mock DAI. Verificar que config.subtitles ausente y que
+      solo pistas del manifiesto HLS aparecen.
+
+  - id: GAP-SUB-005
+    priority: SHOULD
+    ac_ref: SUB-AC-004
+    title: "ASS track renderiza con ass-html5"
+    suggested_spec: "tests/integration/subtitles-ass.spec.ts"
+    notes: >
+      Necesita stream con .ass. Verificar que componente AssSubtitle existe en DOM
+      y que pista nativa no está en modo showing.
+
+  - id: GAP-SUB-006
+    priority: SHOULD
+    ac_ref: SUB-AC-010
+    defect_ref: SUB-DEF-002
+    title: "EZTitles ASS normalization no falla en render"
+    suggested_spec: "tests/integration/subtitles-ass.spec.ts"
+    notes: "Fixture: archivo .ass con encabezado EZTitles. Verificar render sin error."
+
+  - id: GAP-SUB-007
+    priority: SHOULD
+    ac_ref: SUB-AC-008
+    risk_ref: SUB-RISK-005
+    title: "ASS pistas excluidas de lista Chromecast"
+    suggested_spec: "tests/integration/subtitles-chromecast.spec.ts"
+    notes: "Mock Chromecast session. Verificar que effectiveSubtitleList no contiene .ass."
+
+  - id: GAP-SUB-008
+    priority: SHOULD
+    ac_ref: SUB-AC-007
+    title: "Zoom VTT overlay — pista nativa hidden, overlay visible"
+    risk_ref: SUB-RISK-001
+    suggested_spec: "tests/integration/subtitles-zoom.spec.ts"
+    notes: >
+      Activar zoom > 1.001 con pista VTT. Verificar que track.mode === 'hidden'
+      y que NativeVttZoomOverlay existe en DOM.
+
+  - id: GAP-SUB-009
+    priority: COULD
+    ac_ref: SUB-AC-005
+    title: "disableAllSubtitles silent=true no emite subtitlechange"
+    suggested_spec: "tests/integration/subtitles-vtt.spec.ts"
+    notes: >
+      Listener en subtitlechange. Llamar disable con silent=true.
+      Verificar que listener no fue llamado.

@@ -1,0 +1,64 @@
+version: "1.0"
+module: ads-manager
+last_updated: "2026-06-08"
+
+learnings:
+  - id: ADMGR-LEARN-001
+    title: "ads-manager ES la implementación CSAI propia del player, no un selector de sistemas externos"
+    discovery: "código fuente: src/ads/manager/ completo + src/ads/README.md"
+    detail: "El módulo ads-manager implementa directamente la especificación de Google IMA SDK HTML5 (clases AdsLoader, AdsManager, AdsRequest, AdsDisplayContainer, AdsEvent) pero con código propio del player, sin cargar el SDK de Google IMA. Los sistemas externos (Google IMA SDK, DAI, SGAI, AdsWizz) son plugins completamente separados en src/ads/googleIma/, src/ads/googleDAI/, etc. La documentación legacy (behavior.json) confundía ads-manager con un 'selector de sistemas' pero el código muestra que es la implementación VAST/VMAP del player."
+    impact_on_tests: "Los tests de ads-manager deben verificar el ciclo VAST/VMAP propio del player, no la inicialización del SDK de Google IMA. No testear ads-manager esperando eventos específicos del SDK de Google IMA (google.ima.*) — esos viven en ads-ima."
+
+  - id: ADMGR-LEARN-002
+    title: "AdsHandler emite en DOS lugares simultáneamente: internalEmitter Y su propio EventEmitter"
+    discovery: "código fuente: src/ads/manager/render/handler.js línea 156-160"
+    detail: "El método emit() de AdsHandler está overrideado: `internalEmitter.emit(event, ...args); super.emit(event, ...args)`. Esto significa que cada evento de ads es emitido en el bus global del player (internalEmitter) Y en el EventEmitter local del handler. El componente React AdsManagerWithBoundary (render/index.js) escucha en handler directamente; el resto del player escucha en internalEmitter."
+    impact_on_tests: "En tests que interceptan eventos del player (via __qa.events o page.evaluate), los eventos _ads* llegan a través del internalEmitter. No es necesario acceder directamente al handler para verificar eventos. Evitar doble-conteo en tests que escuchan ambos."
+
+  - id: ADMGR-LEARN-003
+    title: "El preload de midroll ocurre 8 segundos antes del cue point (hardcoded)"
+    discovery: "código fuente: src/ads/manager/manager/index.js línea 566 — comentario '// TODO: get value from request config'"
+    detail: "AdsManager#waitForNextAdBreak() llama #preload() cuando currentTime >= nextAdBreak - 8. Este valor de 8 segundos está hardcoded con un TODO indicando que debería venir de la configuración. También, en #onAdProgress, el preload del siguiente ad se dispara cuando remainingTime < vastLoadTimeout/1000 segundos."
+    impact_on_tests: "Tests de midroll timing deben considerar que el preload comienza 8s antes. Si un test usa contenido de menos de 8s antes de un midroll, el preload puede no dispararse en el timing esperado."
+
+  - id: ADMGR-LEARN-004
+    title: "ContentPauseRequested solo se emite después de que el ad está Loaded (no al inicio del schedule)"
+    discovery: "código fuente: src/ads/manager/manager/index.js líneas 383-396 (#sendPauseRequest)"
+    detail: "#sendPauseRequest() verifica `this.#loadedAds.has(this.#currentAd)` antes de emitir ContentPauseRequested. El evento Loaded (AdsEvents.Loaded) se emite por el tracker cuando el video del ad dispara 'loadeddata'. El #registerOnLoadedLast hack garantiza que #onAdLoaded sea SIEMPRE el último listener en el evento Loaded, para que ContentPauseRequested se envíe DESPUÉS de que todos los demás listeners procesen el Loaded event."
+    impact_on_tests: "No asumir que adsContentPauseRequested se emite inmediatamente al iniciar un ad break. Puede haber una ventana de tiempo entre adsLoaded y adsContentPauseRequested. Usar waitForFunction o waitForEvent con timeout apropiado."
+
+  - id: ADMGR-LEARN-005
+    title: "La secuencia de pause/resume del contenido tiene una sincronización especial con el evento pause"
+    discovery: "código fuente: src/ads/manager/render/handler.js líneas 293-313 (#onContentPauseRequested)"
+    detail: "Cuando ContentPauseRequested llega, el handler llama playerHandler.pause() y ESPERA a que el evento _pause sea emitido (internalEmitter.once(Events._pause, ...)) antes de emitir _adsContentPauseRequested. Si el player ya está pausado, emite directamente. Esto garantiza que los consumidores del evento adsContentPauseRequested vean el player realmente pausado."
+    impact_on_tests: "En tests e2e, esperar adsContentPauseRequested implica que el player YA está pausado cuando llega el evento. No es necesario verificar por separado que el player está pausado después de adsContentPauseRequested."
+
+  - id: ADMGR-LEARN-006
+    title: "El schedule de cue points es un array mutable consumido por #endSchedule"
+    discovery: "código fuente: src/ads/manager/manager/index.js líneas 398-419 (#endSchedule)"
+    detail: "#endSchedule() filtra el cue point completado del #schedule array con filter(). Cuando el schedule queda vacío Y wasRunning era true, se emite AllAdsCompleted y se llama destroy(). Si el schedule no queda vacío, se llama #loadAd(schedule[0]) para el siguiente break. El post-roll (-1) requiere que #_contentComplete sea true para iniciarse."
+    impact_on_tests: "El orden de emisión de AllAdsCompleted es determinista: solo después de que TODOS los cue points han sido procesados y el schedule está vacío. Los tests pueden esperar AllAdsCompleted como señal de completitud total."
+
+  - id: ADMGR-LEARN-007
+    title: "La industria considera que el patrón de capas de orquestación (wrapper sobre VAST) resuelve la fragmentación multi-SSP"
+    discovery: "investigación web: epom.com/blog/ad-server/video-ad-serving-encyclopedia + iabtechlab.com/standards-old/video-multiple-ad-playlist-vmap"
+    detail: "VMAP fue diseñado por IAB para que el content owner (no la red de ads) controle cuándo y cuántos ad breaks se insertan. La capa de orquestación (ads-manager) es la implementación del lado del player de este contrato. Sin esta capa, el player no podría coordinar múltiples ad breaks a lo largo del contenido usando un solo ad tag URL."
+    impact_on_tests: "Los tests de VMAP (mid-rolls, post-rolls) son críticos desde la perspectiva del negocio porque representan el contrato entre el content owner y el ad network. Un bug en el scheduling VMAP tiene impacto directo en revenue."
+
+  - id: ADMGR-LEARN-008
+    title: "VPAID está deprecated por IAB; el player tiene soporte legacy a través de adsInsecureVpaidMode"
+    discovery: "investigación web: setupad.com/blog/vpaid-vs-vast + adexchanger.com + iabtechlab.com/standards-old/video-player-ad-interface-definition-vpaid"
+    detail: "VPAID (Video Player-Ad Interface Definition) fue deprecated por IAB Tech Lab en 2024-2025. La razón: VPAID da al creative código JS control completo sobre el video element, creando riesgos de seguridad, problemas de rendimiento y incompatibilidad con entornos SSAI. El reemplazo es SIMID (Secure Interactive Media Interface Definition) + OMID para measurement. El player mantiene soporte vía adsInsecureVpaidMode=true pero esto es un legacy path."
+    impact_on_tests: "No testear VPAID en CI (confirmado en test_anti_patterns del legacy behavior.json — el sandbox de Playwright no soporta VPAID). Documentar que el player soporta SIMID vía InteractiveCreativeFile en VAST 4.x (gestionado por AdsTracker)."
+
+  - id: ADMGR-LEARN-009
+    title: "Viewable impression tracking sigue el estándar MRC: 50% visible, 2 segundos continuos"
+    discovery: "código fuente: src/ads/manager/tracker/index.js líneas 649-663 + comentario del MRC standard"
+    detail: "El código incluye el estándar exacto del MRC (Media Rating Council): 'A Video Ad that meets the criteria of 50% of the ad's pixels on an in-focus browser tab in the viewable space of the browser page can be counted as a Viewable Video Ad Impression if it meets the following time criterion: 2 continuous seconds'. La implementación usa IntersectionObserver con threshold=0.5 y acumula viewableImpressionDuration solo si isVisible. Si el usuario scrollea y la visibilidad se pierde, el contador se resetea a 0."
+    impact_on_tests: "Tests de viewable impression deben: (1) simular visibilidad con IntersectionObserver mock, (2) avanzar 2 segundos de reproducción, (3) verificar beacon 'viewable'. No es suficiente con que el ad esté 'on screen' — debe pasar el threshold temporal."
+
+  - id: ADMGR-LEARN-010
+    title: "setDefaultMacros añade parámetros de targeting sin overridear los existentes"
+    discovery: "código fuente: src/ads/manager/request/index.js líneas 5-39 (setDefaultMacros)"
+    detail: "setDefaultMacros() añade correlator, scor, is_amp, hl, url, sid, omid_p, sdk_apis al ad tag URL. Los parámetros hl y url solo se añaden si no están ya presentes. El correlator siempre se sobreescribe con [CORRELATOR] macro. sid=0 puede usarse para opt-out del Session ID. Adicionalmente, applyCustomData() en handler.js añade params custom.* para dominios mdstrm.com y fuerza page-url, player-width, player-height, timestamp, listenerid, without_cookies."
+    impact_on_tests: "Tests que verifican el ad tag URL deben tener en cuenta que la URL recibida en el servidor de mock VAST tendrá parámetros adicionales añadidos por setDefaultMacros y applyCustomData. No hacer assert exacto sobre la URL — verificar presencia de parámetros específicos."

@@ -1,0 +1,78 @@
+version: "1.0"
+module: platform-config
+last_updated: "2026-06-08"
+
+internal:
+  - id: api-bootstrap
+    reason: "api.js dispara el fetch del player config, llama a loadConfig() y captura PlayerInitError para emitir el evento público 'error'. Consumidor y orquestador directo."
+    coupling: high
+    files: ["src/api/api.js"]
+
+  - id: events
+    reason: "El error de resolución de config se reemite como evento público 'error' { fatal: true }. platform-config depende del bus de eventos para señalar fallos."
+    coupling: medium
+    files: ["src/api/api.js", "constants.cjs"]
+
+  - id: playback-core
+    reason: "Recibe src, startPos, selectedSrcType, preloadEnabled y liveMaxLatencyDurationEnabled directamente del config normalizado."
+    coupling: high
+    files: ["src/platform/loadConfig.js"]
+
+  - id: hls
+    reason: "useDash=false + selectedSrcType decide el handler HLS. loadConfig fuerza hlsVariant:'normal' cuando hay DRM, DAI o subtítulos (light no los soporta)."
+    coupling: high
+    files: ["src/platform/loadConfig.js"]
+
+  - id: dash
+    reason: "format=dash/mpd → useDash=true → selectedSrcType='dash'. loadConfig elige mpd como source. Sin src.mpd lanza FORMAT_NOT_AVAILABLE."
+    coupling: high
+    files: ["src/platform/loadConfig.js"]
+
+  - id: drm
+    reason: "loadConfig detecta DRM (responseDrm.enabled o sub-config con serverURL), pone src=null y construye drm._candidateUrls (HLS+MPD decoradas). El plugin DRM elige formato vía getDRMSupport."
+    coupling: high
+    files: ["src/platform/loadConfig.js"]
+
+  - id: ads-manager
+    reason: "Normaliza ads del backend: adsMap→ads.map, ad_insertion_google→ads.googleDAI, ad_insertion→ads.mediaTailorDAI. Sin esta normalización el ads-manager no recibe la config de ads correcta."
+    coupling: high
+    files: ["src/platform/loadConfig.js"]
+
+  - id: subtitles
+    reason: "Pasa subtitles[] del backend. Los elimina cuando hay Google DAI (DAI provee subtítulos modificados por los gaps de ads; solo VTT, no ASS)."
+    coupling: medium
+    files: ["src/platform/loadConfig.js"]
+
+  - id: youbora
+    reason: "Consume account, mediaId y metadata del config resuelto para inicializar analytics."
+    coupling: low
+    files: ["src/platform/loadConfig.js"]
+
+external:
+  - id: mediastream-platform-api
+    package: "embedHost (default develop.mdstrm.com; override EMBED_HOST; prod embed.mdstrm.com)"
+    version: "n/a (servicio HTTP)"
+    reason: "Origen de los dos documentos JSON (player config + content config). Resuelve URLs de manifest, DRM, ads, subtítulos, DVR, metadata y aplica reglas de restricción de acceso (validate=true)."
+    risk: high
+    note: "Punto único de fallo: sin respuesta válida ningún player inicializa. La request usa withCredentials:true, por lo que el servidor NO puede responder con Access-Control-Allow-Origin:* — debe reflejar el origin y enviar Allow-Credentials:true. Devuelve 403 con data='ACCESS_DENIED' en geo/access restriction."
+
+  - id: axios
+    package: "axios"
+    version: "ver package.json del player"
+    reason: "Cliente HTTP usado por src/helper/request.js para el GET del config con withCredentials."
+    risk: low
+    note: "No hay timeout explícito configurado en request.js — depende del timeout default de axios/navegador. Si la plataforma cuelga, el player puede quedar esperando indefinidamente (ver PLAT-RISK-005)."
+
+  - id: qs
+    package: "qs (querystring)"
+    version: "ver package.json del player"
+    reason: "Parseo y stringify de query params al decorar la URL del source (tracking, tokens, cache-bust)."
+    risk: low
+    note: "Cambios en el shape de query de la plataforma pueden romper la decoración sin error visible."
+
+  - id: adswizz-sdk
+    package: "AdsWizz SDK (carga dinámica vía getAdswizzSDK)"
+    version: "n/a (CDN)"
+    reason: "Si la respuesta trae adswizz_companion.edge_data.server + afrUrl, loadConfig carga el SDK AdsWizz y decora la URL (decorateURL) con server/zone."
+    risk: medium
+    note: "Carga condicional; fallo del SDK no debe romper la resolución del config base pero puede afectar la URL final del source."

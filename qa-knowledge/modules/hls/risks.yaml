@@ -1,0 +1,115 @@
+version: "1.0"
+module: hls
+last_updated: "2026-06-08"
+
+risks:
+  - id: HLS-RISK-001
+    severity: high
+    title: "ABR agresivo en red inestable causa buffering permanente"
+    description: "Si el bandwidth fluctúa rápidamente (p.ej. red móvil LTE con señal débil), hls.js puede alternar entre niveles demasiado frecuentemente. Cada switch de nivel invalida parte del buffer, lo que puede vaciar el buffer más rápido de lo que se llena, causando stall permanente."
+    affected_files:
+      - "src/player/handler/hls/handler.js"
+    trigger: "Red inestable con bandwidth oscilante; al menos 2 niveles disponibles en el manifest"
+    mitigation: "El handler usa nudgeMaxRetry=10 y nudgeOffset=0.016 para salir de stalls. hls.js tiene emergency switch-down ABR que baja rápido y sube lento (hysteresis). maxBufferLength=30s reduce la frecuencia de switches."
+    industry_note: "Problema conocido en producción OTT. Netflix/Hulu usan ABR con hysteresis extendida para evitar ABR hunting. hls.js EWMA tiene parámetros abrEwmaFastLive/abrEwmaSlowLive para controlar la sensibilidad."
+    test_priority: MUST
+
+  - id: HLS-RISK-002
+    severity: high
+    title: "Stall en level switch con FMP4 y condiciones degradadas"
+    description: "Desde hls.js 1.4.2, cuando se reproduce con FMP4 (fMP4/CMAF) y se produce un level switch durante condiciones de red degradadas, la reproducción puede quedar completamente bloqueada (fragLoadError + bufferStalledError en cascada)."
+    affected_files:
+      - "src/player/handler/hls/handler.js"
+    trigger: "Streams CMAF/fMP4 + level switch durante bandwidth bajo"
+    mitigation: "El handler llama hls.recoverMediaError() en MEDIA_ERROR fatal y hls.startLoad() en NETWORK_ERROR no-manifest. liveBackBufferLength=0 reduce presión sobre el SourceBuffer."
+    industry_note: "Issue #5756 en hls.js GitHub (v1.4.2-1.4.10 afectados). Confirmado fijo en versiones posteriores pero requiere verificación en v1.6.13."
+    test_priority: MUST
+
+  - id: HLS-RISK-003
+    severity: high
+    title: "DVR window duration incorrecta para streams live"
+    description: "Para streams live, player.duration retorna Infinity (implementado deliberadamente). Si el código del player o del integrador usa player.duration para calcular la ventana DVR, obtendrá Infinity en lugar del tamaño real de la ventana. La ventana DVR real está en hls.liveSyncPosition."
+    affected_files:
+      - "src/player/handler/hls/handler.js"
+    trigger: "Stream HLS Live/DVR + uso de player.duration para calcular ventana DVR"
+    mitigation: "El handler expone liveSyncPos (getter) que usa hls.liveSyncPosition. Para DVR real usar seekable.end - seekable.start."
+    industry_note: "Patrón común de bug en implementaciones HLS. La ventana DVR correcta = seekable.end - seekable.start. duration=Infinity es el comportamiento esperado de la MSE API para live."
+    test_priority: MUST
+
+  - id: HLS-RISK-004
+    severity: high
+    title: "ManagedMediaSource + AirPlay: botón AirPlay desaparece en Safari 17.1+"
+    description: "Safari 17.1+ usa ManagedMediaSource por defecto cuando está disponible. ManagedMediaSource llama removeSourceChildren() al attach, lo que elimina el <source> de fallback que Safari usa para detectar fuentes AirPlay, y también puede activar disableRemotePlayback=true en el elemento video, ocultando el botón AirPlay."
+    affected_files:
+      - "src/player/handler/hls/handler.js"
+    trigger: "Safari 17.1+ con AirPlay disponible; preferManagedMediaSource no controlado correctamente"
+    mitigation: "El handler usa preferManagedMediaSource: !isAirPlaySupported() para desactivar ManagedMediaSource cuando AirPlay está presente, usando MediaSource regular. Esto preserva el botón AirPlay."
+    industry_note: "Issue #6197 y #6161 en hls.js GitHub. WebKit blog post 'How to use Media Source Extensions with AirPlay' documenta el problema y la solución."
+    test_priority: SHOULD
+
+  - id: HLS-RISK-005
+    severity: medium
+    title: "CORS en segmentos de CDN bloquea la reproducción"
+    description: "Si el CDN que sirve los segmentos HLS no incluye cabeceras CORS apropiadas (Access-Control-Allow-Origin), el fetch de segmentos desde el browser fallará con CORS error. El handler tiene crossOrigin='anonymous' en el elemento video, lo que hace que las requests lleven Origin header."
+    affected_files:
+      - "src/player/handler/hls/handler.js"
+    trigger: "CDN sin CORS configurado; element con crossOrigin='anonymous'"
+    mitigation: "El equipo de plataforma debe asegurar que el CDN incluye CORS headers. El handler no puede bypassar CORS del browser."
+    industry_note: "Problema frecuente en OTT al cambiar CDNs o configurar multi-CDN. DRM con withCredentials=true requiere CORS con Access-Control-Allow-Credentials: true."
+    test_priority: SHOULD
+
+  - id: HLS-RISK-006
+    severity: medium
+    title: "hls.js update rompe API interna usada por el handler"
+    description: "El handler accede directamente a propiedades internas de hls.js (hls.bandwidthEstimate, hls.levels[idx], hls.loadLevel, hls.liveSyncPosition, hls.currentLevel). Estas propiedades no están garantizadas como API estable en el changelog de hls.js."
+    affected_files:
+      - "src/player/handler/hls/handler.js"
+    trigger: "Actualizar hls.js a una versión que cambie el nombre o comportamiento de estas propiedades internas"
+    mitigation: "La versión está pinned a ^1.6.13. Antes de actualizar, verificar el CHANGELOG de hls.js contra las propiedades usadas en handler.js."
+    industry_note: "hls.js sigue semver pero las propiedades de instancia no siempre se consideran API pública. La documentación oficial cubre los métodos principales pero no siempre las propiedades de bajo nivel."
+    test_priority: SHOULD
+
+  - id: HLS-RISK-007
+    severity: medium
+    title: "LL-HLS stuttering por cambio frecuente de parte loading"
+    description: "En hls.js v1.6.6+ (incluyendo v1.6.13), existe un issue donde los streams LL-HLS sufren stuttering debido a cambios frecuentes entre LL-Part loading ON/OFF cada 1-2 segundos, causando reinicios del transmuxer session y pérdida de sincronía A/V."
+    affected_files:
+      - "src/player/handler/hls/handler.js"
+    trigger: "Streams LL-HLS (Apple Low-Latency HLS) con partes CMAF + condiciones de red marginales"
+    mitigation: "Issue #7431 en hls.js GitHub. No hay workaround claro en v1.6.13. Monitorear actualizaciones de hls.js."
+    industry_note: "LL-HLS con hls.js en producción requiere tuning de targetLatency, liveSyncDuration y highWaterMark. Un player sin tuning puede tener latencia de 6s+ incluso en LL-HLS feeds."
+    test_priority: SHOULD
+
+  - id: HLS-RISK-008
+    severity: medium
+    title: "BUFFER_STALLED_ERROR múltiple causa freeze permanente"
+    description: "BUFFER_STALLED_ERROR puede dispararse múltiples veces en ráfaga rápida. El handler HLS llama _setBuffering() y emit('stalled') por cada uno, pero si el recover no funciona, el player puede quedar en estado de freeze donde el tiempo no avanza y no hay error fatal visible para el usuario."
+    affected_files:
+      - "src/player/handler/hls/handler.js"
+    trigger: "Red muy lenta + stream con muchos niveles + ABR hunting; buffer nunca llega al umbral mínimo"
+    mitigation: "nudgeMaxRetry=10 con nudgeOffset=0.016 fuerza avance del currentTime para salir de stalls. _wasStalled flag controla el flush de buffer en live tras recovery."
+    industry_note: "Issue #7433 en hls.js GitHub (v1.5.20+). El freeze no es un error fatal — el player no lo reporta como error, lo que confunde al usuario."
+    test_priority: SHOULD
+
+  - id: HLS-RISK-009
+    severity: low
+    title: "System73 SDK falla silenciosamente sin telemetría de diagnóstico"
+    description: "Si el SDK System73 falla durante wrapPlayerConfig() o wrapPlayer(), los errores se capturan con console.error y el player continúa sin P2P. Sin embargo, no hay evento ni métrica que informe a la plataforma que el P2P no está activo."
+    affected_files:
+      - "src/player/handler/hls/handler.js"
+      - "src/player/handler/hls/getSystem73HlsSDK.js"
+    trigger: "CDN externo de System73 inaccesible o SDK con bug en producción"
+    mitigation: "Degradación suave — el player funciona sin P2P. Monitorear en producción via logs CDN del System73."
+    industry_note: "El patrón de P2P SDK como wrapper de hls.js es común (Peer5, Streamroot, System73). Todos usan el mismo patrón de degradación suave."
+    test_priority: COULD
+
+  - id: HLS-RISK-010
+    severity: low
+    title: "liveBackBufferLength deprecated — posible impacto en futuras versiones"
+    description: "El handler usa liveBackBufferLength=0 en HLSConfig. Esta propiedad está marcada como deprecated en hls.js v1.x y puede ser eliminada en futuras versiones. El reemplazo es backBufferLength."
+    affected_files:
+      - "src/player/handler/hls/handler.js"
+    trigger: "Actualización de hls.js a versión que elimine liveBackBufferLength"
+    mitigation: "Bajo riesgo en v1.6.13 — la propiedad aún funciona. Migrar a backBufferLength antes de actualizar a v2.x si existe."
+    industry_note: "hls.js API documentation (v1.x) indica que liveBackBufferLength es deprecated en favor de backBufferLength."
+    test_priority: COULD

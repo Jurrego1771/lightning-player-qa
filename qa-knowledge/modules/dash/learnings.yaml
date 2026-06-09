@@ -1,0 +1,65 @@
+version: "1.0"
+module: dash
+last_updated: "2026-06-08"
+
+learnings:
+
+  - id: DASH-LEARN-001
+    title: "El player USA dash.js para DASH (no HTML5 nativo puro)"
+    discovery: "Código fuente: src/player/handler/dash/handler.js línea 10-14 — `import { MediaPlayer } from 'dashjs'` + `const DashEvents = MediaPlayer.events`"
+    detail: "Una decisión técnica previa documentaba 'DASH usa HTML5 nativo sin ABR controlable'. Esto era incorrecto o quedó obsoleto. El DashHandler actual usa dash.js 5.1.1 como motor de MSE. dash.js expone ABR completo (BOLA/DYNAMIC), DVR window API (getDvrWindow), representaciones (getRepresentationsByType), métricas (getDashMetrics), y eventos propios (MANIFEST_LOADED, QUALITY_CHANGE_REQUESTED, ERROR). La confusión histórica probablemente vino de una versión anterior del handler que sí usaba el elemento <video> nativo sin dash.js."
+    impact_on_tests: "Los tests PUEDEN verificar ABR (dash-abr.spec.ts lo hace). Los tests PUEDEN leer player.levels y player.level en DASH — retornan valores reales desde dash.js. NO usar test anti-pattern de 'no testear ABR en DASH'. Sí documentar que el ABR es interno a dash.js y menos controlable que en HLS."
+
+  - id: DASH-LEARN-002
+    title: "player.level setter en DASH es asíncrono (setTimeout 0)"
+    discovery: "Código fuente: src/player/handler/dash/handler.js set('level') — `setTimeout(() => { p.updateSettings(...); p.setRepresentationForTypeByIndex(...) }, 0)`"
+    detail: "A diferencia de hls.js donde `hls.currentLevel = N` es síncrono, en DASH el cambio de representación se hace dentro de un `setTimeout(() => {...}, 0)`. Esto es necesario porque `setRepresentationForTypeByIndex` puede conflictuar con un `QUALITY_CHANGE_REQUESTED` en vuelo. El efecto es que inmediatamente después de `player.level = N`, `player.level` aún puede retornar el valor anterior."
+    impact_on_tests: "Usar `expect.poll()` para verificar el nivel después de la asignación. No verificar `player.level` síncronamente después de `player.level = N`. El evento 'levelchange' se emite síncronamente (fuera del timeout), pero el cambio efectivo en dash.js es asíncrono."
+
+  - id: DASH-LEARN-003
+    title: "DVR seek en DASH usa offset relativo a la ventana, no tiempo absoluto"
+    discovery: "Código fuente: src/player/handler/dash/handler.js set('currentTime') — `player.seek(val)` donde val es el offset relativo a la ventana DVR"
+    detail: "En DASH DVR, player.seek(T) en dash.js interpreta T como offset desde el inicio de la ventana DVR (no como tiempo absoluto del stream). El handler calcula windowStart a partir de _getDvrWindow().start y emite `_dvrSeekApplied` con el payload { windowStart, offset }. En HLS DVR el seek es diferente (tiempo relativo al inicio del buffer). Esta diferencia de semántica puede confundir al escribir tests que asumen tiempo absoluto."
+    impact_on_tests: "En tests DVR DASH, el target de seek debe ser un número <= dvrWindow.size (no un tiempo absoluto del MPD). El helper player.seek(T) del fixture traduce T al comportamiento correcto del handler. Verificar con assertCurrentTimeNear con tolerancia de 5s (más alta que HLS)."
+
+  - id: DASH-LEARN-004
+    title: "handler string es 'html5/mse+dash', no simplemente 'dash'"
+    discovery: "Código fuente: src/player/handler/dash/handler.js get('handler') — `return 'html5/mse+dash'`"
+    detail: "El getter `handler` retorna el string literal `'html5/mse+dash'`. Los tests que verifican el handler deben usar `.toMatch(/dash/)` o `.toContain('dash')`, no `.toBe('dash'). El fixture player.getHandler() retorna este string directamente."
+    impact_on_tests: "Usar `expect(handler).toMatch(/dash/)` — no `expect(handler).toBe('dash')`. Los tests existentes ya usan `.toContain('dash')` o `.toMatch(/dash/)` correctamente."
+
+  - id: DASH-LEARN-005
+    title: "Buffer inicial de dash.js se configura post-MANIFEST_LOADED, no en constructor"
+    discovery: "Código fuente: src/player/handler/dash/handler.js _bindDashEvents() — updateSettings() se llama dentro del callback MANIFEST_LOADED"
+    detail: "El player configura los parámetros de buffer de dash.js (initialBufferLevel, bufferToKeep, bufferTimeDefault, bufferTimeAtTopQuality) DESPUÉS de que el manifiesto se carga, no en la construcción del MediaPlayer. Esto es intencional: algunos valores de buffer dependen del tipo de stream (live/vod/dvr). El valor base viene de `context.mse.bufferlength` (default 30s)."
+    impact_on_tests: "Los tests no deben asumir que el buffer está configurado antes de 'ready'. Si se necesita verificar parámetros de buffer, hacerlo después de 'ready'."
+
+  - id: DASH-LEARN-006
+    title: "Sistema73 P2P tiene caché de promesa — un solo SDK load por vida del módulo JS"
+    discovery: "Código fuente: src/player/handler/dash/getSystem73DashSDK.js — `let cachedPromise = null; if (cachedPromise) return cachedPromise`"
+    detail: "La función `getSystem73DashSDK(sdkUrl)` cachea la promesa de import en una variable de módulo (`cachedPromise`). Una vez que el SDK se cargó para una URL, no se recarga aunque se llame con la misma URL desde otra instancia del player. Si el import falla, `cachedPromise` se resetea a null para permitir retry. Esto tiene implicaciones en tests: el mock del SDK en `page.addInitScript` debe estar disponible antes del primer load."
+    impact_on_tests: "En tests de System73 (system73-dash.spec.ts), usar `page.addInitScript` para inyectar `window.S73DashjsWrapper` ANTES de cualquier navegación. Interceptar la URL del SDK con `page.route()` para controlar si carga exitosamente o falla."
+
+  - id: DASH-LEARN-007
+    title: "DASH no soporta iOS Safari — la industria sirve HLS para Apple universalmente"
+    discovery: "Investigación web: Bitmovin, dacast.com, antmedia.io — documentación de compatibilidad DASH 2024-2026"
+    detail: "MPEG-DASH depende de MSE para funcionar en browser. iOS Safari no soporta completamente MSE para video con DRM. Ninguna librería JavaScript puede reproducir DASH en iPhone/iPad. La práctica universal de la industria (Netflix, YouTube, Disney+, Hulu) es: servir DASH para Android/Web, servir HLS para dispositivos Apple. CMAF (Common Media Application Format) permite empaquetar el video una sola vez y servirlo como HLS o DASH según el dispositivo — esto es el estándar desde 2022-2023."
+    impact_on_tests: "Los tests de DASH tienen `test.skip(browserName === 'webkit', ...)` que es correcto. Playwright WebKit simula Safari pero no exactamente iOS Safari. Para cobertura real de iOS necesitamos BrowserStack (Tier 2)."
+
+  - id: DASH-LEARN-008
+    title: "dash.js 5.x usa DYNAMIC ABR por defecto (antes era BOLA)"
+    discovery: "Investigación web: MPEG-DASH specification + dash.js documentation + castr.com/blog/mpeg-dash-explained"
+    detail: "dash.js ofrece BOLA (buffer-based, maximiza estabilidad) y DYNAMIC (híbrido throughput+buffer). En versiones 4.x BOLA era el default; en 5.x DYNAMIC es el algoritmo por defecto. El estándar MPEG-DASH no especifica el algoritmo ABR — cada implementación elige su estrategia. El player no configura explícitamente el algoritmo, así que usa el default de dash.js 5.1.1 (DYNAMIC)."
+    impact_on_tests: "Los tests de ABR bajo throttling de red deben dar tiempo suficiente para que DYNAMIC reaccione (usa throughput histórico). Timeouts de 40s son apropiados. No asumir un nivel específico — solo verificar que 'levelchanged' se emite."
+
+  - id: DASH-LEARN-009
+    title: "Gaps en el timeline MSE rompen la reproducción en DASH"
+    discovery: "Investigación web: Fraunhofer video-dev 'Common pitfalls in MPEG-DASH streaming', dash.js GitHub issues"
+    detail: "MSE (Media Source Extensions) no puede manejar gaps en el buffer de media. En streams DASH, los gaps pueden ocurrir por: segmentos faltantes, discontinuidades en el MPD, errores de packager. dash.js tiene lógica de manejo de gaps pero no es 100% confiable. Los síntomas son: player se congela en el gap, 'waiting' event indefinido, stall detectable con droppedFrames."
+    impact_on_tests: "En tests de streams externos (ExternalStreams.dash.vod en dash-abr.spec.ts), si el stream tiene gaps puede producir stalls aleatorios. Preferir streams locales o streams de CDN conocidamente limpios para tests de ABR."
+
+  - id: DASH-LEARN-010
+    title: "CMAF permite package-once para HLS y DASH — industria lo adopta universalmente"
+    discovery: "Investigación web: dacast.com HLS vs DASH 2026, allblogthings.com CMAF article, getstream.io CMAF glossary"
+    detail: "CMAF (Common Media Application Format, definido en MPEG-A Part 19) usa fMP4 como formato contenedor unificado. El mismo archivo .mp4/cmfv puede ser referenciado tanto por un MPD (DASH) como por un .m3u8 (HLS). 'Package once, serve both' es la práctica estándar en OTT desde 2022. Bitmovin, Unified Streaming, AWS MediaPackage soportan CMAF. Los streams de la plataforma Mediastream probablemente usan CMAF internamente."
+    impact_on_tests: "No hay impacto directo en los tests del QA suite. Contexto útil para entender por qué los streams DEV pueden funcionar tanto con HLS como DASH — usan el mismo contenido empaquetado como CMAF."

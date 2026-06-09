@@ -1,0 +1,175 @@
+version: "1.0"
+module: events
+last_updated: "2026-06-08"
+
+acceptance_criteria:
+
+  # ── Registro y ejecución de listeners ──────────────────────────────────────
+
+  - id: EVT-AC-001
+    priority: MUST
+    scenario: "player.on() registra un listener que es invocado cuando el evento se emite"
+    given: "Player inicializado y en estado ready"
+    when: "Se registra player.on('playing', fn) y luego el player inicia reproducción"
+    then:
+      - "fn es invocada al menos una vez con el payload del evento"
+      - "No se arroja ningún error"
+      - "fn sigue siendo invocada en emisiones subsecuentes"
+
+  - id: EVT-AC-002
+    priority: MUST
+    scenario: "player.once() ejecuta el handler exactamente una vez y luego se auto-elimina"
+    given: "Player inicializado"
+    when: "Se registra player.once('timeupdate', fn) y el evento se emite múltiples veces"
+    then:
+      - "fn es invocada exactamente una vez"
+      - "En las emisiones posteriores del mismo evento, fn NO es invocada"
+      - "No se arroja ningún error en ninguna de las emisiones"
+
+  - id: EVT-AC-003
+    priority: MUST
+    scenario: "player.off() elimina un listener registrado con player.on()"
+    given: "player.on('ready', fn) registrado y el evento aún no se ha emitido"
+    when: "Se llama player.off('ready', fn) y luego el evento 'ready' se emite"
+    then:
+      - "fn NO es invocada"
+      - "No se arroja ningún error"
+      - "Otros listeners registrados para 'ready' (si los hay) siguen siendo invocados"
+
+  - id: EVT-AC-004
+    priority: MUST
+    scenario: "Todos los eventos en Events.* son escuchables via player.on()"
+    given: "Player inicializado"
+    when: "Se registra player.on(eventName, fn) para cada evento en Events.* (60+ eventos)"
+    then:
+      - "Ningún registro lanza error"
+      - "El handler fn es invocado cuando el evento se emite internamente"
+      - "No existe ningún evento en Events.* que sea ignorado silenciosamente para listeners válidos"
+
+  - id: EVT-AC-005
+    priority: MUST
+    scenario: "Eventos fundamentales se emiten en el orden correcto durante flujo básico de playback"
+    given: "Player configurado con autoplay: true y fuente válida"
+    when: "El player inicia la reproducción del contenido"
+    then:
+      - "'loaded' se emite antes de 'ready'"
+      - "'ready' se emite antes de 'playing'"
+      - "'play' se emite antes de 'playing'"
+      - "El orden global es: loaded → metadataloaded → ready → play → playing"
+
+  - id: EVT-AC-006
+    priority: MUST
+    scenario: "Evento inválido ignorado silenciosamente — player.on() con nombre no existente"
+    given: "Player inicializado"
+    when: "Se llama player.on('eventoQueNoExiste', fn) o player.on('', fn)"
+    then:
+      - "No se arroja ningún error ni excepción"
+      - "fn nunca es invocada en ningún momento"
+      - "El estado del player no se ve afectado"
+
+  # ── Integración postMessage ────────────────────────────────────────────────
+
+  - id: EVT-AC-007
+    priority: MUST
+    scenario: "Los eventos públicos se propagan via window.postMessage con prefijo 'msp:'"
+    given: "Player inicializado en un iframe (o contexto postMessage activo)"
+    when: "El player emite el evento 'playing'"
+    then:
+      - "window.postMessage es llamado con { event: 'msp:playing', id: <uniqueId> }"
+      - "El origen del postMessage es location.origin"
+      - "El host puede capturar el evento escuchando 'message' en window"
+
+  - id: EVT-AC-008
+    priority: MUST
+    scenario: "postMessage de origen diferente es ignorado"
+    given: "Player inicializado"
+    when: "Se envía window.postMessage({ event: 'msp:play' }) desde un origen diferente a location.origin"
+    then:
+      - "El mensaje es ignorado completamente"
+      - "Ningún listener interno del player es activado"
+      - "No se emite ningún evento interno"
+
+  - id: EVT-AC-009
+    priority: SHOULD
+    scenario: "Eventos msp: de la propia instancia no se re-emiten (anti-loop)"
+    given: "Dos instancias del player en la misma página"
+    when: "La instancia A emite 'playing' (genera msp:playing con su propio uniqueId)"
+    then:
+      - "La instancia A NO procesa su propio postMessage msp:playing"
+      - "La instancia B SÍ puede recibir el msp:playing de A (si están en el mismo origen)"
+      - "No hay evento duplicado ni bucle infinito"
+
+  # ── Aislamiento multi-instancia ────────────────────────────────────────────
+
+  - id: EVT-AC-010
+    priority: MUST
+    scenario: "Listeners de player1 no son invocados por eventos de player2"
+    given: "Dos instancias del player (player1, player2) en la misma página con listeners registrados independientemente"
+    when: "player2 emite 'volumechange' al cambiar su volumen"
+    then:
+      - "El listener de volumechange registrado en player1 NO es invocado"
+      - "El listener de volumechange registrado en player2 SÍ es invocado"
+      - "El contador de eventos de player1 permanece sin cambios"
+
+  # ── Ciclo de vida y memory ─────────────────────────────────────────────────
+
+  - id: EVT-AC-011
+    priority: MUST
+    scenario: "internalEmitter.reset() elimina todos los listeners (sin memory leak tras destroy)"
+    given: "Player con múltiples listeners registrados via player.on() para distintos eventos"
+    when: "Se llama player.destroy()"
+    then:
+      - "Todos los listeners son eliminados internamente"
+      - "Eventos emitidos después de destroy() no invocan ningún handler"
+      - "No se arroja ningún error"
+      - "No queda ninguna referencia activa que impida el GC del objeto player"
+
+  - id: EVT-AC-012
+    priority: MUST
+    scenario: "player.off() es no-op cuando el handler no estaba registrado"
+    given: "Player inicializado sin ningún listener registrado para 'pause'"
+    when: "Se llama player.off('pause', fn) donde fn nunca fue registrada"
+    then:
+      - "No se arroja ningún error"
+      - "El estado del sistema de eventos no cambia"
+      - "Otros listeners de 'pause' (si los hay) siguen funcionando"
+
+  - id: EVT-AC-013
+    priority: SHOULD
+    scenario: "player.off() con referencia de función anónima diferente no elimina el listener original"
+    given: "player.on('playing', function() { counter++ }) registrado con función anónima inline"
+    when: "Se llama player.off('playing', function() { counter++ }) con una nueva función anónima (distinta referencia)"
+    then:
+      - "El listener original NO es eliminado (diferentes referencias de función)"
+      - "El listener original continúa siendo invocado cuando 'playing' se emite"
+      - "No se arroja ningún error (off() con función no registrada es no-op)"
+
+  - id: EVT-AC-014
+    priority: SHOULD
+    scenario: "disableMspEvents=true suprime la propagación postMessage sin afectar player.on()"
+    given: "Player inicializado con configuración disableMspEvents=true"
+    when: "El player emite cualquier evento (ej: 'playing')"
+    then:
+      - "Los listeners registrados con player.on() son invocados normalmente"
+      - "window.postMessage NO es llamado"
+      - "El host no recibe ningún mensaje msp:* en su listener de 'message'"
+
+  - id: EVT-AC-015
+    priority: COULD
+    scenario: "Múltiples listeners del mismo evento son todos invocados en orden de registro"
+    given: "Player inicializado con fn1, fn2, fn3 registrados para 'timeupdate' en ese orden"
+    when: "El evento 'timeupdate' se emite"
+    then:
+      - "fn1, fn2 y fn3 son invocadas todas"
+      - "El orden de invocación es fn1 → fn2 → fn3 (orden de registro)"
+      - "Si fn1 lanza un error, fn2 y fn3 no son bloqueadas (dependiendo de la implementación)"
+
+  - id: EVT-AC-016
+    priority: COULD
+    scenario: "Eventos externos (nextEpisodePlayNext, nextEpisodeKeepWatching) se procesan desde postMessage"
+    given: "Player inicializado en un iframe"
+    when: "El host envía window.postMessage({ event: 'msp:nextEpisodePlayNext' }, origin)"
+    then:
+      - "El player recibe el mensaje y lo procesa como evento interno"
+      - "Los listeners internos del player para nextEpisodePlayNext son notificados"
+      - "El evento no se re-emite hacia afuera (no hay loop)"

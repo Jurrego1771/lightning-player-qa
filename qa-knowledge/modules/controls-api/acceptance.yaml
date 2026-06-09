@@ -1,0 +1,199 @@
+version: "1.0"
+module: controls-api
+last_updated: "2026-06-08"
+
+acceptance_criteria:
+
+  - id: CTRL-AC-001
+    priority: MUST
+    scenario: "play() inicia reproducción desde estado ready"
+    given: "Player inicializado, evento 'ready' emitido, autoplay: false"
+    when: "Se llama player.play()"
+    then:
+      - "La promesa se resuelve sin error"
+      - "El evento 'playing' se emite"
+      - "player.paused === false"
+      - "player.status === 'playing'"
+
+  - id: CTRL-AC-002
+    priority: MUST
+    scenario: "pause() pausa la reproducción en curso"
+    given: "Player reproduciendo contenido (evento 'playing' emitido)"
+    when: "Se llama player.pause()"
+    then:
+      - "La promesa se resuelve sin error"
+      - "El evento 'pause' se emite"
+      - "player.paused === true"
+      - "player.status === 'pause'"
+
+  - id: CTRL-AC-003
+    priority: MUST
+    scenario: "currentTime setter ejecuta seek y emite eventos seeking/seeked"
+    given: "Player reproduciendo VOD con buffer suficiente, currentTime > 2s"
+    when: "Se asigna player.currentTime = 5"
+    then:
+      - "El evento 'seeking' se emite inmediatamente"
+      - "El evento 'seeked' se emite cuando el seek completa"
+      - "player.currentTime === 5 ± 2s (HLS snaps al keyframe más cercano)"
+
+  - id: CTRL-AC-004
+    priority: MUST
+    scenario: "play() antes de 'ready' arroja error descriptivo"
+    given: "Player inicializado pero 'ready' aún no emitido (state._ready === false)"
+    when: "Se llama player.play()"
+    then:
+      - "La promesa es rechazada con Error('Player is not ready. Wait for `ready` event')"
+      - "El player no entra en estado inválido ni lanza error no controlado"
+      - "Se puede volver a llamar play() después de 'ready' sin reinicializar"
+
+  - id: CTRL-AC-005
+    priority: MUST
+    scenario: "pause() antes de 'ready' arroja error descriptivo"
+    given: "Player inicializado pero 'ready' aún no emitido"
+    when: "Se llama player.pause()"
+    then:
+      - "La promesa es rechazada con Error('Player is not ready. Wait for `ready` event')"
+      - "El player no entra en estado inválido"
+
+  - id: CTRL-AC-006
+    priority: MUST
+    scenario: "play() concurrente no causa doble ejecución ni estado inválido"
+    given: "Player en estado 'ready'"
+    when: "Se llaman player.play() dos veces simultáneamente (mismo microtask)"
+    then:
+      - "Solo una ejecución llega a playerHandler.play() (guard _calledPlaying)"
+      - "El player llega a estado 'playing'"
+      - "No se emiten errores JS no controlados"
+      - "El evento 'playing' se emite al menos una vez"
+
+  - id: CTRL-AC-007
+    priority: MUST
+    scenario: "volume acepta rango [0,1] y retorna valor en [0,1]"
+    given: "Player inicializado y listo"
+    when: "Se asigna player.volume = v para cualquier v en [0,1]"
+    then:
+      - "No se lanza excepción"
+      - "player.volume retorna un valor en [0,1]"
+      - "El evento 'volumechange' se emite"
+
+  - id: CTRL-AC-008
+    priority: MUST
+    scenario: "muted toggle refleja estado correcto en isMuted()"
+    given: "Player inicializado y listo"
+    when: "Se asigna player.muted = true y luego player.muted = false"
+    then:
+      - "player.muted === true después del primer setter"
+      - "player.muted === false después del segundo setter"
+      - "El evento 'volumechange' se emite en cada cambio"
+
+  - id: CTRL-AC-009
+    priority: MUST
+    scenario: "currentTime negativo clampea a 0 sin lanzar error"
+    given: "Player reproduciendo VOD"
+    when: "Se asigna player.currentTime = -5"
+    then:
+      - "No se lanza excepción JS"
+      - "player.currentTime >= 0 después del clamping"
+
+  - id: CTRL-AC-010
+    priority: MUST
+    scenario: "destroy() desmonta el player y libera recursos"
+    given: "Player reproduciendo contenido o en estado ready"
+    when: "Se llama player.destroy()"
+    then:
+      - "La promesa se resuelve"
+      - "El árbol React se desmonta (reactRoot.unmount() invocado)"
+      - "internalEmitter.reset() es llamado"
+      - "cleanupChromecast() es invocado"
+      - "El elemento DOM del player queda vacío o removido"
+
+  - id: CTRL-AC-011
+    priority: MUST
+    scenario: "play() con ads configurados delega al adsManager primero"
+    given: "Player inicializado con ads.map configurado, adsManager presente"
+    when: "Se llama player.play() al inicio del contenido"
+    then:
+      - "adsManager.play() es llamado antes que playerHandler.play()"
+      - "Si adsManager.play() retorna valor !== false, playerHandler.play() NO se invoca"
+      - "El evento 'adsStarted' se emite para indicar inicio del ad"
+
+  - id: CTRL-AC-012
+    priority: MUST
+    scenario: "paused getter refleja el estado real de reproducción"
+    given: "Player reproduciendo (playing emitido)"
+    when: "Se lee player.paused"
+    then:
+      - "player.paused === false mientras reproduce"
+      - "player.paused === true después de pause()"
+      - "player.paused === true antes de que se haya llamado play()"
+
+  - id: CTRL-AC-013
+    priority: MUST
+    scenario: "play() rechazado por autoplay policy no rompe el player"
+    given: "Contexto de browser con política de autoplay bloqueada (sin user gesture)"
+    when: "El player intenta autoplay (autoplay: true) y el browser rechaza"
+    then:
+      - "El evento 'error' se emite con el mensaje del error de autoplay"
+      - "El player permanece en estado válido (no en estado 'error' permanente)"
+      - "El player puede recibir play() posterior tras un user gesture"
+      - "player.status cambia a 'pause' (no queda en estado indeterminado)"
+
+  - id: CTRL-AC-014
+    priority: MUST
+    scenario: "Firma de play/pause/load/destroy es estable (contract test)"
+    given: "Player instancia obtenida vía loadMSPlayer()"
+    when: "Se inspecciona el objeto player retornado"
+    then:
+      - "player.play es una función (typeof === 'function')"
+      - "player.pause es una función"
+      - "player.load es una función"
+      - "player.destroy es una función"
+      - "player.on, player.off, player.once son funciones"
+
+  - id: CTRL-AC-015
+    priority: SHOULD
+    scenario: "playbackRate se puede cambiar en rango [0.25, 2.0] sin excepciones"
+    given: "Player inicializado y listo"
+    when: "Se asigna player.playbackRate = r para r en [0.25, 2.0]"
+    then:
+      - "No se lanza excepción JS"
+      - "player.playbackRate retorna un valor cercano al asignado"
+      - "El evento 'ratechange' se emite"
+
+  - id: CTRL-AC-016
+    priority: SHOULD
+    scenario: "seek al inicio (currentTime = 0) emite seeking/seeked"
+    given: "Player reproduciendo VOD con currentTime > 2s"
+    when: "Se asigna player.currentTime = 0"
+    then:
+      - "El evento 'seeking' se emite"
+      - "El evento 'seeked' se emite cuando completa"
+      - "player.currentTime < 1s tras el seek"
+
+  - id: CTRL-AC-017
+    priority: SHOULD
+    scenario: "onNext y onPrev callbacks son configurables en runtime"
+    given: "Player inicializado y listo"
+    when: "Se asigna player.onNext = function() {} y player.onPrev = function() {}"
+    then:
+      - "player.onNext retorna la función asignada"
+      - "player.onPrev retorna la función asignada"
+      - "Asignar null a onNext/onPrev los resetea a null"
+
+  - id: CTRL-AC-018
+    priority: COULD
+    scenario: "isPlayingAd() retorna false cuando no hay ads configurados"
+    given: "Player sin ads configurados (sin ads.map)"
+    when: "Se llama player.isPlayingAd()"
+    then:
+      - "Retorna false"
+      - "No lanza excepción"
+
+  - id: CTRL-AC-019
+    priority: COULD
+    scenario: "status getter retorna 'error' cuando hay error fatal"
+    given: "Player con api.error seteado (error fatal de reproducción)"
+    when: "Se lee player.status"
+    then:
+      - "player.status === 'error'"
+      - "No retorna 'playing' ni 'pause' cuando hay error activo"

@@ -1,0 +1,149 @@
+version: "1.0"
+module: ads-sgai
+last_updated: "2026-06-08"
+
+learnings:
+
+  - id: SGAI-LEARN-001
+    title: "SGAI usa EXT-X-CUE-OUT, NO EXT-X-DATERANGE"
+    discovery: "código fuente: src/ads/googleSGAI/services/ManifestParser.js líneas 1-23 (comentario WHY)"
+    detail: >
+      La documentación de Google SGAI y Apple HLS Interstitials referencian EXT-X-DATERANGE
+      como el mecanismo estándar de señalización. Sin embargo, este player usa EXT-X-CUE-OUT
+      (+ EXT-OATCLS-SCTE35) porque los encoders AWS Elemental en producción emiten esos tags,
+      no EXT-X-DATERANGE. hls.js tiene soporte nativo de EXT-X-DATERANGE pero NO de EXT-X-CUE-OUT,
+      por eso se usa el custom pLoader para parsear el texto raw del manifest.
+    impact_on_tests: >
+      Los tests que usen fixture HLS deben usar EXT-X-CUE-OUT:Duration=N y EXT-OATCLS-SCTE35,
+      NO EXT-X-DATERANGE. El mock-vast server (/sgai/live.m3u8) ya genera el formato correcto.
+      Tests que usen EXT-X-DATERANGE no activarán el SGAI de este player.
+
+  - id: SGAI-LEARN-002
+    title: "Dual-video architecture — ad pod en segundo <video>, stream de contenido sigue reproduciendo"
+    discovery: "código fuente: src/ads/googleSGAI/plugin.jsx (DOM rendering) + README.md"
+    detail: >
+      A diferencia de SSAI (que reemplaza segmentos en el servidor) o CSAI simple (que pausa el
+      stream y carga el VAST), SGAI mantiene el stream HLS del contenido en reproducción continua
+      y superimpone el video del ad pod en un segundo <video> element. El stream del programa
+      nunca para — solo el audio y el layout cambian. Esto significa que:
+      1. player.status puede reportar 'playing' durante un ad break SGAI
+      2. player.currentTime avanza con el tiempo del contenido, no del ad
+      3. Los tests que esperan 'pause' durante ads SGAI son incorrectos
+    impact_on_tests: >
+      No usar waitForEvent('pause') para detectar inicio de ad break SGAI. Usar
+      player.isPlayingAd === true o el evento adsStarted. El stream de contenido
+      NO debe detenerse durante el ad.
+
+  - id: SGAI-LEARN-003
+    title: "Compatibilidad probe 'content-first' — SGAI se deshabilita en devices débiles"
+    discovery: "código fuente: src/ads/googleSGAI/services/SGAIService.js líneas 99-166"
+    detail: >
+      Antes de precargar el ad pod, SGAIService ejecuta un probe pasivo de compatibilidad:
+      verifica MediaCapabilities API, requestVideoFrameCallback en HTMLVideoElement, y
+      hardwareConcurrency >= 2. Si alguna de estas señales falla, SGAI se marca como
+      UNSUPPORTED y el ad break se skipea silenciosamente. Esta es una política product
+      explícita ("content-first") para TVs embebidas y devices débiles. No debe ser
+      "aflojada" sin una decisión de producto explícita.
+    impact_on_tests: >
+      Los tests de Playwright que corren en Chromium headless pueden fallar el probe si
+      hardwareConcurrency es 1 en el entorno CI. Verificar que el entorno de test tiene
+      navigator.hardwareConcurrency >= 2. Si no, mockear la propiedad con addInitScript.
+
+  - id: SGAI-LEARN-004
+    title: "requestQueue — cues encolados si streamId no está disponible aún"
+    discovery: "código fuente: src/ads/googleSGAI/services/SGAIService.js líneas 473-484, 374-376"
+    detail: >
+      Si un cue point es detectado por el pLoader (handleCues) antes de que STREAM_INITIALIZED
+      llege del SDK (y por tanto streamId es null), el cue se encola en requestQueue.
+      Cuando STREAM_INITIALIZED llega, #processRequestQueue() procesa todos los cues encolados.
+      Esto permite que cues detectados muy temprano en el stream sean procesados correctamente,
+      pero introduce una ventana donde los cues se acumulan en memoria.
+    impact_on_tests: >
+      Para tests del flujo completo, el timing entre la detección del cue y STREAM_INITIALIZED
+      importa. Un fixture HLS que tiene el cue point muy al inicio del stream puede golpear
+      este path. El mock del SDK debe simular el delay de STREAM_INITIALIZED.
+
+  - id: SGAI-LEARN-005
+    title: "lbanner es el único formato con lógica de cierre especial (multi-creativo)"
+    discovery: "código fuente: src/ads/googleSGAI/services/SGAIService.js líneas 241-299"
+    detail: >
+      El formato 'lbanner' tiene un ciclo de vida diferente al resto. Para pods con múltiples
+      creativos en lbanner, el cierre del break NO se dispara en el primer 'ended' del video
+      element. En cambio, se usa una combinación de:
+      1. sgaiPodCreativeTotal (capturado de AD_PERIOD_STARTED o STARTED)
+      2. sgaiLbannerAdBreakEndedCount (incrementado en cada AD_BREAK_ENDED del SDK)
+      3. posición del último creativo detectada en COMPLETE
+      El break cierra cuando la cuenta de AD_BREAK_ENDED alcanza sgaiPodCreativeTotal,
+      o cuando el último ad position es detectado.
+    impact_on_tests: >
+      Los tests de lbanner deben simular un pod multi-creativo y verificar que
+      AD_BREAK_ENDED se emite exactamente una vez (no una vez por creativo).
+      Tests con lbanner single-creativo pueden usar la lógica del video.ended.
+
+  - id: SGAI-LEARN-006
+    title: "SGAI es más resistente a ad blockers que CSAI — pero vulnerable en la carga del SDK"
+    discovery: "investigación web: castlabs.com/blog/sgai-server-guided-ad-insertion, bitmovin.com/blog/sgai"
+    detail: >
+      SGAI combina ventajas de SSAI (ads en un stream separado, no en el mismo origen del
+      contenido — difícil de bloquear) con ventajas de CSAI (targeting granular, medición
+      exacta). Sin embargo, el punto débil es la carga del SDK desde CDN de Google
+      (imasdk.googleapis.com): los ad blockers más agresivos bloquean este dominio.
+      Si el SDK no carga, SGAI falla completamente y el contenido reproduce sin ads.
+    impact_on_tests: >
+      Incluir tests de resiliencia que bloqueen el CDN del SDK y verifiquen que el
+      contenido reproduce sin ads y sin errores JavaScript. El player ya tiene esta
+      cobertura en ads-sgai.spec.ts (fixme hasta PR #595).
+
+  - id: SGAI-LEARN-007
+    title: "Ventana de gracia 1200ms puede ser insuficiente en CDNs lentos"
+    discovery: "código fuente: SGAIService.js línea ~22 (FRAGMENT_TRIGGER_GRACE_MS = 1200)"
+    detail: >
+      El ad break se skipea si el ad pod URL no está listo dentro de 1200ms desde que el
+      fragmento trigger es detectado. Este tiempo incluye: network latency para
+      fetchAdBreakId() + network latency para preload del ad pod manifest. En CDNs lentos
+      o plataformas sobrecargadas, 1200ms puede ser insuficiente y el ad break se skipea
+      incorrectamente.
+    impact_on_tests: >
+      Los tests de integración que simulen latencia en fetchAdBreakId() deben usar
+      delays < 1200ms para que el ad break se reproduzca. Delays > 1200ms deben resultar
+      en ad break skipped.
+
+  - id: SGAI-LEARN-008
+    title: "SGAI es una tecnología emergente sin backward compatibility universal en 2025-2026"
+    discovery: "investigación web: wowza.com/blog, yospace.com/blog, streamingmedia.com 2025"
+    detail: >
+      SGAI (basado en HLS Interstitials de Apple, 2021) aún no tiene adopción universal.
+      La especificación sigue evolucionando. Yospace, Castlabs y otros vendors tienen
+      implementaciones con ligeras variaciones. No todos los players OTT implementan SGAI,
+      y algunos encoders aún no generan los markers correctamente. En 2025, SGAI coexiste
+      con SSAI y CSAI en la mayoría de las plataformas de streaming.
+    impact_on_tests: >
+      Los tests deben ser escritos para el comportamiento específico de este player
+      (EXT-X-CUE-OUT, no EXT-X-DATERANGE) y no asumir comportamiento "estándar"
+      de SGAI que puede diferir entre vendors.
+
+  - id: SGAI-LEARN-009
+    title: "Dolby OptiView reporta 76% uplift en eCPM con SGAI vs SSAI tradicional"
+    discovery: "investigación web: optiview.dolby.com — 2025"
+    detail: >
+      SGAI permite targeting individual (stream_id único por viewer) y medición exacta,
+      lo que aumenta significativamente el eCPM comparado con SSAI donde todos los viewers
+      reciben el mismo ad. Esta es la principal justificación de negocio para SGAI.
+      El player mantiene stream_id único por sesión (obtenido de STREAM_INITIALIZED).
+    impact_on_tests: >
+      Verificar que stream_id es único por instancia del player (no hardcodeado ni
+      compartido entre sesiones). Esto tiene implicaciones de privacidad/tracking
+      que QA debe validar.
+
+  - id: SGAI-LEARN-010
+    title: "Patrón deprecated detectado: vpmute=1/0 como string, no como número"
+    discovery: "código fuente: SGAIService.js línea ~604 + investigación Google IMA DAI docs"
+    detail: >
+      SGAIService.updateMuteState() envía vpmute como string ('1' o '0') via
+      replaceAdTagParameters({vpmute: isMuted ? '1' : '0'}). La documentación de
+      Google IMA sugiere que vpmute acepta tanto string como número. Sin embargo,
+      la práctica recomendada moderna es usar valores numéricos (1/0). Esto no es
+      un breaking issue pero puede causar inconsistencias en algunos ad servers.
+    impact_on_tests: >
+      Los tests que verifiquen el spy de replaceAdTagParameters deben aceptar tanto
+      string ('1', '0') como número (1, 0) para ser robustos ante posibles cambios.

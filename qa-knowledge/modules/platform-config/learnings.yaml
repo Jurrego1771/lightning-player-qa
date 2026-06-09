@@ -1,0 +1,121 @@
+version: "1.0"
+module: platform-config
+last_updated: "2026-06-08"
+
+learnings:
+  - id: PLAT-LEARN-001
+    title: "Son DOS fetches separados, disparados por archivos distintos"
+    discovery: "fuente: código fuente src/api/api.js:201 (player config) + src/platform/loadConfig.js:154-161 (content config)"
+    detail: >
+      El player config (UI/view) lo dispara api.js con GET /{configType}/{id}/player/{playerId}, NO loadConfig.
+      El content config (manifest/DRM/ads) lo dispara loadConfig con GET /{video|audio|live-stream|episode}/{id}.json.
+      configType convierte live/dvr → 'live-stream'. El platform-mock.ts intercepta ambos en un solo route catch-all
+      despachando por path (/player vs /{tipo}/{id}.json).
+    impact_on_tests: >
+      Para aislar tests hay que mockear AMBOS endpoints. Mockear solo el content config deja el player config
+      yendo a la red real. mockPlayerConfig/mockContentConfig usan route.fallback() para coexistir vía LIFO.
+
+  - id: PLAT-LEARN-002
+    title: "Selección de source por prioridad y degradación HLS→mp3"
+    discovery: "fuente: código fuente loadConfig.js:201-265"
+    detail: >
+      Orden de fallback en destructuración: mp4 = hls; m4a = mp4; mp3 = m4a. defaultSrc = isVideo ? (hls||mp3) : mp3.
+      useDash solo si format=dash/mpd e isVideo y mpd existe. Esto significa que un audio config siempre cae a mp3
+      aunque traiga hls/m4a, y un video sin hls cae a mp3.
+    impact_on_tests: >
+      Los fixtures content/audio.json definen hls+mp3+m4a apuntando al MISMO m3u8 — el player elige mp3 (=m4a=hls).
+      Tests de selección de source deben verificar src final, no asumir que hls gana en audio.
+
+  - id: PLAT-LEARN-003
+    title: "Estructura exacta del content config JSON (fuente de verdad: fixtures)"
+    discovery: "fuente: fixtures/platform-responses/content/*.json + loadConfig.js destructuring"
+    detail: >
+      Campos OBLIGATORIOS para que loadConfig no falle: src (con al menos una clave hls/mpd/mp4/m4a/mp3).
+      Campos consumidos: src{hls,mpd,mp4,m4a,mp3}, drm (null o {enabled,withCredentials,<keysystem>:{serverURL}}),
+      poster, title, description, ads ({} o {map,...}), account, dvr (null o {live_window_time}),
+      progress{t,s}, subtitles[], reactions, player{type:'video'|'audio'}, mediaId,
+      ad_insertion_google{enabled,asset_key,asset_key_dash,source_id,hmac_token}, ad_insertion{enabled,interval,host},
+      adswizz_companion{afrUrl,edge_data{server,zone}}, skipMediastreamCdn.
+      Todo lo no listado cae en ...metadata. mediaId puede venir en metadata o defaultear a id.
+    impact_on_tests: >
+      Los fixtures mock omiten muchos campos opcionales (drm:null, ads:{}, dvr:null) — válidos porque loadConfig
+      usa defaults. Para testear DRM/DAI hay que enriquecer el fixture vía mockContentConfig(overrides).
+
+  - id: PLAT-LEARN-004
+    title: "El player config JSON tiene shape distinto al content config"
+    discovery: "fuente: fixtures/platform-responses/player/*.json"
+    detail: >
+      Player config: { name, view:{type:'video'|'audio'|'radio'|'compact', style:{color1..color6}}, debug,
+      autoplay, volume, renderAs }. NO contiene src ni manifest. view.type maneja la UI; renderAs decide si
+      loadConfig pide /video o /audio. mockPlayerConfig hace deep-merge de view para no perder view.style.
+    impact_on_tests: >
+      Cambiar view.type a 'audio'/'radio'/'compact' cambia toda la superficie de UI testeable. Existe
+      mockAudioPlayerConfig específico. No confundir player.type (en content config) con view.type (en player config).
+
+  - id: PLAT-LEARN-005
+    title: "Path DRM pone src=null y delega elección de formato al plugin DRM"
+    discovery: "fuente: código fuente loadConfig.js:241-244, 337-351, 400-405"
+    detail: >
+      takeDrmPath = isVideo && (responseDrm.enabled || hasDrmConfig) && (hls||mpd). hasDrmConfig escanea
+      cualquier sub-clave (no 'enabled'/'withCredentials') con .serverURL. Cuando es true: ret.src=null,
+      ret.drm._candidateUrls={hls?,mpd?} (decoradas con el mismo query string), y hlsVariant se fuerza a 'normal'.
+      El plugin DRM luego elige HLS vs DASH vía getDRMSupport (capacidad del navegador), no loadConfig.
+    impact_on_tests: >
+      No assertear sobre src cuando hay DRM (será null). Verificar drm._candidateUrls y hlsVariant. La elección
+      final de formato depende del navegador → tests cross-browser. Cubre AC-PLATFORMCONFIG-004 legacy.
+
+  - id: PLAT-LEARN-006
+    title: "adsMap → ads.map y dos sistemas DAI distintos derivan del config"
+    discovery: "fuente: código fuente loadConfig.js:424-498 + behavior.json legacy AC-002"
+    detail: >
+      ad_insertion_google → ads.googleDAI (CSAI server-side de Google; setea preloadEnabled=false,
+      liveMaxLatencyDurationEnabled=false y borra subtitles). ad_insertion → ads.mediaTailorDAI (AWS MediaTailor;
+      solo si NO hay googleDAI; pone src=null salvo DVR real). adsMap (VMAP) se normaliza a ads.map. Estos tres
+      caminos son mutuamente influyentes y dependen de flags DVR (start/end/type='dvr').
+    impact_on_tests: >
+      Tests de ads deben partir de la forma del config, no del backend real. duration-effect-ads.spec.ts ya cubre
+      la normalización adsMap→ads.map. Falta cobertura de la rama mediaTailorDAI y de la interacción DAI+DVR real.
+
+  - id: PLAT-LEARN-007
+    title: "withCredentials:true es no negociable y condiciona el contrato CORS"
+    discovery: "fuente: código fuente loadConfig.js:168 + investigación web (workos.com/blog/common-cors-errors, videojs#7232)"
+    detail: >
+      GET(requestPath, { withCredentials: true }) envía cookies de sesión (federación, resume, c=customer).
+      Por spec del navegador, el servidor NO puede responder Access-Control-Allow-Origin:* con credenciales:
+      debe reflejar el origin exacto + Access-Control-Allow-Credentials:true.
+    impact_on_tests: >
+      Tests que validen integración real (no mock) deben correr desde un origin whitelisteado. El platform-mock
+      cortocircuita CORS al interceptar la request, por lo que los tests aislados NO detectan regresiones de CORS
+      reales — se necesita un test contra plataforma real o un mock que simule headers CORS.
+
+  - id: PLAT-LEARN-008
+    title: "No hay cache cliente del config; cache-busting por query timestamp"
+    discovery: "fuente: código fuente loadConfig.js:73 (_=Date.now() en configQs) + investigación web (Media CDN caching)"
+    detail: >
+      Cada init agrega _=Date.now() al request (configQs y query del source) forzando bypass de cache. No hay
+      memoización en memoria ni Service Worker. Esto prioriza frescura sobre performance: cada embed = fetch nuevo.
+    impact_on_tests: >
+      No esperar reuso de config entre instancias. Para performance QA, contar requests de config por embed.
+      La industria recomendaría edge caching del config con TTL corto; el player no lo hace (oportunidad de mejora).
+
+  - id: PLAT-LEARN-009
+    title: "DVR de audio reescribe el path del manifest HLS (string replace frágil)"
+    discovery: "fuente: código fuente loadConfig.js:176-178"
+    detail: >
+      Para type='dvr' && renderAs!=='video': response.src.hls.replace('live.m3u8', 'playlist_dvr_range-{start}-{duration}.m3u8').
+      Es un string replace literal — si el backend cambia el nombre del playlist (no 'live.m3u8'), la reescritura
+      no aplica silenciosamente.
+    impact_on_tests: >
+      Tests de DVR audio deben verificar el src final contiene 'playlist_dvr_range'. Cubrir el caso donde el
+      manifest NO contiene 'live.m3u8' (replace no-op) como regresión.
+
+  - id: PLAT-LEARN-010
+    title: "Patrón a evitar: hardcode de embedHost por ambiente; el mock lee PLAYER_ENV"
+    discovery: "investigación web (CDN versioning 2025) + fixtures/platform-mock.ts:11-15"
+    detail: >
+      embedHost default 'develop.mdstrm.com' (override EMBED_HOST). El mock documenta dev=develop.mdstrm.com,
+      staging=staging.mdstrm.com (TODO verificar), prod=embed.mdstrm.com. El staging domain está marcado como
+      no verificado en el código del mock — riesgo de tests apuntando al dominio equivocado en staging.
+    impact_on_tests: >
+      El platform-mock deriva el dominio interceptado de getEnvironmentConfig() según PLAYER_ENV. Antes de correr
+      tests en staging, verificar el dominio real con el player team (TODO abierto en platform-mock.ts).

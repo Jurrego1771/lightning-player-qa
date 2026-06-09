@@ -1,0 +1,130 @@
+version: "1.0"
+module: events
+last_updated: "2026-06-08"
+
+defects:
+
+  - id: EVT-DEF-001
+    status: known_limitation
+    severity: high
+    title: "player.on() no retorna unsubscribe function — integrador debe gestionar referencias manualmente"
+    description: >
+      A diferencia del patrón moderno (RxJS Observable, Vue 3 watchEffect, Svelte stores,
+      AbortSignal), player.on() retorna void. El integrador es responsable de guardar
+      la referencia exacta de la función handler para poder llamar player.off() más tarde.
+      Esto hace imposible eliminar listeners anónimos (arrow functions inline) y es
+      la causa raíz del memory leak más común en integraciones del player.
+
+      Ejemplo del problema:
+        // INCORRECTO — no hay forma de hacer off()
+        player.on('timeupdate', (data) => this.updateProgressBar(data))
+
+        // CORRECTO — guardar referencia
+        this._onTimeUpdate = (data) => this.updateProgressBar(data)
+        player.on('timeupdate', this._onTimeUpdate)
+        // cleanup:
+        player.off('timeupdate', this._onTimeUpdate)
+    workaround: >
+      Siempre asignar la función a una variable antes de pasar a player.on().
+      En React: usar useCallback() para estabilizar la referencia y useEffect cleanup
+      para llamar player.off(). En Vue: usar onUnmounted() para cleanup.
+    source_comment: "src/events/index.js — on() return type void (confirmado en behavior.json api_contracts)"
+    industry_known: true
+    regression_risk: low
+
+  - id: EVT-DEF-002
+    status: known_limitation
+    severity: medium
+    title: "No hay mecanismo de replay para eventos one-shot (ready, loaded)"
+    description: >
+      Los eventos 'ready' y 'loaded' se emiten exactamente una vez durante el ciclo
+      de vida del player. Si el integrador registra player.on('ready', fn) después
+      de que el evento ya se emitió, fn nunca será invocada.
+      No hay mecanismo equivalente a Promise.resolve() o BehaviorSubject para obtener
+      el último valor emitido de estos eventos. El integrador debe registrar sus
+      listeners antes de llamar loadMSPlayer() para garantizar que los recibe.
+    workaround: >
+      Registrar todos los listeners antes de loadMSPlayer(). Verificar el estado
+      del player via getters (player.status, etc.) si se necesita conocer el estado
+      actual en lugar de reaccionar al evento.
+    source_comment: "Comportamiento inherente al patrón EventEmitter — no hay nota específica en el código"
+    industry_known: true
+    regression_risk: low
+
+  - id: EVT-DEF-003
+    status: known_limitation
+    severity: medium
+    title: "Silencio total en registro de eventos inválidos — sin warning en desarrollo"
+    description: >
+      player.on('eventoConTypo', fn) no arroja error, no loguea warning en consola,
+      y no provee ninguna señal al integrador de que el evento no existe. Esto puede
+      causar bugs silenciosos que son difíciles de diagnosticar en producción.
+      Un integrador que migra de una versión del player a otra donde un evento fue
+      renombrado no recibirá ninguna notificación de la regresión.
+    workaround: >
+      Verificar contra la lista de eventos en Events.* (constants.cjs) durante
+      desarrollo. Los tests de contrato (player-api.spec.ts) detectan renombramientos
+      de eventos fundamentales.
+    source_comment: "src/events/index.js — isValidEvent check sin logging (confirmado en behavior.json)"
+    industry_known: false
+    regression_risk: medium
+
+  - id: EVT-DEF-004
+    status: known_limitation
+    severity: low
+    title: "player.off() con handler no registrado es no-op sin ninguna señal de error"
+    description: >
+      Llamar player.off('ready', fn) donde fn nunca fue registrada para 'ready' no
+      produce ningún efecto ni error. Esto es correcto según el principio de robustez,
+      pero puede ocultar bugs de integración donde el integrador llama off() con
+      la función incorrecta pensando que eliminó el listener original.
+    workaround: "Verificar durante desarrollo que la referencia usada en off() es la misma que se pasó a on()."
+    source_comment: "Comportamiento documentado en behavior.json api_contracts.player.off error_behavior"
+    industry_known: true
+    regression_risk: low
+
+  - id: EVT-DEF-005
+    status: known_limitation
+    severity: low
+    title: "fullscreenchange implementado solo para video, no para radio player"
+    description: >
+      El comentario en constants.cjs línea 113 indica explícitamente:
+      'fullscreenchange: Implemented on video only. TODO: Implement on radio player'
+      Esto significa que player.on('fullscreenchange', fn) es un no-op en la vista
+      de radio — el evento nunca se emite aunque el usuario entre o salga de fullscreen.
+    workaround: "Usar solo en vistas de video. No implementar lógica de fullscreen para radio basada en este evento."
+    source_comment: "constants.cjs línea ~113: '// Implemented on video only. TODO: Implement on radio player'"
+    industry_known: false
+    regression_risk: low
+
+  - id: EVT-DEF-006
+    status: open
+    severity: medium
+    title: "Sin test explícito que verifique que Events.* string values no cambiaron (snapshot)"
+    description: >
+      No existe un test que haga snapshot del objeto Events.* completo y falle si
+      cualquier valor cambia. El test de contrato player-api.spec.ts verifica solo
+      que los eventos fundamentales (ready, play, playing, pause) se emiten en el
+      flujo básico, pero no verifica el string value de los otros 60+ eventos.
+      Un cambio de 'adsStarted' a 'adStarted' pasaría inadvertido hasta que los
+      beacons de analytics reportaran 0 eventos.
+    workaround: "El test ad-beacons.spec.ts y youbora.spec.ts verifican indirectamente algunos eventos de ads."
+    source_comment: "GAP identificado en behavior.json ac AC-EVENTS-002 notes: 'no explicit snapshot of Events.* constant values'"
+    industry_known: false
+    regression_risk: high
+
+  - id: EVT-DEF-007
+    status: known_limitation
+    severity: low
+    title: "postMessage solo funciona con same-origin — integraciones cross-origin requieren configuración adicional"
+    description: >
+      El filtro de postMessage usa location.origin como restricción de origen.
+      Si el player está en un iframe con origin diferente al host (ej: player en
+      player.cdn.mdstrm.com, host en cliente.com), los mensajes msp: del player
+      no llegan al host porque el origen no coincide con location.origin del host.
+      Requiere que el integrador use '*' como targetOrigin en postMessage o que
+      ambos estén en el mismo origin.
+    workaround: "Usar la integración iframe con el SDK de embedding oficial que gestiona el cross-origin correctamente."
+    source_comment: "behavior.json api_contracts.internalEmitter.emit: window.postMessage(..., location.origin)"
+    industry_known: true
+    regression_risk: low

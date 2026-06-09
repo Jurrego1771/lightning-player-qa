@@ -1,0 +1,131 @@
+version: "1.0"
+module: ads-adswizz
+last_updated: "2026-06-08"
+
+acceptance_criteria:
+  - id: AWZ-AC-001
+    priority: MUST
+    scenario: "Activación condicional por configuración de plataforma"
+    given: "metadata.hasAW === true y adswizz_companion.afrUrl está presente"
+    when: "El player inicializa una vista de radio (radio / radioSA)"
+    then:
+      - "El componente <Adswizz> se monta y carga el SDK externo (lazy)"
+      - "Se llama a init() con contentPlayer (el elemento <audio>) y el playerId"
+      - "Se llama a setCompanionBannerConfig con baseURL=afrURL, zoneId=companionZoneId, fallbackZoneId"
+
+  - id: AWZ-AC-002
+    priority: MUST
+    scenario: "Decoración SSAI de la URL del stream de audio"
+    given: "adswizz_companion.edge_data.server y adswizz_companion.afrUrl están presentes"
+    when: "loadConfig resuelve la URL del stream (mp3/hls/mpd) antes de reproducir"
+    then:
+      - "getAdswizzSDK() se carga y decorateURL() reescribe el query de la URL"
+      - "decorateURLAndCreateSession crea una sesión AdsWizz contra el edge server"
+      - "La URL final incluye los query params es (edge server) y pz (zone) y listenerid si aplica"
+      - "El stream reproducido es la URL decorada, no la original"
+
+  - id: AWZ-AC-003
+    priority: MUST
+    scenario: "El audio nunca se rompe si el SDK no carga (degradación silenciosa)"
+    given: "El CDN del SDK de AdsWizz no está disponible o lanza error al importar"
+    when: "El player inicializa con AdsWizz configurado"
+    then:
+      - "getAdswizzSDK() atrapa el error y devuelve null"
+      - "El componente <Adswizz> no muestra banner (state._loaded queda false)"
+      - "El stream de audio se reproduce normalmente (en SSAI, con o sin decoración según disponibilidad del edge)"
+      - "No hay error fatal ni excepción no manejada en consola que detenga la reproducción"
+
+  - id: AWZ-AC-004
+    priority: MUST
+    scenario: "El banner companion aparece sincronizado con el aviso de audio"
+    given: "El SDK está cargado y un aviso de audio está sonando en el stream SSAI"
+    when: "La Second Metadata Connection (TIMED_POLLING) detecta el inicio del aviso"
+    then:
+      - "willDisplayListener se dispara y showingBanner pasa a true"
+      - "El div .np__adswizz__banner pasa de display:none a display:block"
+      - "El banner respeta las dimensiones configuradas (300x250 por defecto)"
+
+  - id: AWZ-AC-005
+    priority: MUST
+    scenario: "El banner companion se oculta al terminar el aviso"
+    given: "Un aviso de audio con banner companion visible terminó"
+    when: "outOfContextListener se dispara (fin del aviso / contenido fuera de contexto)"
+    then:
+      - "showingBanner pasa a false"
+      - "El banner vuelve a display:none"
+      - "El contenido de audio (programa/canción) continúa sin interrupción"
+
+  - id: AWZ-AC-006
+    priority: MUST
+    scenario: "AdsWizz solo aplica a contenido de audio"
+    given: "El componente común pasa type='audio' al handler"
+    when: "Se evalúa el tipo de contenido del player"
+    then:
+      - "AdsWizz se activa únicamente en vistas de radio/audio"
+      - "En contenido de video el flujo AdsWizz no decora la URL ni monta el banner de audio"
+      - "AdsWizz no entra en conflicto con el ciclo content-pause/resume de Google IMA (video)"
+
+  - id: AWZ-AC-007
+    priority: SHOULD
+    scenario: "Sesión se resetea al desmontar el contenedor del banner"
+    given: "El banner companion estaba montado con una sesión activa"
+    when: "El contenedor del banner se desmonta (ref pasa a null)"
+    then:
+      - "Se llama a resetSession() sobre el SDK"
+      - "No quedan timers de polling colgados ni fugas de memoria del SDK"
+
+  - id: AWZ-AC-008
+    priority: SHOULD
+    scenario: "Fallback zone cuando el aviso de audio no trae companion"
+    given: "Un aviso de audio sin banner companion asociado está sonando"
+    when: "El SDK resuelve qué mostrar en el contenedor"
+    then:
+      - "Se usa fallbackZoneId (fallbackCompanionZoneId de la config) en lugar de dejar el contenedor vacío"
+      - "Si no hay fallback disponible el contenedor permanece oculto, sin romper el layout"
+
+  - id: AWZ-AC-009
+    priority: SHOULD
+    scenario: "Consentimiento del oyente determina el origen del listenerId"
+    given: "init() se invoca con listenerConsent: true (valor actual hardcoded)"
+    when: "El SDK genera el identificador del oyente"
+    then:
+      - "El listenerId se toma de cookie (comportamiento con consentimiento)"
+      - "El query param listenerid del stream refleja ese identificador cuando está presente"
+      - "QA verifica que el comportamiento sea coherente con la política de privacidad del cliente"
+
+  - id: AWZ-AC-010
+    priority: SHOULD
+    scenario: "Sincronización por setTimeout en contexto sin EventSource"
+    given: "setUseSetTimeoutForSynchronization(true) está configurado y MetadataConnection=TIMED_POLLING"
+    when: "El SDK sincroniza metadata en navegadores sin EventSource (legacy Edge/IE)"
+    then:
+      - "El polling de metadata funciona sin depender de EventSource"
+      - "El banner sigue sincronizándose con el aviso de audio en estos navegadores"
+
+  - id: AWZ-AC-011
+    priority: SHOULD
+    scenario: "Coexistencia de SSAI y companion banner sobre la misma config"
+    given: "adswizz_companion trae a la vez afrUrl, edge_data.server y companionZoneId"
+    when: "El player inicializa la vista de radio"
+    then:
+      - "La URL del stream se decora (SSAI) en loadConfig"
+      - "El companion banner se monta (CSAI ligero) en la vista"
+      - "Ambos comparten el mismo singleton del SDK (getAdswizzSDK devuelve la misma promesa)"
+
+  - id: AWZ-AC-012
+    priority: COULD
+    scenario: "Logging de versión del SDK en modo debug"
+    given: "player.setOption('debug', true) está activo y el SDK cargó"
+    when: "El banner companion se carga (_loadAdswizz)"
+    then:
+      - "Se loguea en consola la versión del SDK obtenida vía getVersion()"
+      - "Sin debug no se emite logging de AdsWizz"
+
+  - id: AWZ-AC-013
+    priority: COULD
+    scenario: "Múltiples streams candidatos (mp3/hls/mpd) decorados consistentemente"
+    given: "Existen varias URLs candidatas y SSAI está activo"
+    when: "loadConfig prepara las URLs candidatas con AdsWizz"
+    then:
+      - "Cada URL candidata aplicable (hls, mpd) se decora con decorateURL contra el mismo edge server"
+      - "El conjunto de URLs queda coherente para el fallback de formato"

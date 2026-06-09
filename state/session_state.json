@@ -1,179 +1,110 @@
 {
-    "schema_version": "1.0",
-    "pipeline_run": "2026-06-06T02:15:00Z",
-    "ref": "HEAD",
-    "created_at": "2026-06-06T02:15:00Z",
-    "diff": {
-        "classification_completed": true,
-        "total_files_changed": 1,
-        "total_files_raw": 2,
-        "files_excluded": [
-            "package-lock.json"
-        ],
-        "cross_cutting_risk": false,
-        "cross_cutting_reasons": [],
-        "files": [
-            {
-                "path": "package.json",
-                "module": "dependency",
-                "criticality": "high",
-                "inferred": false,
-                "lines_added": 1,
-                "lines_removed": 1,
-                "status": "modified",
-                "symbols_changed": [],
-                "events_touched": []
-            }
-        ],
-        "modules_affected": [
-            "dependency"
-        ],
-        "modules_by_criticality": {
-            "critical": [],
-            "high": [
-                "dependency"
-            ],
-            "medium": [],
-            "low": []
-        }
+  "schema_version": "1.0",
+  "pipeline_id": "2026-06-07T23:57:40Z",
+  "input_ref": "690",
+  "input_type": "pr",
+  "player_github_repo": "mediastream/lightning-player",
+  "created_at": "2026-06-07T23:57:40Z",
+  "diff": {
+    "classification_completed": true,
+    "total_files_raw": 6,
+    "total_files_filtered": 3,
+    "cross_cutting_risk": false,
+    "cross_cutting_reasons": [],
+    "files_excluded": [
+      ".claude/settings.local.json",
+      "CodeReview.md",
+      "package-lock.json"
+    ],
+    "modules_noise": [
+      "unknown"
+    ],
+    "change_type": "feature",
+    "test_priority": "GENERATE_AND_RUN",
+    "behavior_status": {
+      "ads-manager": "curated",
+      "dependency": "missing"
     },
-    "risk_assessment": {
-        "assessment_completed": true,
-        "assessed_at": "2026-06-06T02:09:30.112Z",
-        "yaml_source": "risk_map.yaml",
-        "risk_label_global": "CRITICAL",
-        "rationale": "El módulo dependency tiene un risk_score base de 0.68 (HIGH) desde risk_map.yaml. La consulta de cascada (scripts/query-context.ts) revela que 2 de sus dependientes directos son CRITICAL (playback-core, controls-api), activando la regla cascade_risk=true que escala el módulo a CRITICAL (1.0). Con un módulo con risk_score >= 0.85, el risk_label_global es CRITICAL.",
-        "cross_cutting_active": false,
-        "modules": [
-            {
-                "module": "dependency",
-                "risk_score": 1,
-                "risk_label": "CRITICAL",
-                "base_risk_from_yaml": "HIGH",
-                "base_score_from_yaml": 0.68,
-                "escalation_applied": true,
-                "escalation_reason": "cascade_risk=true: dependency tiene 2 dependientes CRITICAL (playback-core, controls-api)",
-                "breaks_if_not_tested": [
-                    "Bump mayor de hls.js puede romper API de eventos y claves de configuracion de HLS handler",
-                    "Bump mayor de React puede romper hooks y context — afecta inicializacion del player completo",
-                    "Bump mayor de Jotai puede cambiar la atom API — todos los modulos que consumen estado quedan inestables"
-                ],
-                "_breaks_source": "context.yaml via scripts/query-context.ts",
-                "related_issues": []
-            }
+    "files": [
+      {
+        "path": "package.json",
+        "module": "dependency",
+        "criticality": "high",
+        "inferred": false,
+        "lines_added": 1,
+        "lines_removed": 1,
+        "status": "modified",
+        "symbols_changed": [
+          "version:1.0.68"
         ],
-        "modules_critical": [
-            "dependency"
+        "events_touched": [],
+        "patch_truncated": false,
+        "patch": "@@ -1,6 +1,6 @@ { \"name\": \"lightning-player\", -\"version\": \"1.0.66\", +\"version\": \"1.0.68\","
+      },
+      {
+        "path": "src/view/video/components/ads/adsSkin.jsx",
+        "module": "ads-manager",
+        "criticality": "high",
+        "inferred": false,
+        "lines_added": 77,
+        "lines_removed": 24,
+        "status": "modified",
+        "symbols_changed": [
+          "AdsSkin",
+          "FONT_SIZES",
+          "VALID_MESSAGE_SIZES",
+          "getFontSizeByMessageSize",
+          "updateCurrentTimeValues",
+          "onAdStarted",
+          "containerStyle",
+          "fontSizeStyle",
+          "remainingClassName",
+          "percentage",
+          "showBackgroundTimer",
+          "messageSize"
         ],
-        "modules_high": [],
-        "modules_medium": [],
-        "modules_low": []
-    },
-    "test_plan": {
-        "plan_completed": true,
-        "planned_at": "2026-06-06T02:16:30Z",
-        "risk_label": "CRITICAL",
-        "rationale": "Dependency bump (version 1.0.74→1.0.75) es CRITICAL por cascade_risk — impacta playback-core, controls-api, hls, dash. Sin cambios de código/API (0 símbolos, 0 eventos), se prioriza validación de integración en dependientes críticos. test_suites_required=[contract] vinculante desde context.yaml. Suite seleccionada valida API pública (contract) + integraciones HLS/DASH/playback-core (integration) + flujos de usuario end-to-end (vod + live) + red de seguridad (smoke). Multi-browser omitido (cross_cutting_active=false).",
-        "includes_visual_regression": false,
-        "steps": [
-            {
-                "step": 1,
-                "label": "Contract — validación API pública",
-                "command": "npx playwright test tests/contract/ --project=chromium",
-                "blocking": true,
-                "reason": "test_suites_required=[contract] desde context.yaml. Módulo dependency toca API pública de player — verificar contrato antes de continuar. Bloqueante.",
-                "estimated_duration_seconds": 30,
-                "specs": [
-                    "tests/contract/player-api.spec.ts",
-                    "tests/contract/player-api-format-param.spec.ts",
-                    "tests/contract/useTranslation-contract.spec.ts"
-                ]
-            },
-            {
-                "step": 2,
-                "label": "Integration — HLS handler (dependiente CRITICAL)",
-                "command": "npx playwright test tests/integration/hls-abr.spec.ts --project=chromium",
-                "blocking": false,
-                "reason": "Módulo hls es dependiente directo CRITICAL de dependency. Validar que bump no rompe HLS ABR logic.",
-                "estimated_duration_seconds": 120,
-                "specs": [
-                    "tests/integration/hls-abr.spec.ts"
-                ]
-            },
-            {
-                "step": 3,
-                "label": "Integration — DASH + playback-core",
-                "command": "npx playwright test tests/integration/dash-abr.spec.ts --project=chromium",
-                "blocking": false,
-                "reason": "Módulo dash y playback-core son dependientes CRITICAL de dependency. Validar integración DASH ABR.",
-                "estimated_duration_seconds": 120,
-                "specs": [
-                    "tests/integration/dash-abr.spec.ts"
-                ]
-            },
-            {
-                "step": 4,
-                "label": "Integration — HLS + DRM (FairPlay)",
-                "command": "npx playwright test tests/integration/drm-fairplay-hls.spec.ts --project=chromium",
-                "blocking": false,
-                "reason": "Validar que bump de dependency no rompe integración HLS+DRM (FairPlay). playback-core es dependiente CRITICAL.",
-                "estimated_duration_seconds": 90,
-                "specs": [
-                    "tests/integration/drm-fairplay-hls.spec.ts"
-                ]
-            },
-            {
-                "step": 5,
-                "label": "E2E — VOD playback (HLS/DASH)",
-                "command": "npx playwright test tests/e2e/vod-playback.spec.ts --project=chromium",
-                "blocking": false,
-                "reason": "Flujo completo de usuario: inicializar player + reproducir VOD (HLS/DASH). Valida playback-core, hls, dash end-to-end.",
-                "estimated_duration_seconds": 90,
-                "specs": [
-                    "tests/e2e/vod-playback.spec.ts"
-                ]
-            },
-            {
-                "step": 6,
-                "label": "E2E — Live playback",
-                "command": "npx playwright test tests/e2e/live-playback.spec.ts --project=chromium",
-                "blocking": false,
-                "reason": "Flujo de usuario en vivo: inicializar + reproducir live stream. Valida integración playback-core + hls en escenario live.",
-                "estimated_duration_seconds": 90,
-                "specs": [
-                    "tests/e2e/live-playback.spec.ts"
-                ]
-            },
-            {
-                "step": 7,
-                "label": "Smoke — red de seguridad final",
-                "command": "npx playwright test tests/smoke/ --project=chromium",
-                "blocking": false,
-                "reason": "Red de seguridad final: player básico no se rompió. Valida inicialización y reproducción mínima en ambos tipos de contenido.",
-                "estimated_duration_seconds": 120,
-                "specs": [
-                    "tests/smoke/player-smoke.spec.ts",
-                    "tests/smoke/next-episode-smoke.spec.ts"
-                ]
-            }
+        "events_touched": [
+          "Events._adsStarted",
+          "Events._adsTimeUpdate"
         ],
-        "total_estimated_seconds": 660,
-        "total_estimated_human": "~11 minutos",
-        "full_suite_estimated_seconds": 1500,
-        "time_saved_percent": 56,
-        "skip_remaining_if_step_fails": [
-            1
-        ]
-    },
-    "coverage_gaps": {
-        "audit_rationale": "Module dependency (CRITICAL by cascade_risk) has version bump in package.json (1.0.74?1.0.75). No symbols or events changed � only dependency versions. Existing tests cover HLS API (hls-abr.spec.ts), event system (events.spec.ts), and public API (player-api.spec.ts). query-context.ts returned 0 gaps. No coverage gaps detected.",
-        "gaps": [],
-        "must_gaps": 0,
-        "should_gaps": 0,
-        "total_gaps": 0,
-        "audited_at": "2026-06-06T02:11:02.820Z",
-        "audit_completed": true
-    },
-    "input_ref": "HEAD",
-    "input_type": "head"
+        "patch_truncated": false,
+        "patch": "adds percentage state, showBackgroundTimer context value, messageSize validation, FONT_SIZES map, CSS --ad-percentage custom property binding, null-safe poster img, useMemo for containerStyle/fontSizeStyle, ref-based dedup for timeUpdate"
+      },
+      {
+        "path": "src/view/video/components/ads/adsSkin.scss",
+        "module": "ads-manager",
+        "criticality": "high",
+        "inferred": false,
+        "lines_added": 46,
+        "lines_removed": 5,
+        "status": "modified",
+        "symbols_changed": [
+          "ads-skin__remaining",
+          "with-background",
+          "--ad-percentage",
+          "FONT_SIZES-size-variants"
+        ],
+        "events_touched": [],
+        "patch_truncated": false,
+        "patch": "adds CSS custom property --ad-percentage, .with-background::before progress bar, size variants (small/medium/large padding), span z-index for text above bar, removes hardcoded font-size from TV override"
+      }
+    ],
+    "modules_affected": [
+      "ads-manager",
+      "dependency"
+    ],
+    "modules_by_criticality": {
+      "critical": [],
+      "high": [
+        "ads-manager",
+        "dependency"
+      ],
+      "medium": [],
+      "low": []
+    }
+  },
+  "risk_assessment": null,
+  "test_plan": null,
+  "coverage_gaps": null,
+  "verdict": null
 }

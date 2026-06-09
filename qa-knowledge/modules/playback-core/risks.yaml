@@ -1,0 +1,108 @@
+version: "1.0"
+module: playback-core
+last_updated: "2026-06-08"
+
+risks:
+  - id: PLAY-RISK-001
+    severity: high
+    title: "Autoplay policy bloquea reproducción automática con audio"
+    description: "Los browsers modernos (Chrome, Firefox, Safari) bloquean autoplay con audio a menos que el usuario haya interactuado previamente con el dominio o tenga un MEI (Media Engagement Index) alto. El player tiene autoplay: true como default y no maneja el caso de rechazo de la Promise retornada por play()."
+    affected_files:
+      - "src/player/base.js"
+      - "src/player/handler/native.js"
+    trigger: "Usuario nuevo visita la página por primera vez sin interacción previa. autoplay: true sin muted: true."
+    mitigation: "Usar muted autoplay (siempre permitido) y mostrar botón de unmute. El player devuelve la Promise de play() — integrador debe capturar el rechazo con .catch(). En CI: el browser headless suele rechazar autoplay con audio."
+    industry_note: "Chrome: autoplay permitido si MEI threshold superado o usuario interactuó. Firefox: más estricto. Safari iOS: requiere muted + playsinline. La solución estándar de la industria es muted autoplay con UI de unmute (patrón de Instagram/YouTube)."
+    test_priority: MUST
+
+  - id: PLAY-RISK-002
+    severity: high
+    title: "Race condition: seek durante estado buffering puede causar stall"
+    description: "Si se llama player.currentTime = X mientras el player está en estado buffering (downloading data), el seek puede interferir con la operación de descarga en curso. hls.js 1.6.x tiene bugs documentados donde seek durante buffering causa que el player quede en estado 'waiting' indefinidamente, especialmente después de 2+ horas de streaming o cerca del final del contenido."
+    affected_files:
+      - "src/player/handler/native.js"
+      - "src/player/handler/hls/"
+    trigger: "Seek a posición no buffereada mientras el player está descargando datos. Especialmente problemático en streams largos (>2h) o en conexiones lentas."
+    mitigation: "NativeHandler._awaitSeekable() espera hasta que la posición sea seekable antes de asignar currentTime. El ping-reload (4s interval) recupera stalls. hls.js tiene su propio stall detector."
+    industry_note: "Problema documentado en hls.js issues #4760 y #951. La industria recomienda deshabilitar seek durante buffering o mostrar un indicador de carga. backBufferLength default de Infinity puede causar OOM en streams largos."
+    test_priority: MUST
+
+  - id: PLAY-RISK-003
+    severity: high
+    title: "destroy() durante operaciones asíncronas puede causar memory leak"
+    description: "Si destroy() se llama mientras el player está en medio de una operación asíncrona (_load(), _awaitElementLoaded(), FairPlay certificate fetch, ping-reload interval), los callbacks pueden ejecutarse después de que el componente React se desmontó, causando actualizaciones de estado en componentes desmontados o referencias colgantes."
+    affected_files:
+      - "src/player/handler/native.js"
+      - "src/player/base.js"
+    trigger: "destroy() llamado durante buffering, durante carga inicial, o mientras _pingReload está activo."
+    mitigation: "NativeHandler.componentWillUnmount() limpia _pingTimeout, aborta AbortController de FairPlay, y limpia listeners. React 18 tiene mejor manejo de actualizaciones en componentes desmontados."
+    industry_note: "Patrón conocido en React video players: usar AbortController para cancelar operaciones asíncronas en cleanup. Video.js tuvo issues similares de leaks en ResizeManager."
+    test_priority: MUST
+
+  - id: PLAY-RISK-004
+    severity: high
+    title: "Handler selection incorrecto puede causar fallo total de reproducción"
+    description: "getDerivedStateFromProps calcula srcType desde la URL (extensión o contenido). Si la URL no tiene extensión o tiene una extensión inesperada, el player puede seleccionar un handler incorrecto (ej: HLS interpretado como native, DASH sin handler). Además, el flag _canPlayNative se calcula una sola vez y puede no actualizarse si las capacidades del browser cambian."
+    affected_files:
+      - "src/player/base.js"
+    trigger: "URL de stream sin extensión estándar (.m3u8, .mpd). URL con query params que ocultan la extensión. selectedSrcType override con valor incorrecto."
+    mitigation: "La config puede pasar selectedSrcType explícito ('hls' o 'dash') para sobrescribir la detección automática. Tests de contract deben verificar player.sourceType después de loadedmetadata."
+    industry_note: "La industria OTT usa selectedSrcType explícito en producción para evitar la heurística de la URL, especialmente en CDNs con URLs opacas."
+    test_priority: MUST
+
+  - id: PLAY-RISK-005
+    severity: medium
+    title: "Memory leak si destroy() nunca se llama"
+    description: "Si el integrador elimina el contenedor del player del DOM sin llamar destroy() primero, React no puede hacer cleanup del árbol de componentes, los event listeners del internalEmitter quedan registrados, y el ping-reload interval continúa activo indefinidamente."
+    affected_files:
+      - "src/player/base.js"
+      - "src/player/handler/native.js"
+    trigger: "Single-page application (SPA) que navega a otra ruta eliminando el DOM del player sin llamar destroy()."
+    mitigation: "destroy() debe ser llamado explícitamente. _unsetBindings() en componentWillUnmount proporciona una segunda línea de defensa si React unmounts correctamente."
+    industry_note: "Problema crítico documentado en todas las librerías de video players (video.js, JW Player, Shaka). La solución estándar es documentar destroy() como requerido en el ciclo de vida del integrador."
+    test_priority: SHOULD
+
+  - id: PLAY-RISK-006
+    severity: medium
+    title: "ended event no se emite cerca del final en streams con stall"
+    description: "Si el stream tiene un stall cerca del final (últimos 2-3 segundos), el evento 'ended' puede no emitirse nunca porque el ping-reload reinicia el stream en lugar de dejar que llegue al final. El flag _alreadyEmittedEnded previene la doble emisión pero puede interferir con recuperación de stalls."
+    affected_files:
+      - "src/player/handler/native.js"
+    trigger: "Stream HLS con stall en los últimos segmentos. Seek a posición muy cercana al final (< 2s). hls.js issue #4760."
+    mitigation: "_alreadyEmittedEnded previene doble emisión. Sin embargo, si el stall ocurre antes de 'ended', el flag no ayuda. Tests deben usar seek a al menos 2-3s antes del final."
+    industry_note: "Problema documentado en hls.js issue #4760: endless buffering state near end. La industria recomienda seek a max(0, duration - 2) para tests de ended."
+    test_priority: SHOULD
+
+  - id: PLAY-RISK-007
+    severity: medium
+    title: "Eventos de ciclo de vida inconsistentes entre browsers"
+    description: "El orden y frecuencia de eventos HTML5 estándar (canplay, canplaythrough, loadstart, waiting) varía significativamente entre Chrome, Firefox, y Safari. Tests que dependan de un evento específico pueden ser flaky en cross-browser."
+    affected_files:
+      - "src/player/base.js"
+      - "src/player/handler/native.js"
+    trigger: "Tests en WebKit/Safari. Tests que esperan eventos intermedios (canplay, stalled, suspend) en vez de ready/playing/pause."
+    mitigation: "Tests deben esperar solo eventos de alto nivel (ready, playing, pause, ended) que son más estables. Eventos como canplay, waiting, stalled son no-deterministas."
+    industry_note: "MDN y análisis de producción confirman variación cross-browser. iOS Safari es especialmente divergente — ejecuta eventos on-demand en lugar de precargar."
+    test_priority: SHOULD
+
+  - id: PLAY-RISK-008
+    severity: medium
+    title: "volumechange event puede dispararse con valor incorrecto"
+    description: "NativeHandler tiene un workaround documentado: 'Por alguna razón el volumen salta a 1 de forma random al cargar contenidos'. El handler corrige esto comparando con props.volume, pero la lógica puede suprimir 'volumechange' legítimos o emitirlos con el valor corregido en lugar del solicitado."
+    affected_files:
+      - "src/player/handler/native.js"
+    trigger: "Cargar contenido nuevo. Cambios de volumen rápidos. Interacción simultánea de usuario y cambio automático de volumen."
+    mitigation: "El handler verifica volume !== props.volume antes de emitir. Si son iguales, emite con el valor correcto. Si difieren, corrige sin emitir (para evitar el bug del salto a 1)."
+    industry_note: "Bug conocido en Chrome: HTMLMediaElement puede resetear volume a 1 al recargar src. Documentado en Chromium bug #969049."
+    test_priority: COULD
+
+  - id: PLAY-RISK-009
+    severity: low
+    title: "loadedHLSHandler global contamina selección en multi-instancia"
+    description: "La variable `loadedHLSHandler` en base.js es global al módulo. Una vez que se carga un HLS handler variant (beta, normal, light), se cachea globalmente y se reutiliza en todas las instancias posteriores, incluso si solicitan un variant diferente."
+    affected_files:
+      - "src/player/base.js"
+    trigger: "Dos instancias del player en la misma página con hlsVariant diferente. Segunda instancia creada después de que la primera ya cargó un handler."
+    mitigation: "En la mayoría de los casos prácticos, todas las instancias usan el mismo hlsVariant. Si se necesitan variants distintos, crear instancias en iframes separados."
+    industry_note: "Patrón común en librerías de video: el estado global de módulo puede contaminar instancias múltiples. La solución arquitectónica es instanciar hls.js por player, no por módulo."
+    test_priority: COULD

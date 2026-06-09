@@ -1,0 +1,190 @@
+version: "1.0"
+module: playback-core
+last_updated: "2026-06-08"
+
+acceptance_criteria:
+  - id: PLAY-AC-001
+    priority: MUST
+    scenario: "Inicialización VOD básica con autoplay desactivado"
+    given: "Player inicializado con tipo 'media', ID de contenido VOD válido y autoplay: false"
+    when: "Se espera el evento 'ready'"
+    then:
+      - "El evento 'loaded' se emite antes de 'ready'"
+      - "El evento 'ready' se emite en menos de 15s"
+      - "player.paused === true"
+      - "No se emite 'playing' sin llamar play()"
+    notes: "Cubierto por vod-playback.spec.ts y contract/player-api.spec.ts"
+
+  - id: PLAY-AC-002
+    priority: MUST
+    scenario: "Orden de eventos de inicialización: loaded → ready → playing"
+    given: "Player inicializado con cualquier tipo de contenido"
+    when: "El player completa la inicialización y reproduce"
+    then:
+      - "El evento 'loaded' precede a 'ready'"
+      - "El evento 'ready' precede a 'playing'"
+      - "No se emite 'playing' antes de 'ready'"
+    notes: "Cubierto por contract/api-bootstrap.spec.ts y e2e/vod-playback.spec.ts"
+
+  - id: PLAY-AC-003
+    priority: MUST
+    scenario: "play() inicia reproducción y emite 'playing'"
+    given: "Player listo (evento 'ready' emitido), autoplay: false, contenido VOD"
+    when: "Se llama player.play()"
+    then:
+      - "Se emite evento 'playing' en menos de 5s"
+      - "player.paused === false"
+      - "player.currentTime avanza por encima de 0"
+      - "player.status === 'playing'"
+
+  - id: PLAY-AC-004
+    priority: MUST
+    scenario: "pause() detiene reproducción y emite 'pause'"
+    given: "Player reproduciendo contenido VOD (evento 'playing' recibido)"
+    when: "Se llama player.pause()"
+    then:
+      - "Se emite evento 'pause'"
+      - "player.paused === true"
+      - "player.currentTime deja de avanzar"
+      - "play() posterior reanuda desde la misma posición"
+    notes: "Cubierto por e2e/vod-playback.spec.ts"
+
+  - id: PLAY-AC-005
+    priority: MUST
+    scenario: "Seek dentro del buffer disponible"
+    given: "Player reproduciendo VOD con al menos 10s de buffer disponible"
+    when: "Se asigna player.currentTime = 5 (seek a posición con buffer)"
+    then:
+      - "Se emite 'seeking' seguido de 'seeked' en ese orden"
+      - "player.currentTime === 5 ± 0.5s después de 'seeked'"
+      - "La reproducción continúa sin error"
+    notes: "BUG conocido PLAY-DEF-001: seek a posición 0 omite 'seeking'. Cubierto por integration/controls-api-edge.spec.ts"
+
+  - id: PLAY-AC-006
+    priority: MUST
+    scenario: "Evento 'ended' al completar VOD"
+    given: "Player reproduciendo VOD"
+    when: "currentTime alcanza duration (o se hace seek cerca del final y el video completa)"
+    then:
+      - "Se emite evento 'ended'"
+      - "player.paused === true después de ended"
+      - "player.ended === true"
+      - "No se emiten más eventos 'playing' a menos que se llame play() o load() explícitamente"
+    notes: "Cubierto por integration/playback-core-edge.spec.ts"
+
+  - id: PLAY-AC-007
+    priority: MUST
+    scenario: "Error fatal manejado — URL de stream inaccesible"
+    given: "Player configurado con URL de stream HLS que retorna 404"
+    when: "El player intenta cargar el manifest"
+    then:
+      - "Se emite evento 'error' con { fatal: true }"
+      - "El player no crashea (no hay errores JS no capturados)"
+      - "player.status === 'error'"
+      - "Se puede llamar load() con URL válida para recuperar"
+    notes: "Cubierto por integration/playback-core-edge.spec.ts y integration/error-recovery.spec.ts"
+
+  - id: PLAY-AC-008
+    priority: MUST
+    scenario: "destroy() limpia recursos y DOM"
+    given: "Player con reproducción activa o pausada"
+    when: "Se llama player.destroy()"
+    then:
+      - "El elemento <video> es removido del DOM"
+      - "No se emiten eventos después de destroy()"
+      - "Llamar play() en la instancia destruida no genera errores ni eventos"
+    notes: "Cubierto por e2e/vod-playback.spec.ts (ciclo de vida)"
+
+  - id: PLAY-AC-009
+    priority: MUST
+    scenario: "play() antes de ready lanza error controlado"
+    given: "Player recién inicializado, sin haber recibido evento 'ready'"
+    when: "Se llama player.play() directamente"
+    then:
+      - "Lanza o retorna un Error con mensaje identificable ('Player is not ready' o similar)"
+      - "El player no crashea"
+      - "No se emite 'playing'"
+    notes: "PLAY-DEF-003: test.fixme en el harness actual — goto() garantiza ready antes de retornar. Testeable solo via pre-ready hook"
+
+  - id: PLAY-AC-010
+    priority: MUST
+    scenario: "Autoplay muted permitido por política del browser"
+    given: "Player configurado con autoplay: true y volume: 0 (o muted: true)"
+    when: "El player se inicializa"
+    then:
+      - "El player emite 'playing' sin interacción del usuario"
+      - "player.muted === true o player.volume === 0"
+    notes: "Muted autoplay es siempre permitido por Chrome, Firefox, Safari. VOD con audio requiere MEI o interacción previa."
+
+  - id: PLAY-AC-011
+    priority: SHOULD
+    scenario: "Selección correcta de handler según tipo de stream"
+    given: "Player con URL de stream HLS (.m3u8)"
+    when: "El player carga el contenido"
+    then:
+      - "player.sourceType === 'hls' en Chromium (hls.js soportado)"
+      - "player.handler contiene 'hls'"
+      - "player.levels tiene al menos un nivel ABR disponible después de loadedmetadata"
+    notes: "DASH handler: sourceType === 'native', levels no disponibles"
+
+  - id: PLAY-AC-012
+    priority: SHOULD
+    scenario: "Volume setter acepta rango 0.0 a 1.0"
+    given: "Player inicializado y listo"
+    when: "Se asigna player.volume = 0.5"
+    then:
+      - "player.volume === 0.5 ± 0.01"
+      - "Se emite evento 'volumechange'"
+    notes: "Valores fuera de 0-1 son inválidos per HTMLMediaElement spec"
+
+  - id: PLAY-AC-013
+    priority: SHOULD
+    scenario: "loop: true reproduce indefinidamente"
+    given: "Player inicializado con loop: true, contenido VOD corto"
+    when: "El contenido llega al final"
+    then:
+      - "El player reinicia la reproducción desde el inicio automáticamente"
+      - "No se emite 'ended' cuando loop está activo (o se reanuda inmediatamente)"
+    notes: "loop default: false — solo activo con config explícita"
+
+  - id: PLAY-AC-014
+    priority: SHOULD
+    scenario: "load() cambia contenido sin destruir el player"
+    given: "Player reproduciendo contenido VOD A"
+    when: "Se llama player.load({ type: 'media', id: content_B_id })"
+    then:
+      - "Se emite evento 'sourcechange'"
+      - "Se re-emite la secuencia 'loaded' → 'ready' para el nuevo contenido"
+      - "El estado del player anterior es reseteado"
+      - "Se puede llamar play() después de 'ready' del nuevo contenido"
+    notes: "Cubierto por e2e/vod-playback.spec.ts"
+
+  - id: PLAY-AC-015
+    priority: SHOULD
+    scenario: "buffering event se emite cuando el player espera datos"
+    given: "Player reproduciendo contenido con condiciones de red limitadas"
+    when: "El buffer se agota y el player queda esperando datos"
+    then:
+      - "Se emite evento 'buffering'"
+      - "player.status === 'buffering'"
+      - "Cuando los datos llegan, la reproducción se reanuda y se emite 'playing'"
+
+  - id: PLAY-AC-016
+    priority: COULD
+    scenario: "destroy() durante buffering no genera memory leak"
+    given: "Player en estado buffering (esperando datos)"
+    when: "Se llama player.destroy()"
+    then:
+      - "El player se destruye limpiamente sin errores"
+      - "No hay listeners residuales activos después de destroy()"
+      - "El ping interval (4s) es cancelado"
+
+  - id: PLAY-AC-017
+    priority: COULD
+    scenario: "playbackRate setter funciona correctamente"
+    given: "Player reproduciendo VOD"
+    when: "Se asigna player.playbackRate = 1.5"
+    then:
+      - "player.playbackRate === 1.5"
+      - "Se emite evento 'ratechange'"
+      - "La reproducción continúa a la velocidad indicada"

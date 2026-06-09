@@ -1,0 +1,120 @@
+version: "1.0"
+module: metadata
+last_updated: "2026-06-08"
+
+existing_tests:
+  - spec_file: "tests/e2e/radio-nowplaying-metadata.spec.ts"
+    description: >
+      Now-playing en radios de audio: title/subtitle/poster se actualizan vía Firestore tras POST a la
+      API nowplaying, metadatachanged se emite, Media Session refleja la canción, POST idempotente
+      (updated:false) no cambia metadata, artista sin imagen no rompe. ACTUALMENTE BLOQUEADO con
+      test.skip por estación con useID3Sync:true.
+    ac_coverage: ["META-AC-006", "META-AC-007", "META-AC-012", "META-AC-014"]
+
+  - spec_file: "tests/integration/reels-metadata-dedup.spec.ts"
+    description: >
+      Deduplicación de metadatachanged (fix/issue-627): el conteo no sube durante ventana de
+      estabilización de 3s, no excede 1 por item, view reels no rompe init. Usa isolatedPlayer + mock.
+    ac_coverage: ["META-AC-002"]
+
+  - spec_file: "tests/e2e/vod-playback.spec.ts"
+    description: >
+      Flujo VoD base (referenciado por behavior legacy): expone metadata de contenido y campos base
+      del beacon /start (title, mediaDuration, contentId, etc.).
+    ac_coverage: ["META-AC-001", "META-AC-003"]
+
+  - spec_file: "tests/integration/youbora.spec.ts"
+    description: >
+      Validación de campos de metadata en beacons NPAW (title, mediaDuration, mediaResource,
+      contentId, playbackType/contentType, identidad de player/SDK). Cobertura indirecta de la
+      metadata de contenido a nivel telemetry.
+    ac_coverage: ["META-AC-001"]
+
+coverage_gaps:
+  - id: GAP-META-001
+    priority: MUST
+    ac_ref: META-AC-004
+    title: "duration es NaN/0 antes de loadedmetadata y válida después"
+    suggested_spec: "tests/integration/metadata-duration.spec.ts"
+    notes: "Leer player.duration antes y después de loadedmetadata; asertar que solo es fiable tras el evento."
+    industry_note: "HTML5: duration es NaN hasta loadedmetadata — aserciones prematuras son flaky."
+
+  - id: GAP-META-002
+    priority: MUST
+    ac_ref: META-AC-005
+    title: "Media Session reporta duration Infinity en live"
+    suggested_spec: "tests/integration/metadata-mediasession-live.spec.ts"
+    notes: "Stream live + feature-detect mediaSession; verificar position state coherente con live (no scrubber finito)."
+    industry_note: "Patrón estándar live⇒Infinity; consumidores deben tratar live aparte."
+
+  - id: GAP-META-003
+    priority: MUST
+    ac_ref: META-AC-003
+    title: "metadatachanged se re-emite con nueva metadata al cambiar de contenido"
+    suggested_spec: "tests/e2e/metadata-content-change.spec.ts"
+    notes: "load() de item A→B con content real; verificar nuevo metadatachanged y player.metadata sin residuos de A."
+    industry_note: "Complementa el dedup: cambio real SÍ debe emitir, re-render NO."
+
+  - id: GAP-META-004
+    priority: SHOULD
+    ac_ref: META-AC-008
+    title: "Action handlers de Media Session según tipo de contenido"
+    suggested_spec: "tests/integration/metadata-mediasession-actions.spec.ts"
+    notes: "Verificar play/pause/stop siempre; seek* solo si !live; skipad solo en ad skippable. Probar play/pause del SO controla el player."
+    industry_note: "web.dev recomienda registrar solo los handlers aplicables al estado actual."
+
+  - id: GAP-META-005
+    priority: SHOULD
+    ac_ref: META-AC-009
+    title: "Posición neutralizada y seek bloqueado durante un ad"
+    suggested_spec: "tests/integration/metadata-mediasession-ad.spec.ts"
+    notes: "Con ad activo verificar position:0/duration:0 y que seekto no mueve currentTime. Requiere mock-vast."
+    industry_note: "Evita que el usuario haga scrub dentro de un ad linear desde el SO."
+
+  - id: GAP-META-006
+    priority: SHOULD
+    ac_ref: META-AC-011
+    title: "Arbitraje de Media Session en multi-instancia"
+    suggested_spec: "tests/integration/metadata-mediasession-multi.spec.ts"
+    notes: "Dos players; verificar que solo el activo controla navigator.mediaSession y el otro cede sin error."
+    industry_note: "Media Session es singleton por documento — requiere arbitraje explícito."
+
+  - id: GAP-META-007
+    priority: SHOULD
+    ac_ref: META-AC-010
+    title: "programdatetime se emite en HLS live que lo provee"
+    suggested_spec: "tests/integration/metadata-programdatetime.spec.ts"
+    notes: "Stream HLS live con PROGRAM-DATE-TIME; capturar evento programdatetime. Ausencia en stream sin el tag es válida."
+    industry_note: "HLS PROGRAM-DATE-TIME ≠ DASH EventStream; soporte no uniforme entre backends."
+
+  - id: GAP-META-008
+    priority: SHOULD
+    ac_ref: META-AC-007
+    title: "Desbloquear now-playing con estación useID3Sync:false"
+    suggested_spec: "tests/e2e/radio-nowplaying-metadata.spec.ts"
+    notes: "Reemplazar RADIO_STATION_ID por estación con useID3Sync:false y quitar el test.skip del beforeEach."
+    industry_note: "ICY matching es frágil; timestamps requieren useID3Sync:false."
+
+  - id: GAP-META-009
+    priority: COULD
+    ac_ref: META-AC-012
+    title: "Artwork de Media Session en 6 tamaños y filtro blob/data"
+    suggested_spec: "tests/integration/metadata-mediasession-artwork.spec.ts"
+    notes: "Verificar 6 entradas con params de resize para póster http; artwork vacío para póster blob/data."
+    industry_note: "Chrome 512x512 (256 low-end); iOS<16.4 pixelaba."
+
+  - id: GAP-META-010
+    priority: COULD
+    ac_ref: META-AC-015
+    title: "Degradación sin Media Session API"
+    suggested_spec: "tests/integration/metadata-no-mediasession.spec.ts"
+    notes: "Simular ausencia de navigator.mediaSession; verificar que player.metadata y metadatachanged siguen funcionando sin excepción."
+    industry_note: "Media Session ausente en algunos WebViews/headless/iOS PWA."
+
+  - id: GAP-META-011
+    priority: COULD
+    ac_ref: META-AC-013
+    title: "Replay reinicia metadata y position state"
+    suggested_spec: "tests/e2e/metadata-replay.spec.ts"
+    notes: "VoD ended → replay; verificar metadata conservada y setPositionState con position desde 0."
+    industry_note: "Replay no debe duplicar metadatachanged ni corromper la sesión."

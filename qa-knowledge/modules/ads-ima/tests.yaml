@@ -1,0 +1,143 @@
+version: "1.0"
+module: ads-ima
+last_updated: "2026-06-08"
+
+existing_tests:
+
+  - spec_file: "tests/integration/ads-ima-error.spec.ts"
+    description: |
+      Error handling del sistema IMA. Cubre: VAST vacío → content continúa (AC-002),
+      IMA SDK CDN bloqueado → content sin ads sin crash (AC-003), beacons de tracking
+      se disparan exactamente una vez por evento (AC-004).
+    ac_coverage:
+      - "IMA-AC-002"
+      - "IMA-AC-003"
+      - "IMA-AC-004"
+      - "IMA-AC-005"
+
+  - spec_file: "tests/e2e/ads-ima-tag-params.spec.ts"
+    description: |
+      Verifica que el player envía parámetros correctos en las requests IMA a
+      pubads.g.doubleclick.net. Cubre: vpmute=0/1 según volumen inicial, vpmute hereda
+      estado de sesión en mid-roll y post-roll (VMAP), vpa=auto con autoplay, vis=1
+      cuando visible, u_so landscape/portrait. Solo Chromium.
+    ac_coverage:
+      - "IMA-AC-001"
+      - "IMA-AC-012"
+      - "IMA-AC-013"
+
+  - spec_file: "tests/integration/ads-manager-degradation.spec.ts"
+    description: |
+      Tests de degradación del ads-manager cuando IMA falla. Verifica que el player
+      continúa funcionando normalmente cuando el sistema de ads está degradado.
+    ac_coverage:
+      - "IMA-AC-003"
+      - "IMA-AC-005"
+
+coverage_gaps:
+
+  - id: GAP-IMA-001
+    priority: MUST
+    ac_ref: "IMA-AC-001"
+    title: "Secuencia completa de eventos IMA en happy path (pre-roll 15s con mock VAST)"
+    suggested_spec: "tests/integration/ads-ima-lifecycle.spec.ts"
+    notes: |
+      No existe un test que verifique el orden EXACTO de todos los eventos del ciclo IMA
+      con mock-vast local. El test en ads-ima-tag-params.spec.ts verifica parámetros pero
+      no el ciclo de eventos. Usar adBeaconInterceptor + waitForFunction para capturar
+      la secuencia completa: adsRequested → adsLoaded → adsContentPauseRequested →
+      adsStarted → adsImpression → adsFirstQuartile → adsMidpoint → adsThirdQuartile →
+      adsComplete → adsAllAdsCompleted → adsContentResumeRequested.
+    industry_note: "El orden de los eventos IMA es crítico — un player que emite en orden incorrecto puede causar discrepancias en reportes de ad servers."
+
+  - id: GAP-IMA-002
+    priority: MUST
+    ac_ref: "IMA-AC-006"
+    title: "Volumen del ad sincronizado con el volumen del player (setVolume)"
+    suggested_spec: "tests/integration/ads-ima-volume.spec.ts"
+    notes: |
+      Verificar que adsManager.setVolume() recibe el volumen del player en initialize()
+      y que cambios de volumen durante el ad se propagan. Requiere interceptar la API
+      del adsManager o escuchar adsVolumeChanged.
+    industry_note: "Volumen desincronizado es una queja común de usuarios en players con VMAP."
+
+  - id: GAP-IMA-003
+    priority: MUST
+    ac_ref: "IMA-AC-007"
+    title: "Seeking bloqueado durante reproducción de ad"
+    suggested_spec: "tests/integration/ads-ima-lifecycle.spec.ts"
+    notes: |
+      Verificar que player.currentTime = X durante isPlayingAd === true no tiene efecto.
+      AdsHandler.set() debe retornar null para prop === 'currentTime' cuando isPlayingAd.
+    industry_note: "Permitir seek durante ads viola las políticas de la mayoría de los ad servers."
+
+  - id: GAP-IMA-004
+    priority: MUST
+    ac_ref: "IMA-AC-008"
+    title: "Skip ad después de skipOffset — adsSkipped emitido, content reanuda"
+    suggested_spec: "tests/integration/ads-ima-skip.spec.ts"
+    notes: |
+      Testear con mock-vast que incluya skipOffset en el VAST XML. Llamar player.ad.skip()
+      después de skipOffset segundos. Verificar adsSkipped + contenido reanuda desde
+      la posición correcta. Incluir el path de discardAdBreak (600ms de espera).
+    industry_note: "Skip es uno de los casos más críticos para UX y compliance con políticas de ad servers."
+
+  - id: GAP-IMA-005
+    priority: SHOULD
+    ac_ref: "IMA-AC-010"
+    title: "VMAP mid-roll: ad interrumpe y reanuda en posición correcta"
+    suggested_spec: "tests/integration/ads-ima-vmap.spec.ts"
+    notes: |
+      Requiere VMAP fixture en mock-vast con mid-roll en t=10s (usar contenido corto para
+      no esperar 30s). Verificar: player.ad.cuePoints contiene el cue point, ciclo IMA
+      completo se emite, player.currentTime después de adsContentResumeRequested ≈ t=10s
+      (±1s por parseInt).
+
+  - id: GAP-IMA-006
+    priority: SHOULD
+    ac_ref: "IMA-AC-009"
+    title: "Skip antes del skipOffset no tiene efecto"
+    suggested_spec: "tests/integration/ads-ima-skip.spec.ts"
+    notes: |
+      Verificar que player.ad.skip() antes del skipOffset no emite adsSkipped y el ad
+      continúa. Verificar player.ad.info.skippable === false antes del offset.
+
+  - id: GAP-IMA-007
+    priority: SHOULD
+    ac_ref: "IMA-AC-014"
+    title: "Contenido tipo 'audio' — ad renderizado en video fallback element"
+    suggested_spec: "tests/integration/ads-ima-audio-type.spec.ts"
+    notes: |
+      Verificar que con type='audio' el componente monta el elemento <video> fallback
+      y que el AdDisplayContainer usa ese elemento. Puede requerir verificar el DOM
+      o interceptar la inicialización del AdDisplayContainer.
+
+  - id: GAP-IMA-008
+    priority: SHOULD
+    ac_ref: "IMA-AC-015"
+    title: "Reset del sistema de ads al cargar nuevo contenido — sin eventos duplicados"
+    suggested_spec: "tests/integration/ads-ima-reset.spec.ts"
+    notes: |
+      Cargar contenido A con ads → esperar pre-roll → cargar contenido B con ads.
+      Verificar que los eventos del contenido A no aparecen en el capture de eventos
+      del contenido B. Verificar que isPlayingAd es false entre los dos contenidos.
+
+  - id: GAP-IMA-009
+    priority: SHOULD
+    ac_ref: "IMA-AC-011"
+    title: "Post-roll se reproduce después de que el contenido termina"
+    suggested_spec: "tests/integration/ads-ima-vmap.spec.ts"
+    notes: |
+      Requiere contenido corto y VMAP con post-roll. Llegar al final del contenido y
+      verificar que AdsLoader.contentComplete() triggerea el post-roll. Testear también
+      el caso de post-roll vacío (IMA-DEF-006).
+
+  - id: GAP-IMA-010
+    priority: COULD
+    ac_ref: "IMA-AC-016"
+    title: "Ad blocker bloquea VAST URL — content reproduce sin ads"
+    suggested_spec: "tests/integration/ads-ima-adblocker.spec.ts"
+    notes: |
+      Usar page.route() para bloquear el VAST endpoint (no el SDK). Verificar que
+      adsError se emite y el content reproduce normalmente. Distinguir del caso
+      donde el SDK mismo está bloqueado (GAP ya cubierto por AC-003).

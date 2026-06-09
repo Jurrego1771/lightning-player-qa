@@ -1,0 +1,77 @@
+version: "1.0"
+module: platform-config
+last_updated: "2026-06-08"
+
+defects:
+  - id: PLAT-DEF-001
+    status: known_limitation
+    severity: medium
+    title: "Sin timeout en el fetch del config → bootstrap puede colgar indefinidamente"
+    description: >
+      src/helper/request.js no configura timeout en axios. Si embedHost acepta la conexión pero no responde,
+      loadConfig (y el player config en api.js) esperan sin emitir error fatal, dejando el player en spinner.
+    workaround: "Ninguno del lado cliente. El integrador puede implementar su propio watchdog y forzar UI de error."
+    source_comment: "src/helper/request.js (axios sin timeout); evidencia indirecta en fixtures/platform-mock.ts:62-64 (endpoint waveform 'cuelga para IDs inexistentes')"
+    industry_known: true
+    regression_risk: low
+
+  - id: PLAT-DEF-002
+    status: known_limitation
+    severity: medium
+    title: "JSON malformado / 200 sin src produce error críptico (no PlayerInitError clasificado)"
+    description: >
+      Cuando la respuesta es 200 pero el body no parsea o carece de src.*, el fallo ocurre en new URL(undefined)
+      o en la destructuración, propagándose como un TypeError genérico en vez de un PlayerInitError descriptivo.
+      El try/catch solo envuelve el GET, no la normalización posterior.
+    workaround: "El error igual llega a api.js como fatal; QA debe inspeccionar el mensaje para distinguir causa."
+    source_comment: "src/platform/loadConfig.js:166-175 (try/catch solo cubre el GET; line 267 new URL(src) fuera del try)"
+    industry_known: true
+    regression_risk: medium
+
+  - id: PLAT-DEF-003
+    status: known_limitation
+    severity: low
+    title: "Subtítulos ASS no funcionan con Google DAI; subtítulos del media se eliminan"
+    description: >
+      Con googleDAI activo, loadConfig borra ret.subtitles. Solo los subtítulos VTT inyectados por DAI funcionan;
+      los ASS del media original no funcionan en absoluto. Documentado como limitación intencional en el código.
+    workaround: "Usar subtítulos VTT cuando el contenido tenga Google DAI. ASS no es soportado en ese flujo."
+    source_comment: "src/platform/loadConfig.js:451-463 (comentario: 'ASS subtitles will not work at all, only VTT')"
+    industry_known: true
+    regression_risk: low
+
+  - id: PLAT-DEF-004
+    status: known_limitation
+    severity: low
+    title: "Reescritura de manifest DVR audio depende del literal 'live.m3u8'"
+    description: >
+      La reescritura de src.hls para DVR de audio hace un string replace de 'live.m3u8'. Si el backend cambia el
+      nombre del playlist, el replace es un no-op silencioso y el player reproduce live en vez del rango DVR.
+    workaround: "Ninguno; depende de que el backend mantenga el naming 'live.m3u8'."
+    source_comment: "src/platform/loadConfig.js:176-178"
+    industry_known: false
+    regression_risk: medium
+
+  - id: PLAT-DEF-005
+    status: known_limitation
+    severity: low
+    title: "Dominio de staging (staging.mdstrm.com) no verificado"
+    description: >
+      El mapping de embedHost por ambiente tiene el dominio de staging marcado como TODO/no verificado. Tests
+      o configs apuntando a staging podrían usar el dominio incorrecto.
+    workaround: "Verificar el dominio de staging con el player team antes de correr tests en ese ambiente."
+    source_comment: "fixtures/platform-mock.ts:13 ('staging → staging.mdstrm.com (TODO: verificar con player team)')"
+    industry_known: false
+    regression_risk: low
+
+  - id: PLAT-DEF-006
+    status: known_limitation
+    severity: medium
+    title: "Sin retry ni circuit breaker en fallo transitorio de plataforma"
+    description: >
+      Un 5xx o glitch de red transitorio falla inmediatamente con error fatal; no hay reintento ni backoff. Un
+      blip momentáneo de la plataforma rompe el init aunque el siguiente request hubiera tenido éxito.
+    workaround: "El integrador debe re-instanciar el player tras un evento 'error' fatal si quiere reintentar."
+    source_comment: "src/platform/loadConfig.js:166-175 (catch único, sin retry)"
+    industry_known: true
+    regression_risk: low

@@ -1,0 +1,81 @@
+version: "1.0"
+module: plugins
+last_updated: "2026-06-08"
+
+defects:
+  - id: PLUG-DEF-001
+    status: known_limitation
+    severity: high
+    title: "No hay timeout en la clase base para isReady() — un plugin colgado bloquea el playback"
+    description: >
+      MediastreamBaseComponent._onMount captura rechazos de isReady() pero no impone un timeout. Si
+      isReady() retorna una promesa que nunca se asienta (SDK CDN sin respuesta), _isReady nunca pasa
+      a true, pluginsReady() permanece false y RenderElement nunca monta el <video>.
+    workaround: "Cada plugin debe implementar su propio timeout interno en isReady(); no garantizado por la base"
+    source_comment: "src/plugins/baseComponent.js:64-80 (_onMount, sin timeout)"
+    industry_known: true
+    regression_risk: high
+
+  - id: PLUG-DEF-002
+    status: known_limitation
+    severity: medium
+    title: "Fallo de chunk lazy se silencia sin ErrorBoundary por plugin"
+    description: >
+      PluginLoader monta todos los plugins en un único React.Suspense con fallback <Fragment /> vacío
+      y sin ErrorBoundary dedicado por plugin. Un error de descarga de chunk no produce telemetría ni
+      reintento visible; el plugin simplemente no aparece.
+    workaround: "Ninguno a nivel código; el diseño tolerante hace que la ausencia de un plugin de analytics no rompa el playback"
+    source_comment: "src/api/player.jsx:46-50 (Suspense con fallback vacío)"
+    industry_known: true
+    regression_risk: medium
+
+  - id: PLUG-DEF-003
+    status: known_limitation
+    severity: medium
+    title: "Set de plugins congelado en carga inicial; metadata por-contenido no reevaluada"
+    description: >
+      load(options) decide el set de plugins una sola vez. En cambios de contenido (next episode,
+      playlist) no se reevalúa qué plugins deben montarse. Plugins que basen decisiones en
+      options.metadata.* al cargar quedarán con datos stale.
+    workaround: "Plugins deben suscribirse a eventos de cambio de contenido en vez de leer options.metadata.* al montar"
+    source_comment: "src/plugins/index.js:18-22 (comentario explícito del autor)"
+    industry_known: false
+    regression_risk: medium
+
+  - id: PLUG-DEF-004
+    status: known_limitation
+    severity: medium
+    title: "No existe dispose centralizado; cleanup delegado a restart(true) de cada plugin"
+    description: >
+      A diferencia de dispose() de Video.js que limpia listeners y referencias automáticamente, la
+      destrucción de un plugin Lightning solo invoca restart(true). Si un plugin no remueve sus
+      listeners de internalEmitter en restart, se produce memory leak en sesiones largas.
+    workaround: "Cada plugin debe limpiar listeners/SDK en restart(true); auditar plugin por plugin"
+    source_comment: "src/plugins/baseComponent.js:59-62 (componentWillUnmount -> restart(true))"
+    industry_known: true
+    regression_risk: medium
+
+  - id: PLUG-DEF-005
+    status: known_limitation
+    severity: low
+    title: "DNT no es kill-switch universal de analytics"
+    description: >
+      options.dnt solo desactiva StreamMetrics y GoogleTracker. Youbora, Comscore y Konodrac dependen
+      de sus propios flags enabled y siguen activos con dnt=true. Posible inconsistencia de compliance
+      de privacidad según expectativa del integrador.
+    workaround: "Deshabilitar explícitamente cada tracker en config si se requiere opt-out total"
+    source_comment: "src/plugins/index.js:37,57-71"
+    industry_known: false
+    regression_risk: low
+
+  - id: PLUG-DEF-006
+    status: known_limitation
+    severity: low
+    title: "Detección de flags por ~indexOf solo acepta valores canónicos"
+    description: >
+      Los flags se evalúan contra [1,'1',true,'true']. Valores truthy no canónicos ('yes', 'on', 2)
+      se interpretan como deshabilitado, sin warning. Riesgo de plugin no activado silenciosamente.
+    workaround: "Usar exclusivamente 1, '1', true o 'true' en la config"
+    source_comment: "src/plugins/index.js:37-44"
+    industry_known: false
+    regression_risk: low

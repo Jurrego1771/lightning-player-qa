@@ -1,0 +1,134 @@
+version: "1.0"
+module: metadata
+last_updated: "2026-06-08"
+
+learnings:
+  - id: META-LEARN-001
+    title: "player.metadata se arma por prioridad de fuentes, no de una sola"
+    discovery: "código fuente: src/metadata/exposeMetadata.js reduceToValidMetadata()"
+    detail: >
+      Cada campo se resuelve con un fallback en cascada:
+      context.viewMetadata[key] || context.metadata[key] || (key==='type' ? context.originalType : null)
+      || context[key] || context.metadata.preloadData[key]. Por eso un mismo campo puede provenir de
+      distintos orígenes según el contenido, y un campo undefined se omite del objeto (no aparece como key).
+    impact_on_tests: >
+      No asumir un origen único. Para asertar title/poster usar contenido real de plataforma; con
+      mock content algunos campos faltan. Verificar ausencia de keys (no null) cuando el dato no existe.
+
+  - id: META-LEARN-002
+    title: "metadatachanged tiene dedup por isEqual + debounce 100ms"
+    discovery: "código fuente: src/metadata/exposeMetadata.js useEffect"
+    detail: >
+      Solo se emite metadatachanged si playerReady && !isEqual(currentMetadata, metadataRef.current),
+      y dentro de un setTimeout de 100ms que se limpia si el metadata vuelve a cambiar antes. El payload
+      pasa por omitPrevNext (sin goPrevItem/goNextItem). Esto es el fix de fix/issue-627 (Reels).
+    impact_on_tests: >
+      Con mock content el conteo puede ser 0 (sin id real → mismo objeto), con content real 1. El
+      invariante testeable es: el conteo NO sube por re-renders. Esperar >100ms antes de contar.
+
+  - id: META-LEARN-003
+    title: "player.metadata NUNCA expone goPrevItem/goNextItem"
+    discovery: "código fuente: src/metadata/exposeMetadata.js omitPrevNext (lodash/fp/omit)"
+    detail: >
+      Aunque reduceToValidMetadata recolecta goNextItem/goPrevItem (los usa mediaSession para
+      nexttrack/previoustrack), el getter público y el payload de metadatachanged los eliminan.
+      Son funciones de navegación, no datos serializables.
+    impact_on_tests: >
+      No asertar que player.metadata tenga goPrevItem/goNextItem; un test que los espere fallará por diseño.
+
+  - id: META-LEARN-004
+    title: "Media Session es singleton por documento — arbitraje multi-instancia"
+    discovery: "código fuente: src/metadata/mediaSession.js setCurrentMediaSession + msp: bindings"
+    detail: >
+      navigator.mediaSession es único por documento. El módulo coordina quién la controla con un flag
+      module-level isCurrentMediaSession y escucha eventos cross-instancia (msp:playing, msp:adsStarted,
+      msp:adsResumed) para ceder la sesión. Solo limpia la sesión si la metadata actual es la suya
+      (mediaSession.metadata === mediaSessionData.metadata).
+    impact_on_tests: >
+      Los tests multi-player deben verificar que solo la instancia activa controla navigator.mediaSession
+      y que la otra cede sin romper. La aserción se hace sobre navigator.mediaSession, no sobre internals.
+
+  - id: META-LEARN-005
+    title: "Durante un ad la posición se neutraliza y el seek se bloquea"
+    discovery: "código fuente: src/metadata/mediaSession.js updatePosition() + handleSeek()"
+    detail: >
+      Si ad.info está presente, setPositionState recibe position:0 y duration:0, y handleSeek hace early
+      return (no permite scrub durante un ad). skipad solo se registra como action handler cuando
+      areAdsPlaying && areAdsSkippable.
+    impact_on_tests: >
+      Para verificar comportamiento de ad en la Media Session, comprobar position/duration 0 y que seekto
+      no mueve currentTime mientras hay ad. skipad debe aparecer solo en ads skippables.
+
+  - id: META-LEARN-006
+    title: "Artwork se genera en 6 tamaños vía query params del image proxy"
+    discovery: "código fuente: src/metadata/mediaSession.js useMediaSessionInner artwork map"
+    detail: >
+      A partir del póster se generan 6 entradas (96,128,192,256,384,512) añadiendo
+      ?w=&h=&fit=crop&crop=faces&q=80&auto=format (con & si ya hay query). Pósters blob:/data: se
+      filtran y producen artwork vacío. El artist de la Media Session es player.metadata.subtitle.
+    impact_on_tests: >
+      Verificar que artwork[].sizes cubre los 6 tamaños y que src contiene los params de resize. No
+      esperar artwork para pósters blob/data.
+
+  - id: META-LEARN-007
+    title: "Now-playing depende de Firebase Firestore real (onSnapshot)"
+    discovery: "código fuente: src/metadata/connect.js + firestore/useFirestore.js; tests/e2e/radio-nowplaying-metadata.spec.ts"
+    detail: >
+      La metadata now-playing de radios no es mockeable con isolatedPlayer: requiere Firebase DEV real,
+      la API nowplaying y onSnapshot. La app Firebase se nombra 'msp_meta' para no colisionar. El cursor
+      cache (cursors[cursorHash]) no se libera por diseño (cleanup de conteo comentado).
+    impact_on_tests: >
+      Los tests now-playing son E2E con red real, no integración aislada. Marcar @e2e y prever latencia
+      (hasta 45s por propagación Firebase + HLS).
+
+  - id: META-LEARN-008
+    title: "useID3Sync cambia la estrategia de matching de now-playing"
+    discovery: "investigación de código + tests/e2e/radio-nowplaying-metadata.spec.ts cabecera"
+    detail: >
+      Con view.useID3Sync:true el matching usa artist/title ICY del stream HLS; con false usa timestamps
+      de Firestore. Estaciones con stream {type:'ICY'} sin artist/title nunca matchean con useID3Sync:true.
+    impact_on_tests: >
+      Para tests de now-playing usar estación con useID3Sync:false. Documentar el bloqueo si solo hay
+      estaciones con useID3Sync:true.
+
+  - id: META-LEARN-009
+    title: "Industria: setPositionState debe actualizarse en play/seek/ratechange y resetearse con null"
+    discovery: "investigación web: web.dev/articles/media-session, MDN MediaSession/setPositionState"
+    detail: >
+      Buenas prácticas W3C/Chrome: actualizar setPositionState en play, pause, durationchange, timeupdate,
+      ratechange y al hacer seek; resetear con setPositionState(null) cuando no hay datos fiables. El player
+      ya bindea esos eventos (timeupdate/durationchange/canplay/pause/ads*) y manda null si duration es NaN.
+    impact_on_tests: >
+      Verificar que la posición/velocidad de la Media Session se actualiza tras seek y cambio de playbackRate,
+      no solo al iniciar.
+
+  - id: META-LEARN-010
+    title: "Industria: live ⇒ duration Infinity, DVR ⇒ usar seekable window"
+    discovery: "investigación web: hls.js issues #67/#2784, video.js, JWPlayer getDuration docs"
+    detail: >
+      Todos los players principales reportan Infinity para live infinito; para DVR el rango útil se calcula
+      del buffer/seekable, no de duration. El player sigue exactamente este patrón en mediaSession.
+    impact_on_tests: >
+      No asertar duration finita en live. Para DVR derivar la ventana de player.seekable, alineado con player_system.md.
+
+  - id: META-LEARN-011
+    title: "Industria: ID3/emsg timed metadata no es uniforme entre HLS y DASH"
+    discovery: "investigación web: aomediacodec id3-emsg, W3C media-timed-events, hls.js #2360"
+    detail: >
+      ID3 va en segmentos .ts (HLS) y vía emsg en CMAF/DASH; PROGRAM-DATE-TIME (HLS) y EventStream (DASH)
+      no son equivalentes y no todos los backends soportan ambos. hls.js entrega ID3/emsg como pseudo-ID3
+      en lotes (FRAG_PARSING_METADATA). Un stream puede carecer de PROGRAM-DATE-TIME.
+    impact_on_tests: >
+      Tratar la ausencia de programdatetime como válida; no exigir el evento en todos los streams. Probarlo
+      solo con streams HLS live que lo proveen.
+
+  - id: META-LEARN-012
+    title: "Industria: Media Session es frágil en iOS/PWA y WebAudio"
+    discovery: "investigación web: dbushell iOS PWA Media Session, PWA-POLICE/pwa-bugs, web.dev"
+    detail: >
+      iOS Safari históricamente pixelaba artwork (<16.4) y limita Media Session en PWAs; con Web Audio API
+      (sin elemento <audio>) los callbacks pueden dejar de funcionar. Notificaciones solo para media >5s.
+      No es un patrón deprecated, pero su disponibilidad/calidad varía por plataforma.
+    impact_on_tests: >
+      Feature-detect 'mediaSession' in navigator y hacer skip en entornos sin soporte. No asumir que la
+      Media Session existe en todos los navegadores/headless.

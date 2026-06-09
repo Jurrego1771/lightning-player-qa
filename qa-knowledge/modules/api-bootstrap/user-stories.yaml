@@ -1,0 +1,180 @@
+version: "1.0"
+module: api-bootstrap
+last_updated: "2026-06-08"
+
+user_stories:
+  - id: US-BOOT-001
+    persona: Integrator
+    narrative:
+      as: "integrador de la plataforma Mediastream"
+      want: "inicializar el player con una sola línea de HTML (script tag)"
+      so_that: "puedo agregar el player a cualquier página web sin escribir JavaScript"
+    business_value: HIGH
+    risk_area:
+      - "script tag bootstrap"
+      - "data-* attribute parsing"
+    related_features:
+      - "platform-config"
+      - "events"
+    acceptance:
+      - "BOOT-AC-001"
+      - "BOOT-AC-004"
+    notes: "El script tag embed es el método de integración más común para CMSs, blogs y páginas legacy."
+
+  - id: US-BOOT-002
+    persona: Integrator
+    narrative:
+      as: "desarrollador frontend con control programático"
+      want: "inicializar el player vía JavaScript con window.loadMSPlayer()"
+      so_that: "puedo controlar cuándo y cómo se monta el player en mi SPA o aplicación React/Vue"
+    business_value: HIGH
+    risk_area:
+      - "loadMSPlayer API"
+      - "Promise-based init"
+    related_features:
+      - "platform-config"
+    acceptance:
+      - "BOOT-AC-002"
+      - "BOOT-AC-006"
+      - "BOOT-AC-008"
+    notes: "loadMSPlayer es el método preferido para SPAs con routing dinámico. Debe retornar Promise<PlayerAPI>."
+
+  - id: US-BOOT-003
+    persona: Operator
+    narrative:
+      as: "operador de la plataforma que monitorea errores de integración"
+      want: "que el player falle rápido y con mensajes claros cuando la configuración es inválida"
+      so_that: "puedo detectar integraciones rotas antes de que afecten a los usuarios finales"
+    business_value: HIGH
+    risk_area:
+      - "error handling"
+      - "PlayerInitError"
+    related_features:
+      - "platform-config"
+      - "events"
+    acceptance:
+      - "BOOT-AC-003"
+      - "BOOT-AC-007"
+      - "BOOT-AC-008"
+      - "BOOT-AC-009"
+    notes: "Los mensajes de error deben ser suficientemente descriptivos para que un integrador pueda corregir el problema sin soporte."
+
+  - id: US-BOOT-004
+    persona: Integrator
+    narrative:
+      as: "integrador que gestiona el ciclo de vida del player"
+      want: "que destroy() limpie completamente el DOM y libere memoria sin necesitar pasos adicionales"
+      so_that: "puedo crear y destruir el player múltiples veces en una SPA sin memory leaks"
+    business_value: HIGH
+    risk_area:
+      - "destroy lifecycle"
+      - "memory management"
+      - "React unmount"
+    related_features:
+      - "chromecast"
+    acceptance:
+      - "BOOT-AC-005"
+      - "BOOT-AC-006"
+    notes: "Crítico para SPAs con routing. El error más común en producción es la falta de llamada a destroy() en cleanup."
+
+  - id: US-BOOT-005
+    persona: Integrator
+    narrative:
+      as: "integrador que implementa analytics custom"
+      want: "pasar datos propios al player via data-custom-* attributes"
+      so_that: "mis plugins de analytics pueden acceder a metadata de campaña o contexto de la página"
+    business_value: MEDIUM
+    risk_area:
+      - "data-custom-* attributes"
+      - "config.custom namespace"
+    related_features:
+      - "youbora"
+      - "ads-manager"
+    acceptance:
+      - "BOOT-AC-010"
+    notes: "Los datos custom son accesibles por todos los plugins via config.custom.*. Esencial para tracking de campaña."
+
+  - id: US-BOOT-006
+    persona: Operator
+    narrative:
+      as: "operador de monetización"
+      want: "que la configuración de ads del integrador tenga precedencia sobre la config de plataforma"
+      so_that: "puedo ofrecer a publishers la capacidad de usar su propio sistema de monetización"
+    business_value: HIGH
+    risk_area:
+      - "ads config override"
+      - "adsMap normalization"
+    related_features:
+      - "ads-manager"
+      - "ads-ima"
+    acceptance:
+      - "BOOT-AC-014"
+      - "BOOT-AC-016"
+    notes: "La capacidad de overrider ads es un feature de monetización crítico para publishers con acuerdos directos."
+
+  - id: US-BOOT-007
+    persona: Integrator
+    narrative:
+      as: "integrador que desarrolla en TypeScript o con IDEs modernos"
+      want: "que los valores de config keys con typos sean detectables antes de runtime"
+      so_that: "puedo evitar bugs de integración por config keys incorrectas"
+    business_value: MEDIUM
+    risk_area:
+      - "config validation"
+      - "unknown keys silent ignore"
+    related_features:
+      - "platform-config"
+    acceptance:
+      - "BOOT-AC-010"
+    notes: "Actualmente no hay validación de schema — config keys desconocidas son ignoradas silenciosamente. BOOT-DEF-003 cubre la ausencia de tipos TypeScript."
+
+  - id: US-BOOT-008
+    persona: Viewer
+    narrative:
+      as: "usuario que accede a contenido embebido"
+      want: "que el player cargue rápidamente y no quede en estado de carga infinita si hay un error"
+      so_that: "puedo saber si hay un problema y tomar una acción (recargar, reportar) en vez de esperar indefinidamente"
+    business_value: HIGH
+    risk_area:
+      - "error handling"
+      - "no retry loop"
+      - "user experience on error"
+    related_features:
+      - "events"
+    acceptance:
+      - "BOOT-AC-003"
+    notes: "El player no debe quedar en loading spinner infinito. Un error debe ser visible y el UI debe quedar en estado estable."
+
+  - id: US-BOOT-009
+    persona: Integrator
+    narrative:
+      as: "integrador legacy que usa el player embebido en un iframe bajo .mdstrm.com"
+      want: "que el player relaye sus eventos al parent window via postMessage"
+      so_that: "mi integración existente que depende del API legacy de mensajes sigue funcionando sin migración"
+    business_value: MEDIUM
+    risk_area:
+      - "legacyApiCompat"
+      - "postMessage relay"
+      - "cross-origin iframe"
+    related_features:
+      - "events"
+    acceptance:
+      - "BOOT-AC-018"
+    notes: "Compatibilidad hacia atrás crítica para publishers legacy. Los Chromecast events están comentados — limitación conocida (BOOT-DEF-006)."
+
+  - id: US-BOOT-010
+    persona: Integrator
+    narrative:
+      as: "integrador que necesita cambiar el contenido del player dinámicamente"
+      want: "poder llamar player.load() para cambiar de contenido sin destruir y recrear el player"
+      so_that: "la experiencia de usuario es fluida al navegar entre contenidos (sin flickers del DOM)"
+    business_value: HIGH
+    risk_area:
+      - "dynamic content loading"
+      - "load() guard during ads"
+    related_features:
+      - "platform-config"
+      - "playback-core"
+    acceptance:
+      - "BOOT-AC-015"
+    notes: "player.load() es más eficiente que destroy()+reinit para cambios de contenido frecuentes. El guard de ads (BOOT-DEF-007) debe ser documentado claramente."

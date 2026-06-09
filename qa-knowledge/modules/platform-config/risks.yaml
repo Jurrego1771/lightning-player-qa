@@ -1,0 +1,121 @@
+version: "1.0"
+module: platform-config
+last_updated: "2026-06-08"
+
+risks:
+  - id: PLAT-RISK-001
+    severity: high
+    title: "Plataforma API caída → ningún player inicializa (single point of failure)"
+    description: >
+      loadConfig() y el fetch del player config son bloqueantes para el bootstrap. No hay fallback de
+      contenido cacheado ni config local. Si embedHost no responde (5xx, DNS, red), todos los embeds
+      en todas las páginas fallan simultáneamente.
+    affected_files: ["src/platform/loadConfig.js", "src/api/api.js"]
+    trigger: "Outage de la plataforma, 5xx, timeout de red, DNS failure de embedHost."
+    mitigation: >
+      loadConfig lanza PlayerInitError(fatal:true) → api.js emite evento 'error'. El integrador puede
+      escuchar 'error' y mostrar UI propia. No hay retry ni circuit breaker en el cliente.
+    industry_note: >
+      Las plataformas OTT mitigan esto con CDN edge caching de los config docs y TTLs cortos para los
+      manifests, con purge solo en cambios de derechos. El player actual no aprovecha cache del lado cliente.
+    test_priority: MUST
+
+  - id: PLAT-RISK-002
+    severity: high
+    title: "CORS bloqueado por wildcard origin con withCredentials"
+    description: >
+      El fetch del content config usa GET(url, { withCredentials: true }). El navegador RECHAZA cualquier
+      respuesta con Access-Control-Allow-Origin:* cuando se envían credenciales. El servidor debe reflejar
+      el origin exacto y enviar Access-Control-Allow-Credentials:true.
+    affected_files: ["src/platform/loadConfig.js", "src/helper/request.js"]
+    trigger: >
+      Cambio de configuración CORS en la plataforma o CDN/proxy intermedio que reescribe headers a wildcard;
+      embed servido desde un origin no whitelisteado.
+    mitigation: "Configuración server-side correcta de CORS. No hay workaround del lado cliente."
+    industry_note: >
+      Patrón conocido y documentado (videojs #7232, shaka #2227): CDNs/load balancers pueden strip o cachear
+      headers CORS silenciosamente. Recomendación de industria: Vary: Origin para evitar cache poisoning.
+      El error de CORS aparece en consola pero la request se ve fallida solo en Network tab.
+    test_priority: MUST
+
+  - id: PLAT-RISK-003
+    severity: high
+    title: "JSON malformado o sin src.* causa fallo no obvio en new URL(src)"
+    description: >
+      Si la respuesta es 200 pero el body no parsea o no trae src.hls/mpd/mp4/m4a/mp3, la destructuración
+      deja src undefined y new URL(undefined) lanza. El error se propaga pero el mensaje puede ser críptico
+      (no un PlayerInitError descriptivo).
+    affected_files: ["src/platform/loadConfig.js"]
+    trigger: "Backend devuelve 200 con HTML de error, body vacío, o content config incompleto."
+    mitigation: "El throw eventualmente llega a api.js como error fatal, pero sin clasificación clara de causa."
+    industry_note: "Config delivery debe validar schema antes de consumir; un 200 con body inválido es un caso de borde común tras un proxy mal configurado."
+    test_priority: MUST
+
+  - id: PLAT-RISK-004
+    severity: medium
+    title: "Token de acceso expirado / restricción de región → 403 ACCESS_DENIED"
+    description: >
+      Contenido con closed access o geo-restricción responde 403 con { message, data:'ACCESS_DENIED', metadata }.
+      El token de playback se emite dinámicamente y puede expirar entre la emisión y el fetch.
+    affected_files: ["src/platform/loadConfig.js"]
+    trigger: "access_token expirado, IP/región bloqueada, cookies de sesión inválidas."
+    mitigation: >
+      loadConfig preserva message/data/metadata en el PlayerInitError; el integrador puede mostrar el mensaje
+      de restricción (title/description en metadata).
+    industry_note: >
+      403 por token expirado o geo-blocking es el error de acceso más común en OTT (token embebe expiry+geo+device;
+      el CDN valida en cada request). El player debe distinguir ACCESS_DENIED de REQUEST_ERROR genérico.
+    test_priority: MUST
+
+  - id: PLAT-RISK-005
+    severity: medium
+    title: "Sin timeout explícito en el fetch del config"
+    description: >
+      request.js no configura timeout en axios. Si la plataforma acepta la conexión pero no responde
+      (slow loris / endpoint colgado), el bootstrap del player espera indefinidamente sin emitir error.
+    affected_files: ["src/helper/request.js", "src/platform/loadConfig.js"]
+    trigger: "Endpoint de plataforma lento o colgado; red de alta latencia."
+    mitigation: "Ninguna en el cliente — depende del timeout default del navegador/axios."
+    industry_note: "El propio platform-mock.ts documenta que el endpoint de waveform 'cuelga para IDs inexistentes', evidenciando que requests sin timeout pueden bloquear init."
+    test_priority: SHOULD
+
+  - id: PLAT-RISK-006
+    severity: medium
+    title: "Cache stale del config doc sirve manifest/derechos obsoletos"
+    description: >
+      loadConfig agrega _=Date.now() como cache-bust al request del content config y al source, pero el
+      player config (disparado por api.js) y caches intermedios pueden servir un doc desactualizado tras un
+      cambio de DRM/ads/geo.
+    affected_files: ["src/api/api.js", "src/platform/loadConfig.js"]
+    trigger: "Cambio de derechos/ads/DRM en backend con TTL de CDN aún vigente; cache de navegador."
+    mitigation: "Cache-busting con timestamp en content config y source URL."
+    industry_note: >
+      Best practice de industria: TTL largo para segments, invalidación de playlists/config solo al cambiar
+      contenido o derechos. Cache-busting por query param es válido pero no purga edge caches activamente.
+    test_priority: SHOULD
+
+  - id: PLAT-RISK-007
+    severity: medium
+    title: "Detección de formato HLS vs DASH incorrecta rompe la selección de handler"
+    description: >
+      La selección de source depende de player.type/renderAs/format y de qué claves src.* existen. Un mismatch
+      (ej. format=dash sin mpd, o video sin hls) lanza FORMAT_NOT_AVAILABLE; un mismatch silencioso elige el
+      handler equivocado.
+    affected_files: ["src/platform/loadConfig.js"]
+    trigger: "Backend cambia el set de sources entregados; format solicitado no disponible."
+    mitigation: "Throw explícito FORMAT_NOT_AVAILABLE cuando el formato pedido no está; defaultSrc fallback HLS→mp3."
+    industry_note: "Negociación de formato es punto clásico de regresión cuando el packager cambia outputs."
+    test_priority: SHOULD
+
+  - id: PLAT-RISK-008
+    severity: low
+    title: "Pérdida de subtítulos al activar Google DAI"
+    description: >
+      Cuando hay googleDAI, loadConfig elimina ret.subtitles (DAI provee subtítulos ajustados a los gaps de ads).
+      Solo VTT funciona con DAI; ASS no funciona en absoluto. Esto puede sorprender a QA que espera ver los
+      subtítulos del backend.
+    affected_files: ["src/platform/loadConfig.js"]
+    trigger: "Contenido con subtítulos ASS + Google DAI activo."
+    mitigation: "Comentario en código documenta el comportamiento; fuerza hlsVariant:'normal' si era light."
+    industry_note: "SSAI/DAI reescribe timelines; subtítulos sidecar del media original quedan desincronizados."
+    test_priority: SHOULD

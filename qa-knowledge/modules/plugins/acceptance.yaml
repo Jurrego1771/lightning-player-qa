@@ -1,0 +1,124 @@
+version: "1.0"
+module: plugins
+last_updated: "2026-06-08"
+
+acceptance_criteria:
+  - id: PLUG-AC-001
+    priority: MUST
+    scenario: "Carga lazy de plugins solo cuando la config los habilita"
+    given: "Player con metadata.player.tracking.youbora.enabled = true y comscore deshabilitado"
+    when: "El player inicializa y se ejecuta load(options)"
+    then:
+      - "El chunk de Youbora se carga vía import() dinámico"
+      - "El chunk de Comscore NO se descarga (no aparece en network)"
+      - "Federation y PlayingMetadata se cargan siempre"
+
+  - id: PLUG-AC-002
+    priority: MUST
+    scenario: "Plugin con CDN no disponible no rompe la reproducción"
+    given: "Un plugin de analytics cuyo SDK CDN devuelve 404/timeout"
+    when: "El player intenta cargar los plugins"
+    then:
+      - "El plugin fallido reporta isReady (catch silencioso) y no bloquea pluginsReady()"
+      - "Los demás plugins (DRM, ads) se montan correctamente"
+      - "El evento 'ready' se emite y el video reproduce"
+
+  - id: PLUG-AC-003
+    priority: MUST
+    scenario: "Playback no arranca hasta que todos los plugins estén listos"
+    given: "Config con plugin DRM que resuelve _candidateUrls de forma asíncrona"
+    when: "El player monta el árbol de plugins"
+    then:
+      - "RenderElement NO monta el elemento <video> mientras pluginsReady() === false"
+      - "El <video> se monta solo cuando todos los componentes registrados retornan getIsReady() === true"
+      - "El src usado es el resuelto por el plugin DRM, no el candidate original"
+
+  - id: PLUG-AC-004
+    priority: MUST
+    scenario: "Plugin que falla en isReady() no deja el player colgado"
+    given: "Un plugin cuyo isReady() rechaza la promesa"
+    when: "_onMount evalúa Promise.resolve(isReady()).catch()"
+    then:
+      - "El error se captura (catch vacío) y _isReady pasa a true en finally"
+      - "pluginsReady() eventualmente retorna true"
+      - "El player no queda bloqueado indefinidamente esperando el plugin"
+
+  - id: PLUG-AC-005
+    priority: MUST
+    scenario: "Vista reels no carga plugins globales"
+    given: "options.view.type === 'reels'"
+    when: "Se ejecuta load(options)"
+    then:
+      - "load() retorna {} (objeto vacío)"
+      - "Cada instancia reels interna carga sus propios plugins de forma independiente"
+
+  - id: PLUG-AC-006
+    priority: MUST
+    scenario: "Error fatal previo aborta la carga de plugins"
+    given: "options.error está presente (fatal error en bootstrap)"
+    when: "Se ejecuta load(options)"
+    then:
+      - "load() retorna {} sin montar ningún plugin"
+      - "No se inician SDKs externos ni beacons de analytics"
+
+  - id: PLUG-AC-007
+    priority: SHOULD
+    scenario: "Do-Not-Track desactiva trackers de analytics"
+    given: "options.dnt = true (o 1, '1', 'true')"
+    when: "Se ejecuta load(options)"
+    then:
+      - "StreamMetrics NO se monta"
+      - "GoogleTracker NO se monta aunque analytics.google esté presente"
+      - "La reproducción funciona normalmente sin analytics"
+
+  - id: PLUG-AC-008
+    priority: SHOULD
+    scenario: "Prioridad Google DAI sobre MediaTailor DAI"
+    given: "Config con googleDAI.backup + key y mediaTailorDAI.enabled simultáneamente"
+    when: "Se ejecuta load(options)"
+    then:
+      - "Se monta GoogleDAI"
+      - "loadConfig no setea mediaTailorDAI cuando googleDAI está activo (no hay doble inserción de ads)"
+
+  - id: PLUG-AC-009
+    priority: SHOULD
+    scenario: "LiveReactions solo en contenido live"
+    given: "options.liveReactions truthy y options.type === 'vod'"
+    when: "Se ejecuta load(options)"
+    then:
+      - "LiveReactions NO se monta (solo aplica a type === 'live')"
+
+  - id: PLUG-AC-010
+    priority: SHOULD
+    scenario: "Re-render por cambio de options no re-monta plugins idénticos"
+    given: "PluginLoader ya montó un set de plugins"
+    when: "options cambia pero el set de keys de plugins es idéntico"
+    then:
+      - "El efecto detecta keys iguales y retorna temprano (no re-instancia)"
+      - "No se reinicializan SDKs ni se duplican listeners"
+
+  - id: PLUG-AC-011
+    priority: SHOULD
+    scenario: "Desmontaje de plugin ejecuta cleanup"
+    given: "Un plugin montado basado en MediastreamBaseComponent"
+    when: "El componente se desmonta (componentWillUnmount)"
+    then:
+      - "Se marca __destroyed = true"
+      - "Se invoca restart(true) para liberar recursos del plugin"
+      - "Los setState posteriores se cortocircuitan (guard __destroyed)"
+
+  - id: PLUG-AC-012
+    priority: COULD
+    scenario: "SGAI requiere config completa para activarse"
+    given: "options.ads.sgai con networkCode pero sin customAssetKey"
+    when: "Se ejecuta load(options)"
+    then:
+      - "GoogleSGAI NO se monta (requiere networkCode Y customAssetKey y enabled !== false)"
+
+  - id: PLUG-AC-013
+    priority: COULD
+    scenario: "DRM plugin solo con candidate URLs presentes"
+    given: "options.drm sin _candidateUrls.hls ni .mpd"
+    when: "Se ejecuta load(options)"
+    then:
+      - "El plugin DRM NO se monta"

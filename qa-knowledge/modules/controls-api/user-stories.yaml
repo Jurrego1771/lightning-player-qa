@@ -1,0 +1,167 @@
+version: "1.0"
+module: controls-api
+last_updated: "2026-06-08"
+
+user_stories:
+  - id: US-CTRL-001
+    persona: Viewer
+    narrative:
+      as: "espectador de contenido VOD"
+      want: "poder pausar y reanudar la reproducción en cualquier momento"
+      so_that: "puedo interrumpir el video y retomarlo sin perder mi lugar"
+    business_value: HIGH
+    risk_area:
+      - "play/pause state consistency"
+      - "paused getter accuracy"
+    related_features:
+      - "playback-core"
+      - "events"
+    acceptance:
+      - CTRL-AC-001
+      - CTRL-AC-002
+      - CTRL-AC-012
+    notes: "Core UX del player. play/pause es la interacción más frecuente."
+
+  - id: US-CTRL-002
+    persona: Viewer
+    narrative:
+      as: "espectador de contenido largo"
+      want: "poder saltar a cualquier punto del video usando la barra de progreso"
+      so_that: "puedo ir directamente a la parte que me interesa sin ver todo el video"
+    business_value: HIGH
+    risk_area:
+      - "seek precision"
+      - "HLS keyframe snapping"
+      - "seeking/seeked event sequence"
+    related_features:
+      - "playback-core"
+      - "hls"
+    acceptance:
+      - CTRL-AC-003
+      - CTRL-AC-009
+      - CTRL-AC-016
+    notes: "La precisión de seek depende del GOP size del stream. Tolerancia ±2s es aceptable para HLS."
+
+  - id: US-CTRL-003
+    persona: Viewer
+    narrative:
+      as: "espectador en un ambiente ruidoso"
+      want: "poder ajustar o silenciar el volumen del video"
+      so_that: "puedo controlar el audio sin afectar el volumen del sistema"
+    business_value: HIGH
+    risk_area:
+      - "volume range validation"
+      - "muted/unmuted state"
+      - "volumechange event"
+    related_features:
+      - "playback-core"
+    acceptance:
+      - CTRL-AC-007
+      - CTRL-AC-008
+    notes: "Muted autoplay es el patrón estándar en redes sociales. El player soporta ambos."
+
+  - id: US-CTRL-004
+    persona: Integrator
+    narrative:
+      as: "desarrollador que integra el player en una plataforma"
+      want: "recibir una API estable y predecible donde play/pause/load/destroy no cambien su firma entre versiones"
+      so_that: "mis integraciones no se rompen cuando el player se actualiza"
+    business_value: HIGH
+    risk_area:
+      - "API contract stability"
+      - "prototype mutation side effects"
+    related_features:
+      - "api-bootstrap"
+    acceptance:
+      - CTRL-AC-014
+    notes: "El contract test en api-bootstrap.spec.ts es el gate de CI para estabilidad de API."
+
+  - id: US-CTRL-005
+    persona: Integrator
+    narrative:
+      as: "desarrollador que inicia el player desde código"
+      want: "recibir errores descriptivos cuando llamo play() en el momento equivocado"
+      so_that: "puedo depurar rápidamente sin revisar el código fuente del player"
+    business_value: HIGH
+    risk_area:
+      - "play() before ready error"
+      - "autoplay policy rejection"
+    related_features:
+      - "events"
+    acceptance:
+      - CTRL-AC-004
+      - CTRL-AC-005
+      - CTRL-AC-013
+    notes: "El mensaje de error 'Player is not ready. Wait for ready event' es explícito y accionable. Autoplay policy error emite evento 'error' con mensaje del browser."
+
+  - id: US-CTRL-006
+    persona: Operator
+    narrative:
+      as: "operador de plataforma que embebe el player en una página con múltiples contenidos"
+      want: "poder destruir el player al navegar a otra sección y reinicializarlo con nuevo contenido"
+      so_that: "no hay memory leaks ni listeners huérfanos que degraden el rendimiento de la SPA"
+    business_value: HIGH
+    risk_area:
+      - "destroy() completeness"
+      - "memory leaks"
+      - "event listener cleanup"
+    related_features:
+      - "playback-core"
+      - "events"
+      - "chromecast"
+    acceptance:
+      - CTRL-AC-010
+    notes: "destroy() es la operación más crítica para SPAs. cleanupChromecast() y internalEmitter.reset() deben ejecutarse."
+
+  - id: US-CTRL-007
+    persona: Integrator
+    narrative:
+      as: "desarrollador que implementa una playlist con botones de siguiente y anterior"
+      want: "poder configurar callbacks de onNext y onPrev en el player para responder a los botones de la UI"
+      so_that: "la navegación de playlist funciona de forma nativa sin reimplementar la UI de controles"
+    business_value: MEDIUM
+    risk_area:
+      - "onNext/onPrev setter validation"
+      - "controls UI integration"
+    related_features:
+      - "controls-api"
+    acceptance:
+      - CTRL-AC-017
+    notes: "onNext y onPrev son expuestos vía _exposeMethods(). El setter valida typeof === 'function' o null."
+
+  - id: US-CTRL-008
+    persona: Viewer
+    narrative:
+      as: "espectador que consume contenido con publicidad"
+      want: "que los controles de play/pause funcionen correctamente durante los anuncios"
+      so_that: "puedo pausar un anuncio si necesito interrumpir la reproducción"
+    business_value: MEDIUM
+    risk_area:
+      - "ads manager delegation"
+      - "isPlayingAd state"
+      - "seek during ad restriction"
+    related_features:
+      - "ads-manager"
+      - "ads-ima"
+    acceptance:
+      - CTRL-AC-011
+      - CTRL-AC-018
+    notes: "Durante ad linear, seek no está disponible (IMA SDK restriction). Play/pause sí. El player delega correctamente al adsManager."
+
+  - id: US-CTRL-009
+    persona: Operator
+    narrative:
+      as: "operador que configura el player para reproducción automática en páginas de destino"
+      want: "que el player maneje graciosamente el rechazo de autoplay por política del browser"
+      so_that: "la página no queda en un estado inválido cuando el browser bloquea la reproducción automática"
+    business_value: HIGH
+    risk_area:
+      - "autoplay policy rejection"
+      - "error event handling"
+      - "status after autoplay failure"
+    related_features:
+      - "events"
+      - "playback-core"
+    acceptance:
+      - CTRL-AC-013
+    notes: "Chrome y todos los browsers modernos bloquean autoplay con sonido sin user gesture. El player emite 'error' y status = 'pause'. El operador debe mostrar un botón de play en la UI."

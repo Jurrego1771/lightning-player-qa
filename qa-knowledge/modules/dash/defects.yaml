@@ -1,0 +1,55 @@
+version: "1.0"
+module: dash
+last_updated: "2026-06-08"
+
+defects:
+
+  - id: DASH-DEF-001
+    status: known_workaround
+    severity: high
+    title: "ContentIds.dashDvr apunta a stream sin ventana DVR — getDuration() = 0"
+    description: "ContentIds.dashDvr (valor: '6a0f2956a2a6f91404c3cc0c') es el mismo ID que ContentIds.dashLive. El stream es un DASH live sin `timeShiftBufferDepth` configurado en el MPD. Como resultado, el DashHandler no puede obtener una ventana DVR válida de dash.js: `player.getDvrWindow()` retorna null y `player.duration()` retorna 0 o NaN. Los 4 tests en `tests/e2e/dash-dvr.spec.ts` fallan sistemáticamente."
+    workaround: "Configurar CONTENT_ID_DASH_DVR=<nuevo-id> en .env o CI secrets apuntando a un contenido con tipo 'dvr' y timeShiftBufferDepth > 0 en la plataforma DEV. Los tests tienen `test.fixme(true, '...')` hasta que se resuelva."
+    source_comment: "tests/e2e/dash-dvr.spec.ts:23 — test.fixme comentario completo"
+    industry_known: false
+    regression_risk: high
+
+  - id: DASH-DEF-002
+    status: known_limitation
+    severity: medium
+    title: "pauseBuffering() y resumeBuffering() son no-op en DASH"
+    description: "El DashHandler implementa `pauseBuffering()` y `resumeBuffering()` como métodos vacíos (no-op) con comentario explícito: 'dash.js has no equivalent API; no-op'. HLS handler implementa estas funciones via `hls.startLoad()`/`hls.stopLoad()`. Cualquier feature que dependa de pausar la carga de segmentos sin pausar la reproducción (ej: buffer management durante ad breaks en SSAI) no funcionará en streams DASH."
+    workaround: "Ninguno disponible a nivel de API pública. Los plugins que usan pauseBuffering() deben verificar `player.handler.includes('dash')` y adaptar su comportamiento."
+    source_comment: "src/player/handler/dash/handler.js:503-508 — comentarios explícitos"
+    industry_known: true
+    regression_risk: medium
+
+  - id: DASH-DEF-003
+    status: known_limitation
+    severity: medium
+    title: "dvrWindow disponible con delay post-playing en DASH"
+    description: "dash.js calcula la ventana DVR (getDvrWindow) a partir del manifiesto actualizado. La primera actualización del manifiesto dinámico puede llegar hasta varios segundos después del evento 'playing'. Durante ese periodo, `player.dvrWindow` retorna null y `player.duration()` retorna 0. El handler ya tiene guardas defensivas (`w.size > 0`, `Number.isFinite`), pero los tests deben usar `expect.poll()` con timeout generoso (10s)."
+    workaround: "Usar `expect.poll(() => player.getDuration(), { timeout: 10_000 }).toBeGreaterThan(0)` antes de cualquier seek DVR. Implementado en los tests de dash-dvr.spec.ts."
+    source_comment: "src/player/handler/dash/handler.js:62-73 — _getDvrWindow() defensivo"
+    industry_known: true
+    regression_risk: medium
+
+  - id: DASH-DEF-004
+    status: known_limitation
+    severity: low
+    title: "player.edge retorna hostname de la URL del source, no live edge time"
+    description: "El getter `edge` en DashHandler extrae el hostname de la URL del source (regex `url.match(/^([^/]*)?\/\/([^/]*)/)`) — no retorna el tiempo del live edge como en HLS. Esta propiedad es semanticamente diferente entre handlers. En HLS, `edge` aproxima `player.seekable.end`. En DASH, `edge` es un string de hostname."
+    workaround: "Para obtener el live edge time en DASH, usar `player.seekable.end` o calcular via `player.duration() - player.getCurrentLiveLatency()` (no expuesto directamente en la API pública). No usar `player.edge` para cálculos de latencia en DASH."
+    source_comment: "src/player/handler/dash/handler.js:326-332 — get('edge')"
+    industry_known: false
+    regression_risk: low
+
+  - id: DASH-DEF-005
+    status: known_limitation
+    severity: low
+    title: "Google DAI DASH y DRM juntos — tests bloqueados sin credenciales"
+    description: "Los tests de `tests/e2e/drm-widevine-dash.spec.ts` y `tests/integration/google-dai-dash-drm.spec.ts` requieren credenciales reales de Widevine (license server URL + token) y Google Ad Manager (network code, asset key). En CI estas credenciales no están disponibles. Los tests están en test.fixme o test.skip condicional."
+    workaround: "Configurar WIDEVINE_LICENSE_URL, DAI_NETWORK_CODE, DAI_DASH_ASSET_KEY en .env para entorno de staging. Para CI, usar ClearKey DRM que no requiere servidor de licencias externo."
+    source_comment: "tests/integration/google-dai-dash.spec.ts:25-31 — test.fixme global"
+    industry_known: false
+    regression_risk: medium

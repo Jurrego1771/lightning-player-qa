@@ -22,7 +22,7 @@
 | 6 | `qa-knowledge/acceptance-criteria.md` — estándares globales | ✅ |
 | 7 | Oracles restantes (medium/low): 18 módulos con context.yaml; 6 con behavior.json | ✅ |
 | 8 | Protocolo de agentes A1/A2/A3/A4/A5 actualizado con query-context | ✅ |
-| 9 | `/sync-knowledge` Pasos 7–10: stale oracles, nuevos módulos, coverage gaps, covered_by auto-update | ✅ |
+| 9 | `qa-knowledge-writer`: genera 9 archivos canónicos por módulo con investigación de código + internet | ✅ |
 
 **Coverage gaps resueltos:**
 - `query-context.ts coverage-gaps [todos CRITICAL/HIGH]` → **MUST: 0** (era 23)
@@ -103,7 +103,7 @@ Agregar variante `fixtures/streams/vod-long/` para tests que necesiten contenido
 
 A5 ya genera `// Covers: AC-XXX-NNN` en specs nuevos.  
 Para specs existentes: agregar comentarios manualmente en los tests prioritarios.  
-Esto desbloquea el Paso 10 de `/sync-knowledge` (auto-update covered_by).  
+Esto desbloquea el Paso 10 de `qa-knowledge-writer` (auto-update covered_by).  
 Prioridad: `tests/e2e/vod-playback.spec.ts` → cubrir ACs de playback-core y controls-api.
 
 ### Criterio de completitud Fase 1 ✅
@@ -147,7 +147,7 @@ Cubre: API surface (player.on sin throw), disponibilidad en WebKit headless, atr
 
 ### 2.5 Error types específicos (Gap #9) ⬜ PARCIAL
 
-Escenarios de error cubiertos (403, segmento, recovery en `error-recovery.spec.ts`). Strings exactos `NETWORK_ERROR`/`MEDIA_ERROR`/`DRM_ERROR` no verificados — pendiente confirmar con `/sync-knowledge` si el player expone esas constantes.
+Escenarios de error cubiertos (403, segmento, recovery en `error-recovery.spec.ts`). Strings exactos `NETWORK_ERROR`/`MEDIA_ERROR`/`DRM_ERROR` no verificados — pendiente confirmar con `qa-knowledge-writer` si el player expone esas constantes.
 
 ### 2.6 Platform API contract (Gap #12) ✅ RESUELTO
 
@@ -507,7 +507,7 @@ Estado actual: pipeline manual. Target: totalmente automático en GitHub Actions
 ### 5.2 Calidad de Oracles — Ciclo de Verificación
 
 ```
-/sync-knowledge (mensual):
+qa-knowledge-writer (mensual):
   Paso 7: detecta stale oracles → notifica en Slack
   Paso 9: nuevo coverage gaps report → issue automático en GitHub
   Paso 10: auto-popula covered_by desde tests con // Covers: AC-XXX
@@ -528,7 +528,7 @@ Target: ≤ 5% test debt en módulos CRITICAL.
 ### 5.4 Documentación Viva
 
 `qa-knowledge/` como fuente de verdad que se auto-actualiza:
-- `/sync-knowledge` actualiza `last_verified` + `covered_by`
+- `qa-knowledge-writer` actualiza `last_verified` + `covered_by`
 - A11 actualiza `test_coverage_ratio`
 - behavior.json es el contrato vivo del módulo (no un doc estático)
 
@@ -555,9 +555,9 @@ Publicar como GitHub Pages con renderizado de los behavior.json → tabla visual
 2. Fix `dash-dvr.spec.ts` — agregar `waitForEvent('loadedmetadata')` (20 min)
 3. Fix `player-api-format-param.spec.ts` — debug timeout (30 min)
 4. `PLAYER_LOCAL_REPO` en `.env` — ✅ hecho
-5. ~~Agregar `// Covers: AC-PLAYBACK-001` en tests existentes~~ — ✅ `covered_by` auto-populado vía `/sync-knowledge` Paso 10
+5. ~~Agregar `// Covers: AC-PLAYBACK-001` en tests existentes~~ — ✅ `covered_by` auto-populado vía `qa-knowledge-writer` Paso 10
 6. `npm run fixtures:generate` — verificar que fixture HLS tiene duración correcta (15 min)
-7. Confirmar strings `NETWORK_ERROR`/`MEDIA_ERROR`/`DRM_ERROR` con `/sync-knowledge` → cerrar Gap #9 (30 min)
+7. Confirmar strings `NETWORK_ERROR`/`MEDIA_ERROR`/`DRM_ERROR` con `qa-knowledge-writer` → cerrar Gap #9 (30 min)
 
 ---
 

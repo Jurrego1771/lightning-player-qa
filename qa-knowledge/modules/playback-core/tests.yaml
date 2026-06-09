@@ -1,0 +1,164 @@
+version: "1.0"
+module: playback-core
+last_updated: "2026-06-08"
+
+existing_tests:
+  - spec_file: "tests/e2e/vod-playback.spec.ts"
+    description: "Happy path VOD completo: inicialización, play/pause, seek, volume, load(), destroy(), ended, levels. Tests E2E contra plataforma real."
+    ac_coverage:
+      - "PLAY-AC-001"
+      - "PLAY-AC-002"
+      - "PLAY-AC-003"
+      - "PLAY-AC-004"
+      - "PLAY-AC-005"
+      - "PLAY-AC-006"
+      - "PLAY-AC-008"
+      - "PLAY-AC-012"
+      - "PLAY-AC-014"
+    notes: "Tests WebKit skipeados para HLS. Incluye ciclo de vida: destroy() + reinicialización 3 ciclos."
+
+  - spec_file: "tests/integration/playback-core-edge.spec.ts"
+    description: "Edge cases del núcleo: ended event (AC-005), error con URL inaccesible (AC-006), play() antes de ready (AC-009 — fixme)."
+    ac_coverage:
+      - "PLAY-AC-006"
+      - "PLAY-AC-007"
+      - "PLAY-AC-009"
+    notes: "Usa isolatedPlayer + LocalStreams. AC-009 es test.fixme por limitación de harness."
+
+  - spec_file: "tests/contract/player-api.spec.ts"
+    description: "Contrato de API: inicialización, versión, métodos requeridos, propiedades con tipos correctos, eventos fundamentales, sistema de eventos."
+    ac_coverage:
+      - "PLAY-AC-001"
+      - "PLAY-AC-002"
+      - "PLAY-AC-003"
+      - "PLAY-AC-004"
+    notes: "Corre en project 'contract' antes del resto de tests en CI. Detecta cambios de API breaking."
+
+  - spec_file: "tests/contract/api-bootstrap.spec.ts"
+    description: "Bootstrap del player: data-id inválido (404), mecanismos de inicialización (data-loaded, playerloaded event)."
+    ac_coverage:
+      - "PLAY-AC-007"
+    notes: "Cubre errores de inicialización, complementa playback-core-edge para el path de errores."
+
+  - spec_file: "tests/contract/player-api-property.spec.ts"
+    description: "Propiedades del player con tipos correctos después de loadedmetadata."
+    ac_coverage:
+      - "PLAY-AC-011"
+      - "PLAY-AC-012"
+
+  - spec_file: "tests/integration/controls-api-edge.spec.ts"
+    description: "Edge cases de seek: seek dentro del buffer, orden seeking→seeked, currentTime accuracy."
+    ac_coverage:
+      - "PLAY-AC-005"
+
+  - spec_file: "tests/integration/error-recovery.spec.ts"
+    description: "Recuperación de errores: content config 403/404, fallo de segmentos, interrupción transitoria."
+    ac_coverage:
+      - "PLAY-AC-007"
+
+  - spec_file: "tests/e2e/events.spec.ts"
+    description: "Verificación de emisión de eventos del player en flujos completos."
+    ac_coverage:
+      - "PLAY-AC-002"
+
+  - spec_file: "tests/e2e/player-api.spec.ts"
+    description: "API del player en E2E: métodos, propiedades, flujos de usuario."
+    ac_coverage:
+      - "PLAY-AC-003"
+      - "PLAY-AC-004"
+      - "PLAY-AC-012"
+
+  - spec_file: "tests/smoke/player-smoke.spec.ts"
+    description: "Smoke test básico: el player carga y reproduce sin errores."
+    ac_coverage:
+      - "PLAY-AC-001"
+
+  - spec_file: "tests/performance/memory-leak.spec.ts"
+    description: "Detección de memory leaks: múltiples ciclos de destroy() + reinicialización."
+    ac_coverage:
+      - "PLAY-AC-008"
+      - "PLAY-AC-016"
+
+  - spec_file: "tests/integration/multi-instance.spec.ts"
+    description: "Dos instancias del player en la misma página: verificación de aislamiento de estado."
+    ac_coverage: []
+    notes: "Relevante para PLAY-RISK-009 (loadedHLSHandler global)."
+
+coverage_gaps:
+  - id: GAP-PLAY-001
+    priority: MUST
+    ac_ref: "PLAY-AC-009"
+    title: "play() antes de ready: test real sin limitación de harness"
+    suggested_spec: "tests/integration/playback-core-edge.spec.ts"
+    notes: "Actualmente test.fixme. Requiere uno de: (a) hook __preReadyPlayer en harness, (b) test de iframe sin harness que llame play() en el mismo tick que loadMSPlayer(), o (c) mock de la API que permita obtener instancia antes de ready."
+    industry_note: "Crítico para la robustez del player: si un integrador llama play() en el callback de loadMSPlayer() (antes del .then()), el player debe fallar graciosamente."
+
+  - id: GAP-PLAY-002
+    priority: MUST
+    ac_ref: "PLAY-AC-016"
+    title: "destroy() durante buffering: no hay memory leak ni error"
+    suggested_spec: "tests/integration/playback-core-edge.spec.ts"
+    notes: "El test de ciclo de vida en vod-playback.spec.ts cubre destroy() en estado pausado/listo. Falta cubrir destroy() específicamente durante el estado buffering (simulable con throttling de red y stream lento)."
+    industry_note: "Patrón común en SPAs: el usuario navega durante un buffering. Video.js tuvo leaks en este escenario específico."
+
+  - id: GAP-PLAY-003
+    priority: MUST
+    ac_ref: "PLAY-AC-010"
+    title: "Autoplay policy: muted autoplay funciona en Chromium headless"
+    suggested_spec: "tests/integration/playback-core-edge.spec.ts"
+    notes: "Verificar que muted autoplay (volume: 0) siempre funciona en CI headless. Documentar que autoplay con audio requiere MEI o interacción. Crear test explícito de muted autoplay vs. autoplay con audio."
+    industry_note: "Crítico para plataformas OTT que dependen de autoplay. Chrome autoplay policy puede cambiar con versiones del browser."
+
+  - id: GAP-PLAY-004
+    priority: MUST
+    ac_ref: "PLAY-AC-013"
+    title: "loop: true — el contenido se repite sin emitir ended"
+    suggested_spec: "tests/integration/playback-core-edge.spec.ts"
+    notes: "No hay test que verifique loop: true. El contenido debe reiniciarse automáticamente al llegar al final. El NativeHandler tiene el flag _alreadyEmittedEnded que se resetea en loadedmetadata — necesita verificar interacción con loop."
+    industry_note: "Común en backgrounds de video y reproductores de radio. El spec HTML5 define que ended se emite incluso con loop, pero la reproducción continúa."
+
+  - id: GAP-PLAY-005
+    priority: SHOULD
+    ac_ref: "PLAY-AC-015"
+    title: "buffering event: se emite y status cambia a 'buffering' bajo condiciones de red limitadas"
+    suggested_spec: "tests/integration/playback-core-edge.spec.ts"
+    notes: "Requiere throttling de red via CDP o Playwright networkConditions. El estado 'buffering' es fundamental para analytics (Youbora) pero no tiene test directo en playback-core."
+    industry_note: "El buffering rate es una métrica clave de QoE en OTT. La industria recomienda testear bajo simulación de 3G (750 kbps)."
+
+  - id: GAP-PLAY-006
+    priority: SHOULD
+    ac_ref: "PLAY-AC-002"
+    title: "Orden de eventos con autoplay: true — loaded → ready → playing en orden estricto"
+    suggested_spec: "tests/contract/api-bootstrap.spec.ts"
+    notes: "Los tests existentes verifican que los eventos se emiten pero no verifican rigurosamente el orden temporal. Un test de orden estricto debe registrar timestamps de eventos y verificar precedencia."
+    industry_note: "Race conditions en el orden de eventos son una fuente común de bugs en players complejos. La industria usa event sequence validators."
+
+  - id: GAP-PLAY-007
+    priority: SHOULD
+    ac_ref: "PLAY-AC-011"
+    title: "Handler selection: DASH correctamente detectado y sourceType === 'native'"
+    suggested_spec: "tests/e2e/dash-playback.spec.ts"
+    notes: "dash-playback.spec.ts existe pero puede no verificar explícitamente player.sourceType === 'native' y la ausencia de propiedades ABR. Agregar assertions específicas para comportamiento DASH vs HLS."
+
+  - id: GAP-PLAY-008
+    priority: SHOULD
+    ac_ref: "PLAY-AC-005"
+    title: "ended event — BUG-001: seek a posición 0 no emite 'seeking'"
+    suggested_spec: "tests/integration/playback-core-edge.spec.ts"
+    notes: "BUG-PLAYBACK-001 está documentado pero no tiene test que lo regrese. Un regression test debe verificar explícitamente que seek(0) solo emite 'seeked' sin 'seeking', para detectar si el bug se 'resuelve' accidentalmente en una actualización del browser o del player."
+    industry_note: "Behavior depende del browser. Documentar el comportamiento actual como expected para evitar falsos positivos en CI."
+
+  - id: GAP-PLAY-009
+    priority: COULD
+    ac_ref: "PLAY-AC-017"
+    title: "playbackRate setter: cambio de velocidad funciona y emite ratechange"
+    suggested_spec: "tests/integration/playback-core-edge.spec.ts"
+    notes: "La propiedad playbackRate está en _exposeMethods como writable. Sin test explícito. Relevante para integradores que implementan controles de velocidad."
+
+  - id: GAP-PLAY-010
+    priority: COULD
+    ac_ref: "PLAY-AC-001"
+    title: "player.readyState refleja estado HTML5 estándar durante ciclo de vida"
+    suggested_spec: "tests/integration/playback-core-edge.spec.ts"
+    notes: "readyState es expuesto como propiedad pero no hay test que verifique sus valores (0-4) en los momentos correctos del ciclo de vida. Útil para integradores que implementan lógica basada en readyState."
+    industry_note: "readyState HAVE_ENOUGH_DATA (4) es el estado mínimo para reproducción confiable según el spec WHATWG."

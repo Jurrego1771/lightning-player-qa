@@ -1,0 +1,91 @@
+version: "1.0"
+module: hls
+last_updated: "2026-06-08"
+
+internal:
+  - id: playback-core
+    reason: "HlsHandler es el handler de reproducción para HLS; se monta donde el player base define el handler slot. El player base pasa props (src, poster, volume, loop, type, playerType) al HlsHandler."
+    coupling: high
+    files:
+      - "src/player/handler/hls/handler.js"
+
+  - id: events
+    reason: "HlsHandler usa internalEmitter para emitir todos los eventos del player (ready, levelchange, levelchanged, error, buffering, stalled, etc.). Sin events, el handler no puede comunicarse con el exterior."
+    coupling: high
+    files:
+      - "src/player/handler/hls/handler.js"
+      - "src/events/index.js"
+
+  - id: platform-config
+    reason: "Context (React context) provee: mse.bufferSize, mse.bufferlength, preloadEnabled, drm, id, metadata.MDSTRMPID, metadata.peering.system73. La configuración de hls.js depende completamente de estos valores."
+    coupling: high
+    files:
+      - "src/player/handler/hls/handler.js"
+
+  - id: drm
+    reason: "_getHlsDrmConfig() extrae la config FairPlay del context.drm y la inyecta en HLSConfig (emeEnabled, drmSystems, licenseXhrSetup). El handler HLS es el único punto donde se configura FairPlay via EME en hls.js."
+    coupling: medium
+    files:
+      - "src/player/handler/hls/handler.js"
+
+  - id: airplay
+    reason: "isAirPlaySupported() controla preferManagedMediaSource. Si AirPlay es posible, el handler usa MediaSource regular (no ManagedMediaSource) para mantener el botón AirPlay visible en Safari."
+    coupling: medium
+    files:
+      - "src/player/handler/hls/handler.js"
+      - "src/airplay/index.js"
+
+  - id: quality-selector
+    reason: "quality-selector lee player.levels y escribe player.level para exponer control manual de ABR al usuario. Depende de los eventos levelchange/levelchanged emitidos por el handler HLS."
+    coupling: medium
+    files:
+      - "src/player/handler/hls/handler.js"
+
+  - id: subtitles
+    reason: "El HlsHandler renderiza <TextTracks /> como hijo del elemento video/audio. Las pistas de texto (subtítulos, CC) usan el track nativo del browser sobre el elemento gestionado por hls.js."
+    coupling: low
+    files:
+      - "src/player/handler/hls/handler.js"
+      - "src/player/textTracks.js"
+
+  - id: ads-sgai
+    reason: "SGAI usa pauseBuffering()/resumeBuffering() del handler HLS para pausar el buffer durante la inserción de anuncios server-side. También requiere un pLoader custom en HLSConfig para interceptar la carga de segmentos."
+    coupling: medium
+    files:
+      - "src/player/handler/hls/handler.js"
+
+external:
+  - id: hls.js
+    package: "hls.js"
+    version: "^1.6.13"
+    reason: "Motor de reproducción HLS via MSE. Gestiona el parseo del manifest M3U8, descarga de segmentos en Web Worker, transcodificación MPEG-TS→MP4, append al SourceBuffer MSE, y el algoritmo ABR (EWMA)."
+    risk: high
+    note: "Actualizar la major/minor version puede romper la API o cambiar el comportamiento del ABR. La versión 1.6.x tiene issue conocido de LL-HLS stuttering (issue #7431 en GitHub). liveBackBufferLength está deprecated en v1.x (usar backBufferLength). La importación usa .min.js explícitamente (NO .mjs) para incluir el Web Worker."
+
+  - id: system73-sdk
+    package: "window.S73HlsjsWrapper (CDN externo)"
+    version: "variable — URL configurada en metadata.peering.system73.hls"
+    reason: "SDK P2P de System73 que wraps hls.js para distribuir carga de segmentos entre peers. Lazy-loaded desde CDN externo. Opcional — el player funciona sin él."
+    risk: medium
+    note: "CDN externo fuera del control del player team. Si el CDN falla, getSystem73HlsSDK() devuelve null y el player continúa sin P2P (degradación suave). El SDK se cachea en módulo — un único import por session."
+
+  - id: mse-api
+    package: "MediaSource Extensions (W3C)"
+    version: "nativo del browser"
+    reason: "API del browser usada por hls.js para alimentar el elemento video con datos de media (appendBuffer). isHLSJsSupported() verifica soporte de MSE antes de instanciar hls.js."
+    risk: medium
+    note: "Safari 17.1+ introdujo ManagedMediaSource que inhabilita el botón AirPlay si se usa con hls.js (issue #6197). El player lo mitiga con preferManagedMediaSource=!isAirPlaySupported()."
+
+  - id: eme-api
+    package: "Encrypted Media Extensions (W3C)"
+    version: "nativo del browser"
+    reason: "Requerida para FairPlay DRM via hls.js (emeEnabled=true). Solo disponible en Safari/WebKit para com.apple.fps key system."
+    risk: low
+    note: "Solo aplica cuando el contenido tiene DRM FairPlay. En browsers no-Safari, la ausencia del CDM hace que hls.js emita KEY_SYSTEM_ERROR."
+
+  - id: lodash-get
+    package: "lodash"
+    version: "compatible con la versión del bundle del player"
+    reason: "Usado en handler.js para acceso seguro a propiedades profundas del objeto hls.js (bandwidthEstimate, levels, url, etc.)."
+    risk: low
+    note: "Dependencia utilitaria, no afecta el comportamiento del módulo."

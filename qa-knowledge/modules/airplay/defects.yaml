@@ -1,0 +1,85 @@
+version: "1.0"
+module: airplay
+last_updated: "2026-06-08"
+
+defects:
+  - id: APLY-DEF-001
+    status: known_limitation
+    severity: medium
+    title: "airPlayAvailabilityChange declarado en constants pero nunca emitido"
+    description: >
+      constants.cjs (líneas 167-170) declara airPlayAvailabilityChange como evento
+      público con el comentario 'Fires when AirPlay target availability changes'. Sin
+      embargo, src/view/video/atoms/airplay.js solo emite _airPlayConnected y
+      _airPlayDisconnected al internalEmitter. El cambio de disponibilidad
+      (availabilityChange del manager) actualiza airPlayAvailableInnerAtom y la UI, pero
+      NUNCA se reexporta como evento público. Un integrador que haga
+      player.on('airPlayAvailabilityChange', ...) jamás recibirá callbacks.
+    workaround: "Hacer polling de player.airplayAvailable, o consumir el estado vía el skin del player. No hay evento público de disponibilidad."
+    source_comment: "constants.cjs:168 (declarado); src/view/video/atoms/airplay.js:55-71 (solo connected/disconnected emitidos)"
+    industry_known: false
+    regression_risk: low
+
+  - id: APLY-DEF-002
+    status: known_limitation
+    severity: medium
+    title: "Connect/Disconnect no testeables en CI — test.fixme permanente"
+    description: >
+      airPlayConnected y airPlayDisconnected requieren un Apple TV / receptor AirPlay
+      físico en la misma red, conectado por un usuario real vía el picker nativo del SO.
+      WebKit headless en Playwright no expone receptores ni permite simular la selección
+      en el picker. Los dos tests correspondientes están en test.fixme.
+    workaround: >
+      Verificar manualmente en macOS real con Apple TV usando npx playwright test --ui.
+      En automatizado, cubrir solo superficie de API (eventos registrables sin error) y
+      disponibilidad condicional.
+    source_comment: "tests/integration/airplay.spec.ts:186-199 (test.fixme x2)"
+    industry_known: true
+    regression_risk: medium
+
+  - id: APLY-DEF-003
+    status: known_workaround
+    severity: high
+    title: "hls.js + ManagedMediaSource oculta el botón AirPlay y rompe el handoff (#6197)"
+    description: >
+      Cuando hls.js usa ManagedMediaSource, setea video.disableRemotePlayback=true; esto
+      oculta el botón AirPlay en los controles nativos e impide que dispare
+      webkitplaybacktargetavailabilitychanged. Adicionalmente, el blob: URL de MSE no es
+      fetcheable por el Apple TV, por lo que el handoff falla. Bug del ecosistema, no del
+      player en sí.
+    workaround: >
+      Implementado en el player - (1) preferManagedMediaSource: !isAirPlaySupported()
+      evita MMS en dispositivos AirPlay; (2) AirPlayManager fuerza disableRemotePlayback=false
+      al adjuntar y lo restaura en detach; (3) el atom añade un segundo <source> con la
+      URL .m3u8 real (guía WebKit). Ya corregido en la versión actual del player.
+    source_comment: "src/player/handler/hls/handler.js:179-183; src/airplay/AirPlayManager.js:65-99; src/view/video/atoms/airplay.js:75-86"
+    industry_known: true
+    regression_risk: high
+
+  - id: APLY-DEF-004
+    status: known_limitation
+    severity: low
+    title: "AirPlayManager singleton no soporta multi-instancia del player"
+    description: >
+      airPlayManagerInstance es un singleton de módulo. Con dos players en la misma
+      página, ambos comparten el manager y compiten por el elemento adjunto; el estado
+      airplay/airplayAvailable puede reflejar la instancia equivocada. Relacionado con el
+      TODO de expose() en controls/methods.js.
+    workaround: "Ninguno. Evitar múltiples players AirPlay-activos en el mismo documento, o aceptar estado potencialmente cruzado."
+    source_comment: "src/view/video/atoms/airplay.js:9-24; src/controls/methods.js:3-7 (TODO)"
+    industry_known: false
+    regression_risk: low
+
+  - id: APLY-DEF-005
+    status: known_limitation
+    severity: low
+    title: "Eventos AirPlay sin payload — no exponen nombre del dispositivo"
+    description: >
+      airPlayConnected / airPlayDisconnected se emiten sin payload. WebKit no expone de
+      forma fiable el nombre del receptor a la web (a diferencia de Chromecast que sí
+      provee friendlyName). El test.fixme comenta un payload esperado { deviceName }, pero
+      la implementación actual no lo entrega y WebKit no lo soporta de forma estándar.
+    workaround: "No depender de un nombre de dispositivo en la UI de AirPlay; usar solo el estado conectado/desconectado."
+    source_comment: "src/view/video/atoms/airplay.js:59-67 (emit sin payload); tests/integration/airplay.spec.ts:191,198 (comentario deviceName)"
+    industry_known: true
+    regression_risk: low

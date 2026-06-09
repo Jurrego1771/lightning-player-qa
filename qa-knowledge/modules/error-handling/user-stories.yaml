@@ -1,0 +1,153 @@
+version: "1.0"
+module: error-handling
+last_updated: "2026-06-08"
+
+user_stories:
+  - id: US-ERR-001
+    persona: Viewer
+    narrative:
+      as: "espectador que intenta reproducir un contenido no disponible"
+      want: "ver un estado de error claro en vez de un spinner infinito"
+      so_that: "sepa que algo falló y no espere indefinidamente"
+    business_value: HIGH
+    risk_area:
+      - "buffering infinito"
+      - "error silencioso"
+    related_features:
+      - playback-core
+      - hls
+    acceptance:
+      - ERR-AC-004
+      - ERR-AC-005
+    notes: >
+      Crítico: ERR-DEF-002 (KEY_SYSTEM_NO_ACCESS) y los fallos persistentes son los principales riesgos
+      de spinner infinito. El player debe escalar a estado 'error' tras agotar retries.
+
+  - id: US-ERR-002
+    persona: Viewer
+    narrative:
+      as: "espectador en una red intermitente"
+      want: "que el player se recupere solo de cortes transitorios"
+      so_that: "no tenga que recargar manualmente ante un hipo de red"
+    business_value: HIGH
+    risk_area:
+      - "recovery fallido"
+      - "loop loading"
+    related_features:
+      - hls
+      - dash
+    acceptance:
+      - ERR-AC-003
+      - ERR-AC-014
+    notes: "Recovery automático vía hls.startLoad/recoverMediaError dentro del retry budget. Ver ERR-RISK-002."
+
+  - id: US-ERR-003
+    persona: Integrator
+    narrative:
+      as: "integrador que embebe el player"
+      want: "suscribirme al evento 'error' y recibir un objeto con type, fatal y message"
+      so_that: "pueda reaccionar de forma distinta a errores de red, media o init"
+    business_value: HIGH
+    risk_area:
+      - "contrato de API inconsistente"
+    related_features:
+      - events
+      - controls-api
+    acceptance:
+      - ERR-AC-001
+      - ERR-AC-002
+    notes: >
+      El integrador debe saber que el getter 'error' solo trae fatales (ERR-LEARN-002); para no-fatales
+      hay que escuchar el evento. Native code 1/2/3 no siguen la taxonomía (ERR-DEF-003).
+
+  - id: US-ERR-004
+    persona: Integrator
+    narrative:
+      as: "integrador que reacciona a errores específicos"
+      want: "distinguir un fallo de contenido (403) de un fallo de DRM o de formato"
+      so_that: "pueda mostrar mensajes y CTAs distintos (reintentar vs contactar soporte)"
+    business_value: HIGH
+    risk_area:
+      - "error genérico sin causa"
+    related_features:
+      - drm
+      - platform-config
+    acceptance:
+      - ERR-AC-005
+      - ERR-AC-006
+      - ERR-AC-008
+    notes: >
+      data.status (403) en config, data 'DRM_NOT_SUPPORTED' y 'FORMAT_NOT_AVAILABLE' son las señales
+      identificables. Errores DRM no-NO_ACCESS llegan con type 'default' y message críptico (ERR-DEF-004).
+
+  - id: US-ERR-005
+    persona: Integrator
+    narrative:
+      as: "integrador con ads"
+      want: "que un ad fallido no rompa la reproducción del contenido"
+      so_that: "el espectador siga viendo el contenido aunque el ad falle"
+    business_value: HIGH
+    risk_area:
+      - "ad error contamina estado de contenido"
+    related_features:
+      - ads-manager
+      - ads-ima
+    acceptance:
+      - ERR-AC-010
+      - ERR-AC-015
+    notes: "AdError es jerarquía separada; el getter 'error' del contenido debe seguir null. Ver BR-ERR-010."
+
+  - id: US-ERR-006
+    persona: Operator
+    narrative:
+      as: "operador que monitorea la plataforma"
+      want: "ver el código/type de cada error en logs y analytics"
+      so_that: "pueda diagnosticar fallos recurrentes y correlacionar con CDN/DRM"
+    business_value: HIGH
+    risk_area:
+      - "startup errors perdidos"
+      - "observabilidad"
+    related_features:
+      - youbora
+      - events
+    acceptance:
+      - ERR-AC-001
+      - ERR-AC-012
+    notes: >
+      Los errores van a console.error en debug y a NPAW vía beacon /error. Defecto: errores fatales
+      pre-ready se pierden para analytics (ERR-DEF-001 / YBRA-DEF-001). EBVS es la métrica QoE clave.
+
+  - id: US-ERR-007
+    persona: Operator
+    narrative:
+      as: "operador analizando QoE OTT"
+      want: "que ningún error llegue sin clasificar (type vacío) y que los startup errors se reporten"
+      so_that: "los códigos de error sean accionables y comparables (alineación SVTA)"
+    business_value: MEDIUM
+    risk_area:
+      - "errores sin clasificación"
+      - "fragmentación de códigos de error"
+    related_features:
+      - youbora
+    acceptance:
+      - ERR-AC-001
+      - ERR-AC-005
+    notes: >
+      Industria SVTA: todo error debe tener categoría observable; 999 = desconocido. Gap: el player no
+      expone un código numérico estandarizado, solo el type string (ERR-LEARN-008).
+
+  - id: US-ERR-008
+    persona: Viewer
+    narrative:
+      as: "espectador con autoplay activado en un navegador que lo bloquea"
+      want: "que el player quede en pause listo para que yo dé play, no en estado de error"
+      so_that: "pueda iniciar la reproducción con un click sin ver un mensaje de error confuso"
+    business_value: MEDIUM
+    risk_area:
+      - "autoplay tratado como error fatal"
+    related_features:
+      - controls-api
+      - playback-core
+    acceptance:
+      - ERR-AC-011
+    notes: "Autoplay bloqueado emite Error 'Autoplay failed' no-fatal y vuelve a status 'pause'. Ver BR-ERR-009."

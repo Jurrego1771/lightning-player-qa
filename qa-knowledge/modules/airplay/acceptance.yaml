@@ -1,0 +1,136 @@
+version: "1.0"
+module: airplay
+last_updated: "2026-06-08"
+
+acceptance_criteria:
+  - id: APLY-AC-001
+    priority: MUST
+    scenario: "Detección de soporte en WebKit"
+    given: "El player corre en Safari/WebKit (macOS o iOS) donde HTMLVideoElement.prototype.webkitShowPlaybackTargetPicker existe"
+    when: "El player se inicializa y monta el atom de AirPlay"
+    then:
+      - "isAirPlaySupported() devuelve true"
+      - "Se registran las propiedades públicas player.airplay y player.airplayAvailable"
+      - "El AirPlayManager se instancia y se adjunta al elemento <video>"
+
+  - id: APLY-AC-002
+    priority: MUST
+    scenario: "Degradación elegante en navegadores no-WebKit"
+    given: "El player corre en Chromium o Firefox (sin webkitShowPlaybackTargetPicker)"
+    when: "El player se inicializa"
+    then:
+      - "isAirPlaySupported() devuelve false"
+      - "El AirPlayManager NO se instancia ni se adjunta"
+      - "Registrar player.on('airPlayConnected'|'airPlayDisconnected'|'airPlayAvailabilityChange') NO lanza error (no-op silencioso)"
+      - "No se renderiza ningún botón/indicador de AirPlay"
+
+  - id: APLY-AC-003
+    priority: MUST
+    scenario: "API de eventos no lanza al registrarse"
+    given: "Un player inicializado en cualquier plataforma"
+    when: "El integrador llama player.on('airPlayConnected', cb), player.on('airPlayDisconnected', cb) y player.on('airPlayAvailabilityChange', cb)"
+    then:
+      - "Ninguna llamada lanza excepción"
+      - "El registro es seguro tanto en WebKit como en navegadores sin soporte"
+
+  - id: APLY-AC-004
+    priority: MUST
+    scenario: "Disponibilidad detectada cuando hay receptor en la red (WebKit)"
+    given: "Safari con un receptor AirPlay disponible en la misma red WiFi y view.airplay habilitado"
+    when: "WebKit dispara webkitplaybacktargetavailabilitychanged con availability='available'"
+    then:
+      - "AirPlayManager emite 'availabilityChange' con { isAvailable: true }"
+      - "player.airplayAvailable getter devuelve true"
+      - "El botón/indicador de AirPlay se vuelve visible en el skin"
+
+  - id: APLY-AC-005
+    priority: MUST
+    scenario: "Conexión a receptor AirPlay"
+    given: "Safari con receptor disponible y reproducción en curso"
+    when: "El usuario selecciona un receptor en el picker nativo y webkitCurrentPlaybackTargetIsWireless pasa a true"
+    then:
+      - "AirPlayManager emite 'connected'"
+      - "Se emite el evento público airPlayConnected vía internalEmitter"
+      - "player.airplay getter devuelve true"
+      - "La reproducción continúa en el dispositivo destino (handoff del <video>)"
+      - "El indicador 'AirPlay activo' se muestra"
+
+  - id: APLY-AC-006
+    priority: MUST
+    scenario: "Desconexión del receptor AirPlay"
+    given: "Una sesión AirPlay activa (player.airplay === true)"
+    when: "El usuario detiene AirPlay o el receptor se desconecta y webkitCurrentPlaybackTargetIsWireless pasa a false"
+    then:
+      - "AirPlayManager emite 'disconnected'"
+      - "Se emite el evento público airPlayDisconnected"
+      - "player.airplay getter devuelve false"
+      - "El indicador 'AirPlay activo' se oculta"
+      - "La reproducción vuelve al dispositivo local"
+
+  - id: APLY-AC-007
+    priority: MUST
+    scenario: "Compatibilidad AirPlay + hls.js evitando ManagedMediaSource"
+    given: "Safari 17.1+ AirPlay-capaz reproduciendo HLS vía hls.js"
+    when: "El handler HLS se inicializa"
+    then:
+      - "preferManagedMediaSource se setea a false (porque isAirPlaySupported() es true)"
+      - "Se usa MSE clásico en vez de ManagedMediaSource"
+      - "El botón de AirPlay permanece visible (no se oculta por disableRemotePlayback=true)"
+      - "El handoff a un Apple TV reproduce el stream correctamente"
+
+  - id: APLY-AC-008
+    priority: SHOULD
+    scenario: "Workaround del segundo <source> cuando ManagedMediaSource está activo"
+    given: "Entorno donde window.ManagedMediaSource existe y hay un hlsSrc (URL .m3u8) disponible"
+    when: "El atom de AirPlay adjunta el manager al elemento de video"
+    then:
+      - "Se añade un segundo elemento <source> con src=hlsSrc y type='application/x-mpegurl'"
+      - "Al desmontar/detach, ese <source> se elimina del DOM"
+      - "WebKit puede entregar la URL real al receptor cuando AirPlay conecta"
+
+  - id: APLY-AC-009
+    priority: SHOULD
+    scenario: "Restauración de disableRemotePlayback al hacer detach"
+    given: "Un AirPlayManager adjunto que forzó el.disableRemotePlayback = false"
+    when: "Se llama detach() o destroy()"
+    then:
+      - "Se restaura el valor previo de disableRemotePlayback"
+      - "Se eliminan los listeners webkitplaybacktargetavailabilitychanged y webkitcurrentplaybacktargetiswirelesschanged"
+      - "Si estaba conectado, se emite 'disconnected' antes de limpiar"
+
+  - id: APLY-AC-010
+    priority: SHOULD
+    scenario: "AirPlay deshabilitado por configuración"
+    given: "Safari con soporte AirPlay pero context view.airplay === false"
+    when: "El player se inicializa"
+    then:
+      - "airPlayEnabledAtom devuelve false"
+      - "El AirPlayManager NO se adjunta al elemento de video"
+      - "No se muestra botón ni indicador de AirPlay"
+
+  - id: APLY-AC-011
+    priority: SHOULD
+    scenario: "Estado de conexión reportado en analytics de playback"
+    given: "Una sesión AirPlay activa"
+    when: "El player envía un evento de playback a analytics (StreamMetrics)"
+    then:
+      - "El payload incluye ext_pb = 1 mientras AirPlay está conectado"
+      - "ext_pb = 0 cuando no hay sesión AirPlay activa"
+
+  - id: APLY-AC-012
+    priority: COULD
+    scenario: "showPicker solo actúa cuando hay disponibilidad"
+    given: "Safari con AirPlay soportado pero sin receptor disponible (isAvailable === false)"
+    when: "Se invoca showAirPlayPickerAtom / manager.showPicker()"
+    then:
+      - "No se invoca webkitShowPlaybackTargetPicker (guard por isAvailable)"
+      - "No se lanza error ni se abre un picker vacío"
+
+  - id: APLY-AC-013
+    priority: COULD
+    scenario: "Audio audible al iniciar el picker"
+    given: "Reproducción muteada en Safari y receptor AirPlay disponible"
+    when: "Se invoca showPicker()"
+    then:
+      - "El elemento de video se fuerza a volume=1 y muted=false antes de abrir el picker"
+      - "El contenido es audible en el receptor tras conectar"

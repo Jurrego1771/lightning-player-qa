@@ -1,0 +1,208 @@
+version: "1.0"
+module: ads-ima
+last_updated: "2026-06-08"
+
+acceptance_criteria:
+
+  # ── HAPPY PATH ──────────────────────────────────────────────────────────────
+
+  - id: IMA-AC-001
+    priority: MUST
+    scenario: "Pre-roll VAST básico — secuencia completa de eventos en orden correcto"
+    given: "Player inicializado con ads.map apuntando a VAST válido con un pre-roll de 15s"
+    when: "El usuario inicia la reproducción (o autoplay habilitado)"
+    then:
+      - "Los eventos se emiten en este orden exacto: adsRequested → adsLoaded → adsContentPauseRequested → adsStarted → adsImpression → adsFirstQuartile → adsMidpoint → adsThirdQuartile → adsComplete → adsAllAdsCompleted → adsContentResumeRequested"
+      - "El contenido principal se pausa durante el ad (player.isPlayingAd === true)"
+      - "El contenido reanuda desde la posición correcta después del ad (player.isPlayingAd === false)"
+      - "player.ad.info contiene el ad metadata durante la reproducción del ad"
+    covered_by:
+      - "tests/e2e/ads-ima-tag-params.spec.ts"
+      - "tests/integration/ads-ima-error.spec.ts"
+
+  - id: IMA-AC-002
+    priority: MUST
+    scenario: "VAST vacío (0 ads) — content continúa sin interrupciones"
+    given: "Player con ads.map apuntando a VAST que retorna 0 ads o XML vacío"
+    when: "El player intenta cargar ads"
+    then:
+      - "Se emite adsError O adsAllAdsCompleted inmediatamente"
+      - "El contenido principal reproduce normalmente sin interrupciones"
+      - "No se emite error fatal del player"
+      - "No hay crash de JS"
+    covered_by:
+      - "tests/integration/ads-ima-error.spec.ts"
+
+  - id: IMA-AC-003
+    priority: MUST
+    scenario: "IMA SDK CDN falla — content reproduce sin ads, sin crash"
+    given: "CDN de IMA SDK no disponible (imasdk.googleapis.com bloqueado o retorna 404)"
+    when: "El player intenta cargar el SDK IMA"
+    then:
+      - "El player no crashea"
+      - "El contenido reproduce normalmente sin ads"
+      - "No se emite 'error' fatal del player (solo adsError si aplica)"
+      - "player.hasAdblocker no se activa incorrectamente"
+    covered_by:
+      - "tests/integration/ads-ima-error.spec.ts"
+
+  - id: IMA-AC-004
+    priority: MUST
+    scenario: "Beacons VAST de tracking se disparan exactamente una vez"
+    given: "Player con pre-roll VAST válido que incluye URLs de tracking"
+    when: "El ad se reproduce completo"
+    then:
+      - "Beacon impression: exactamente 1 request"
+      - "Beacon firstQuartile: exactamente 1 request"
+      - "Beacon midpoint: exactamente 1 request"
+      - "Beacon thirdQuartile: exactamente 1 request"
+      - "Beacon complete: exactamente 1 request"
+      - "Ningún beacon se dispara más de una vez (no double-firing)"
+    covered_by:
+      - "tests/integration/ads-ima-error.spec.ts"
+
+  - id: IMA-AC-005
+    priority: MUST
+    scenario: "adsError no interrumpe el playback del contenido principal"
+    given: "Player con ads.map apuntando a un endpoint que retorna HTTP 500"
+    when: "El sistema de ads falla con error de red"
+    then:
+      - "Se emite adsError con payload AdError (code, type)"
+      - "El contenido principal inicia o continúa la reproducción"
+      - "El player no queda en estado 'error' permanente"
+      - "El player no queda colgado esperando ads"
+    covered_by:
+      - "tests/integration/ads-ima-error.spec.ts"
+
+  - id: IMA-AC-006
+    priority: MUST
+    scenario: "Volumen del ad sincronizado con el volumen del player"
+    given: "Player con volume=0.5 y un pre-roll activo"
+    when: "El ad empieza a reproducirse"
+    then:
+      - "El volumen del ad se inicializa al volumen del player (adsManager.setVolume llamado con 0.5)"
+      - "Si el usuario cambia el volumen durante el ad, el ad refleja el cambio"
+    covered_by: []
+
+  - id: IMA-AC-007
+    priority: MUST
+    scenario: "Ad break previene seeking durante reproducción del ad"
+    given: "Player con pre-roll activo (isPlayingAd === true)"
+    when: "Se intenta hacer seek via player.currentTime setter"
+    then:
+      - "El seek no tiene efecto (AdsHandler.set() retorna null para currentTime)"
+      - "El ad continúa reproduciéndose desde su posición actual"
+    covered_by: []
+
+  # ── SKIP ────────────────────────────────────────────────────────────────────
+
+  - id: IMA-AC-008
+    priority: MUST
+    scenario: "Skip de ad después del skipOffset — adsSkipped emitido, content reanuda"
+    given: "Pre-roll con skipOffset configurado (ej: 5s via ads.skipAt o skipOffset nativo del VAST)"
+    when: "Han pasado >= skipOffset segundos y el usuario llama player.ad.skip()"
+    then:
+      - "Se emite adsSkipped"
+      - "El contenido reanuda desde la posición previa al ad"
+      - "isPlayingAd pasa a false"
+    covered_by: []
+
+  - id: IMA-AC-009
+    priority: SHOULD
+    scenario: "Skip antes del skipOffset — no tiene efecto"
+    given: "Pre-roll con skipOffset=5s activo, han pasado solo 2s"
+    when: "Se llama player.ad.skip()"
+    then:
+      - "El skip no ocurre (ad.skippable === false)"
+      - "El ad continúa reproduciéndose"
+      - "No se emite adsSkipped"
+    covered_by: []
+
+  # ── AD BREAKS / VMAP ────────────────────────────────────────────────────────
+
+  - id: IMA-AC-010
+    priority: SHOULD
+    scenario: "VMAP mid-roll en cue point — ad interrumpe y reanuda en posición correcta"
+    given: "Player con VMAP que incluye mid-roll en t=30s (contenido de >60s)"
+    when: "La reproducción llega a los 30 segundos"
+    then:
+      - "player.ad.cuePoints incluye 30 como entry (disponible después de AdsManager inicializado)"
+      - "El ciclo IMA lifecycle completo se emite (adsContentPauseRequested → ... → adsContentResumeRequested)"
+      - "El contenido reanuda desde t=30s después del mid-roll"
+      - "No se pierde posición de reproducción"
+    covered_by: []
+
+  - id: IMA-AC-011
+    priority: SHOULD
+    scenario: "Post-roll se reproduce después de que el contenido termina"
+    given: "Player con VMAP que incluye post-roll"
+    when: "El contenido llega a su fin (ended)"
+    then:
+      - "AdsLoader.contentComplete() se llama al detectar 'ended'"
+      - "El ciclo de post-roll se reproduce"
+      - "adsAllAdsCompleted se emite al final"
+    covered_by: []
+
+  # ── AUTOPLAY / MUTED ────────────────────────────────────────────────────────
+
+  - id: IMA-AC-012
+    priority: SHOULD
+    scenario: "Pre-roll con autoplay muted — ad arranca en muted, vpmute=1 en VAST request"
+    given: "Player con autoplay:true en browser con política restrictiva (o volume=0)"
+    when: "El ad arranca automáticamente"
+    then:
+      - "El ad arranca muted (setAdWillPlayMuted(true) fue llamado)"
+      - "vpmute=1 está presente en el ad tag request"
+      - "Se emite adsVolumeMuted o adsVolumeChanged con volume=0"
+    covered_by:
+      - "tests/e2e/ads-ima-tag-params.spec.ts"
+
+  - id: IMA-AC-013
+    priority: SHOULD
+    scenario: "vpmute=0 en pre-roll cuando player carga con volume > 0"
+    given: "Player con autoplay:true y volume=1"
+    when: "El pre-roll se solicita al ad server"
+    then:
+      - "El parámetro vpmute=0 está presente en la request a pubads.g.doubleclick.net"
+      - "vpa=auto está presente (setAdWillAutoPlay(true))"
+    covered_by:
+      - "tests/e2e/ads-ima-tag-params.spec.ts"
+
+  # ── AUDIO TYPE ──────────────────────────────────────────────────────────────
+
+  - id: IMA-AC-014
+    priority: SHOULD
+    scenario: "Contenido tipo 'audio' — ad se renderiza en video fallback element"
+    given: "Player con type='audio' y ads.map configurado"
+    when: "Un ad se reproduce"
+    then:
+      - "El componente renderiza el elemento <video> fallback (videoFallbackRef)"
+      - "El AdDisplayContainer usa el videoFallback como elemento de contenido"
+      - "El ad visual se renderiza en el video fallback, no en el elemento audio"
+    covered_by: []
+
+  # ── RESET / LOAD NUEVO CONTENIDO ────────────────────────────────────────────
+
+  - id: IMA-AC-015
+    priority: SHOULD
+    scenario: "Reset del sistema de ads al cargar nuevo contenido"
+    given: "Player que terminó de reproducir contenido con ads"
+    when: "Se llama player.load({ type, id }) con nuevo contenido"
+    then:
+      - "AdsHandler.reset() se llama (adsManager destruido, listeners removidos)"
+      - "El nuevo contenido inicia el ciclo de ads desde cero"
+      - "No hay eventos duplicados de la sesión anterior"
+    covered_by: []
+
+  # ── AD BLOCKER ──────────────────────────────────────────────────────────────
+
+  - id: IMA-AC-016
+    priority: COULD
+    scenario: "Ad blocker bloquea el VAST URL — content reproduce sin ads"
+    given: "Ad blocker activo que bloquea el VAST endpoint"
+    when: "El player intenta hacer la VAST request"
+    then:
+      - "Se emite adsError (network error)"
+      - "El contenido reproduce normalmente"
+      - "El flag hasAdblocker se puede activar si detectAdblocker: true está configurado"
+    covered_by: []

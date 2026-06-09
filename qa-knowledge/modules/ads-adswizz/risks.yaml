@@ -1,0 +1,125 @@
+version: "1.0"
+module: ads-adswizz
+last_updated: "2026-06-08"
+
+risks:
+  - id: AWZ-RISK-001
+    severity: medium
+    title: "SDK externo no carga (CDN caído / bloqueado por adblocker)"
+    description: >
+      getAdswizzSDK importa window.adswizzSDK desde un CDN en *.s-mdstrm.com. Si el
+      CDN está caído, es bloqueado por un adblocker, o el import lanza error, la
+      promesa resuelve a null y el companion no se monta. El stream SSAI puede seguir
+      reproduciéndose sin decoración si el SDK no estaba disponible en loadConfig.
+    affected_files:
+      - "src/ads/adswizz/getAdswizzSDK.js"
+      - "src/platform/loadConfig.js"
+    trigger: "CDN inaccesible, adblock activo, error de red en importExternal."
+    mitigation: "try/catch en getAdswizzSDK devuelve null; el componente solo renderiza si _loaded. Degradación silenciosa: el audio nunca se rompe."
+    industry_note: "Los adblockers suelen bloquear dominios de ad SDKs; la degradación silenciosa es la práctica correcta para audio (no se debe bloquear contenido por falta de aviso)."
+    test_priority: MUST
+
+  - id: AWZ-RISK-002
+    severity: high
+    title: "decorateURLAndCreateSession puede colgar la inicialización del stream"
+    description: >
+      decorateURL envuelve decorateURLAndCreateSession en una Promise sin timeout. En
+      loadConfig se hace await del decorado de cada URL candidata (mp3/hls/mpd). Si el
+      edge server de AdsWizz no responde, la promesa de sesión nunca resuelve y la
+      inicialización del stream queda colgada, retrasando o impidiendo el play.
+    affected_files:
+      - "src/ads/adswizz/getAdswizzSDK.js"
+      - "src/platform/loadConfig.js"
+    trigger: "Edge server lento o no responde durante la creación de sesión."
+    mitigation: "Ninguna explícita en el código actual (no hay timeout ni Promise.race). Riesgo abierto."
+    industry_note: "La creación de sesión SSAI es bloqueante por diseño (el primer segmento ya debe traer la decoración). La industria recomienda un timeout con fallback a la URL sin decorar."
+    test_priority: MUST
+
+  - id: AWZ-RISK-003
+    severity: medium
+    title: "Beacons / tracking de audio bloqueados o no disparados"
+    description: >
+      En SSAI el tracking de avisos lo hace el edge server. Si la sesión no se crea
+      correctamente (decorateURL falló silenciosamente) el stream se reproduce SIN la
+      decoración y el conteo/tracking del aviso se pierde, sin señal visible para el oyente.
+    affected_files:
+      - "src/platform/loadConfig.js"
+      - "src/ads/adswizz/getAdswizzSDK.js"
+    trigger: "SDK null en loadConfig, edge server no aplica sesión, listenerid ausente."
+    mitigation: "El flujo decora la URL solo si adswizzSDK no es null; si es null reproduce la URL base. No hay verificación de que la decoración se aplicó."
+    industry_note: "Pérdida silenciosa de impresiones es un problema clásico de SSAI; afecta revenue sin romper UX, por eso pasa desapercibido."
+    test_priority: MUST
+
+  - id: AWZ-RISK-004
+    severity: medium
+    title: "Incompatibilidad con contenido de video / conflicto con IMA"
+    description: >
+      AdsWizz está pensado para audio (type='audio'). En vistas de radio conviven
+      <ImaAds/>, <GptAds/> y <Adswizz/>. Si una config errónea activara AdsWizz sobre
+      un medio de video, o IMA tomara el control de pause/resume sobre el mismo elemento
+      que AdsWizz usa como contentPlayer, podrían producirse conflictos de control del medio.
+    affected_files:
+      - "src/view/common/components/adswizz.jsx"
+      - "src/view/radioSA/components/layout/index.js"
+    trigger: "playerType=video con adswizz_companion presente; doble ad system sobre el mismo element."
+    mitigation: "El gate común fuerza type='audio'; AdsWizz no llama a pause/resume del contenido (el aviso ya viene en el stream SSAI)."
+    industry_note: "Audio SSAI (AdsWizz) y video CSAI (IMA) resuelven escenarios distintos; mezclarlos sobre el mismo medio no es soportado por la industria."
+    test_priority: SHOULD
+
+  - id: AWZ-RISK-005
+    severity: medium
+    title: "Race condition montaje del banner vs disponibilidad del SDK"
+    description: >
+      _adswizzPromise se resuelve en componentDidMount y setea _loaded. onContainerMounted
+      llama _loadAdswizz, que requiere this._adswizz. Si el ref del contenedor se monta
+      antes de que la promesa resuelva, o si _loadAdswizz corre con _adswizz aún null,
+      la inicialización del banner puede saltarse o ejecutarse parcialmente.
+    affected_files:
+      - "src/ads/adswizz/index.jsx"
+    trigger: "Orden no determinista entre resolución de la promesa del SDK y montaje del ref."
+    mitigation: "_loadAdswizz hace early-return si !this._adswizz; el div solo se renderiza cuando _loaded es true, lo que acota la ventana."
+    industry_note: "Patrón común de lazy-load de SDKs de ads en React; requiere tests de timing."
+    test_priority: SHOULD
+
+  - id: AWZ-RISK-006
+    severity: low
+    title: "Fuga de sesión/timers si resetSession no se llama"
+    description: >
+      _unloadAdswizz llama resetSession() cuando el ref pasa a null. Si el componente se
+      desmonta sin pasar por onContainerMounted(null) (p.ej. desmontaje abrupto de la vista),
+      la sesión y los timers de TIMED_POLLING podrían quedar activos.
+    affected_files:
+      - "src/ads/adswizz/index.jsx"
+    trigger: "Cambio de vista / navegación SPA sin desmontaje limpio del contenedor."
+    mitigation: "resetSession en onContainerMounted(null). No hay cleanup en componentWillUnmount explícito."
+    industry_note: "El polling de metadata abierto consume red y batería; relevante en sesiones de radio largas."
+    test_priority: SHOULD
+
+  - id: AWZ-RISK-007
+    severity: medium
+    title: "listenerConsent hardcoded en true (origen del ID por cookie sin gate de consentimiento)"
+    description: >
+      init() se invoca siempre con listenerConsent: true, lo que hace que el SDK derive
+      el listenerId desde cookie. No hay un gate de consentimiento real conectado a una
+      CMP; QA debe validar que esto sea coherente con la política de privacidad del cliente.
+    affected_files:
+      - "src/ads/adswizz/index.jsx"
+    trigger: "Cualquier inicialización del companion banner."
+    mitigation: "Ninguna; el valor está fijo en true."
+    industry_note: "Bajo GDPR/CCPA el origen del identificador (cookie vs aleatorio) debe depender del consentimiento real del oyente; un true fijo puede ser un hallazgo de compliance."
+    test_priority: SHOULD
+
+  - id: AWZ-RISK-008
+    severity: low
+    title: "Cambio del contrato del SDK por falta de version pin"
+    description: >
+      El SDK se carga desde CDN sin versión fija. Un cambio en init, setCompanionBannerConfig,
+      MetadataConnection o decorateURLAndCreateSession rompería la integración en runtime sin
+      cambio de código en el player.
+    affected_files:
+      - "src/ads/adswizz/getAdswizzSDK.js"
+      - "constants.cjs"
+    trigger: "Despliegue de nueva versión del SDK en el CDN del cliente."
+    mitigation: "getVersion() permite logging en debug; no hay assertion de versión mínima."
+    industry_note: "Cargar SDKs de terceros sin pin es práctica común pero introduce riesgo de regresión silenciosa; monitorear getVersion en QA."
+    test_priority: COULD

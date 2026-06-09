@@ -19,7 +19,8 @@ type: reference
 ## Stack Interno del Player (relevante para QA)
 
 - **UI:** React 18.3.1 + Jotai 2.8.0 (atoms de estado reactivo)
-- **HLS:** hls.js 1.6.13 (única opción ABR real — ver nota DASH abajo)
+- **HLS:** hls.js 1.6.13
+- **DASH:** dash.js 5.1.1 (ABR real — `setRepresentationForTypeByIndex`)
 - **HTTP:** Axios 1.7.9 para requests a la plataforma
 - **Build:** Webpack 5 + Babel 7 con dynamic imports (carga lazy de handlers y plugins)
 - **VAST parsing:** @dailymotion/vast-client 6.3.1 + @dailymotion/vmap 3.3.2
@@ -32,15 +33,17 @@ acción, puede recibir el valor anterior. Usar `expect.poll()` siempre, no asser
 
 ## CORRECCIÓN CRÍTICA: DASH no tiene handler dedicado
 
-**Lo que decía antes:** "HLS (hls.js), MPEG-DASH (dash.js)"
-**Realidad en el código:** No existe dash.js en el proyecto. DASH usa playback nativo del browser.
+**⚠️ CORRECCIÓN 2026-06-08:** La información anterior era incorrecta.
+
+**Realidad verificada en código fuente:**
+- DASH usa **dash.js 5.1.1** (`src/player/handler/dash/handler.js` — `import { MediaPlayer } from 'dashjs'`)
+- Las propiedades `level`, `levels`, `bandwidth`, `bitrate`, `nextLevel` **SÍ funcionan en DASH** via dash.js
+- Tests de ABR en DASH son **válidos** — `tests/integration/dash-abr.spec.ts` existe
+- ABR manual en DASH usa `setRepresentationForTypeByIndex` (API dash.js v5)
 
 **Consecuencias para testing:**
-- DASH no tiene ABR real controlable desde el player (el browser decide la calidad)
-- Las propiedades `level`, `levels`, `bandwidth`, `bitrate`, `nextLevel` NO funcionan en DASH
-- Tests de ABR en DASH son inválidos — no hay lógica de player que testear
-- `sourceType` devuelve `'native'` para DASH, no `'dash'`
-- Tests de calidad manual con DASH están fuera de scope
+- Tests de ABR aplican a HLS y DASH por igual
+- Remover cualquier guard `player.sourceType === 'hls'` que excluya DASH de tests ABR
 
 ---
 

@@ -1,0 +1,173 @@
+version: "1.0"
+module: next-episode
+last_updated: "2026-06-08"
+
+user_stories:
+  - id: US-NEPI-001
+    persona: Viewer
+    narrative:
+      as: "un espectador viendo una serie en la plataforma"
+      want: "que el siguiente episodio se cargue automáticamente cuando termina el episodio actual"
+      so_that: "pueda hacer binge-watching sin interrupciones ni interacción manual"
+    business_value: HIGH
+    risk_area:
+      - "Auto-load timer race condition (NEPI-RISK-001)"
+      - "Autoplay bloqueado por políticas del browser (NEPI-RISK-002)"
+    related_features:
+      - "playback-core"
+      - "metadata"
+    acceptance:
+      - NEPI-AC-003
+      - NEPI-AC-011
+    notes: "El auto-load es la funcionalidad central del módulo. Impacta directamente el tiempo de visionado y la retención (21 min/día según estudio 2025). El countdown de 5s es el estándar de la industria."
+
+  - id: US-NEPI-002
+    persona: Viewer
+    narrative:
+      as: "un espectador que quiere ver los créditos de un episodio"
+      want: "poder cancelar el auto-load del siguiente episodio y ver los créditos completos"
+      so_that: "no me pierda información de los créditos (actores, director, post-credit scenes)"
+    business_value: MEDIUM
+    risk_area:
+      - "Accesibilidad del botón Watch Credits (NEPI-RISK-009)"
+    related_features:
+      - "controls-api"
+    acceptance:
+      - NEPI-AC-015
+      - NEPI-AC-014
+    notes: "El botón Watch Credits y la tecla Escape cumplen esta historia. Es también el mecanismo de opt-out requerido por WCAG 1.4.2."
+
+  - id: US-NEPI-003
+    persona: Viewer
+    narrative:
+      as: "un espectador que quiere saltar al siguiente episodio antes de que termine el actual"
+      want: "poder hacer clic en 'Watch Next' cuando aparece la UI antes del fin del episodio"
+      so_that: "pueda transicionar al siguiente contenido sin esperar los créditos o el countdown"
+    business_value: HIGH
+    risk_area:
+      - "UI no visible si i18n no está listo (NEPI-RISK-003)"
+    related_features:
+      - "playback-core"
+      - "api-bootstrap"
+    acceptance:
+      - NEPI-AC-002
+      - NEPI-AC-004
+    notes: "La UI aparece en el threshold configurable (default 30s). El clic cancela el timer y carga inmediatamente."
+
+  - id: US-NEPI-004
+    persona: Viewer
+    narrative:
+      as: "un espectador usando el player en un smart TV con control remoto"
+      want: "poder navegar entre los botones de next episode con las teclas del D-pad y activarlos con OK/Enter"
+      so_that: "pueda controlar la transición sin necesitar un mouse o touchscreen"
+    business_value: HIGH
+    risk_area:
+      - "Accesibilidad del foco (NEPI-RISK-010)"
+    related_features:
+      - "platform-config"
+      - "controls-api"
+    acceptance:
+      - NEPI-AC-013
+      - NEPI-AC-014
+      - NEPI-AC-016
+    notes: "TV skin activa clases CSS aumentadas. La navegación con ArrowLeft/Right/Up/Down alterna entre los dos botones. El foco inicial es siempre Watch Next."
+
+  - id: US-NEPI-005
+    persona: Integrator
+    narrative:
+      as: "un integrador de la plataforma que quiere conocer cuándo el usuario está a punto de ver el siguiente episodio"
+      want: "recibir una notificación anticipada (5s antes de que aparezca la UI) con el ID del siguiente episodio"
+      so_that: "pueda precargar metadatos, imágenes o analíticas del siguiente episodio antes de la transición"
+    business_value: HIGH
+    risk_area:
+      - "Timing del incoming event (NEPI-LEARN-001)"
+    related_features:
+      - "events"
+      - "metadata"
+    acceptance:
+      - NEPI-AC-001
+      - NEPI-AC-017
+    notes: "nextEpisodeIncoming se emite con nextEpisodeTime + 5 de anticipación. Solo se emite una vez por contenido. Funciona en headless y video view."
+
+  - id: US-NEPI-006
+    persona: Integrator
+    narrative:
+      as: "un integrador que quiere controlar cuál es el siguiente episodio dinámicamente"
+      want: "poder confirmar o sobreescribir el siguiente episodio después de recibir nextEpisodeIncoming"
+      so_that: "pueda implementar lógica personalizada como recomendaciones, episodios pagos, o contenido dinámico"
+    business_value: HIGH
+    risk_area:
+      - "Stale closure con confirmedNextEpisode (NEPI-RISK-004)"
+      - "Inconsistencia type default headless vs video (NEPI-DEF-002)"
+    related_features:
+      - "events"
+      - "api-bootstrap"
+    acceptance:
+      - NEPI-AC-007
+      - NEPI-AC-018
+    notes: "El integrador recibe nextEpisodeIncoming, consulta su backend, y emite nextEpisodeConfirmed con los datos del siguiente episodio. El payload puede ser string (id) u objeto con metadata adicional."
+
+  - id: US-NEPI-007
+    persona: Integrator
+    narrative:
+      as: "un integrador que quiere prevenir que el siguiente episodio se cargue automáticamente"
+      want: "poder emitir nextEpisodeKeepWatching para que el video termine sin auto-load"
+      so_that: "pueda implementar flujos donde el usuario debe confirmar explícitamente (perfil infantil, límites de pantalla)"
+    business_value: MEDIUM
+    risk_area:
+      - "keepWatching persiste después de seek (NEPI-RISK-005)"
+    related_features:
+      - "events"
+      - "playback-core"
+    acceptance:
+      - NEPI-AC-005
+    notes: "keepWatching persiste hasta sourcechange. nextEpisodePlayNext puede override keepWatching explícitamente."
+
+  - id: US-NEPI-008
+    persona: Integrator
+    narrative:
+      as: "un integrador que quiere requerir confirmación explícita antes de mostrar la UI de next episode"
+      want: "poder configurar metadata.nextEpisodeOverride para que la UI no aparezca hasta que el integrador confirme el siguiente episodio"
+      so_that: "pueda controlar el timing exacto de cuándo se muestra la UI (e.g., después de verificar que el contenido está disponible)"
+    business_value: MEDIUM
+    risk_area:
+      - "nextEpisodeOverride bloquea indefinidamente sin confirm (NEPI-RISK-006)"
+      - "nextEpisodePlayNext inconsistencia headless vs video (NEPI-DEF-005)"
+    related_features:
+      - "events"
+      - "metadata"
+    acceptance:
+      - NEPI-AC-007
+      - GAP-NEPI-009
+    notes: "Si nextEpisodeOverride está definido, requiresConfirmation=true bloquea toda la UI hasta recibir nextEpisodeConfirmed. El integrador DEBE implementar este handler o el user queda sin next episode."
+
+  - id: US-NEPI-009
+    persona: Integrator
+    narrative:
+      as: "un integrador que quiere saber cuándo el player inició la carga del siguiente episodio"
+      want: "recibir el evento nextEpisodeLoadRequested con el ID del contenido que se estaba viendo"
+      so_that: "pueda trackear métricas de binge-watching y saber qué episodio se reemplazó"
+    business_value: MEDIUM
+    risk_area: []
+    related_features:
+      - "events"
+      - "youbora"
+    acceptance:
+      - NEPI-AC-010
+    notes: "nextEpisodeLoadRequested siempre se emite antes de api.load(), tanto en carga manual como automática. El payload es el ID del contenido ACTUAL (el que está terminando), no el del siguiente."
+
+  - id: US-NEPI-010
+    persona: Operator
+    narrative:
+      as: "un operador de QA que quiere asegurarse que el next episode no afecta la accesibilidad"
+      want: "que la UI de next episode cumpla con WCAG 2.1 AA en navegación por teclado"
+      so_that: "usuarios con discapacidades puedan cancelar o confirmar el siguiente episodio sin mouse"
+    business_value: LOW
+    risk_area:
+      - "outline:none en :focus (NEPI-RISK-010)"
+      - "Countdown sin aria-live (NEPI-RISK-009)"
+    related_features: []
+    acceptance:
+      - NEPI-AC-013
+      - NEPI-AC-014
+    notes: "Existen violations conocidas de accesibilidad (NEPI-DEF-003): outline:none y falta de aria-live. La navegación funcional por teclado SÍ está implementada (ArrowLeft/Right, Enter, Escape)."

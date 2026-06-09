@@ -1,0 +1,124 @@
+version: "1.0"
+module: ads-adswizz
+last_updated: "2026-06-08"
+
+user_stories:
+  - id: US-AWZ-001
+    persona: Viewer
+    narrative:
+      as: "oyente de una radio en vivo"
+      want: "escuchar el stream sin que la inserción de avisos de audio interrumpa ni rompa la reproducción"
+      so_that: "puedo disfrutar el programa con avisos integrados de forma natural, como en la radio tradicional"
+    business_value: HIGH
+    risk_area:
+      - "degradación silenciosa (SDK no carga)"
+      - "playback de audio"
+    related_features:
+      - playback-core
+      - platform-config
+    acceptance:
+      - AWZ-AC-003
+      - AWZ-AC-006
+    notes: "El audio es lo crítico; el aviso no debe nunca bloquear el contenido."
+
+  - id: US-AWZ-002
+    persona: Viewer
+    narrative:
+      as: "oyente de radio con un aviso de audio sonando"
+      want: "ver un banner companion relevante mientras suena el aviso y que desaparezca al terminar"
+      so_that: "tengo contexto visual del aviso sin que el banner persista cuando vuelve el programa"
+    business_value: MEDIUM
+    risk_area:
+      - "sincronización companion (Second Metadata Connection)"
+      - "layout"
+    related_features:
+      - metadata
+    acceptance:
+      - AWZ-AC-004
+      - AWZ-AC-005
+      - AWZ-AC-008
+    notes: "Banner 300x250 que aparece/oculta por willDisplay/outOfContext."
+
+  - id: US-AWZ-003
+    persona: Operator
+    narrative:
+      as: "operador de monetización de la radio"
+      want: "que cada reproducción cree una sesión AdsWizz y decore la URL del stream con los parámetros de sesión"
+      so_that: "las impresiones de audio se cuentan correctamente server-side y se genera revenue"
+    business_value: HIGH
+    risk_area:
+      - "pérdida silenciosa de tracking SSAI"
+      - "decoración de URL"
+    related_features:
+      - platform-config
+    acceptance:
+      - AWZ-AC-002
+      - AWZ-AC-011
+    notes: "AWZ-RISK-003 / AWZ-DEF-002: si el SDK es null la URL no se decora y se pierde el conteo sin señal."
+
+  - id: US-AWZ-004
+    persona: Integrator
+    narrative:
+      as: "integrador que configura un player de radio con AdsWizz"
+      want: "activar AdsWizz solo con hasAW + adswizz_companion (afrUrl, edge_data, zonas) sin escribir código"
+      so_that: "puedo habilitar o deshabilitar la monetización de audio por configuración de plataforma"
+    business_value: HIGH
+    risk_area:
+      - "gate de activación"
+      - "configuración inválida"
+    related_features:
+      - platform-config
+      - metadata
+    acceptance:
+      - AWZ-AC-001
+      - AWZ-AC-007
+    notes: "Cubrir las combinaciones de config de AWZ-LEARN-005."
+
+  - id: US-AWZ-005
+    persona: Operator
+    narrative:
+      as: "responsable de cumplimiento/privacidad"
+      want: "saber cómo se genera el identificador del oyente y bajo qué consentimiento"
+      so_that: "puedo asegurar que el tracking de audio cumple GDPR/CCPA"
+    business_value: MEDIUM
+    risk_area:
+      - "privacidad / consentimiento"
+      - "listenerId por cookie"
+    related_features:
+      - platform-config
+    acceptance:
+      - AWZ-AC-009
+    notes: "AWZ-DEF-003: listenerConsent=true hardcoded; no hay gate de CMP."
+
+  - id: US-AWZ-006
+    persona: Integrator
+    narrative:
+      as: "integrador que embebe el player de radio en un iframe cross-origin o navegador con ITP"
+      want: "que la monetización de audio funcione en contexto sin cookies de terceros"
+      so_that: "no pierdo avisos ni sincronización del companion en Safari u otros navegadores con restricciones"
+    business_value: MEDIUM
+    risk_area:
+      - "contexto cookieless"
+      - "Second Metadata Connection"
+    related_features:
+      - platform-config
+    acceptance:
+      - AWZ-AC-002
+      - AWZ-AC-010
+    notes: "decorateURLAndCreateSession + TIMED_POLLING + setTimeout son la vía cookieless (AWZ-LEARN-006, AWZ-LEARN-008)."
+
+  - id: US-AWZ-007
+    persona: Integrator
+    narrative:
+      as: "integrador depurando una integración AdsWizz"
+      want: "ver en consola la versión del SDK y diagnósticos cuando activo debug"
+      so_that: "puedo verificar qué versión del SDK se cargó y descartar regresiones de contrato"
+    business_value: LOW
+    risk_area:
+      - "version pin del SDK"
+      - "diagnóstico"
+    related_features:
+      - events
+    acceptance:
+      - AWZ-AC-012
+    notes: "getVersion() logueado solo con debug; útil ante AWZ-DEF-006 (SDK sin pin)."

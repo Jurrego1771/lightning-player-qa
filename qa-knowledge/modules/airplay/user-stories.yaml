@@ -1,0 +1,120 @@
+version: "1.0"
+module: airplay
+last_updated: "2026-06-08"
+
+user_stories:
+  - id: US-APLY-001
+    persona: Viewer
+    narrative:
+      as: "espectador en Safari (Mac/iPhone/iPad) con un Apple TV en casa"
+      want: "enviar el video que estoy viendo a mi televisor vía AirPlay"
+      so_that: "puedo verlo en pantalla grande sin perder el progreso"
+    business_value: HIGH
+    risk_area:
+      - "handoff de reproducción al dispositivo destino"
+      - "compatibilidad hls.js + ManagedMediaSource"
+    related_features:
+      - "playback-core"
+      - "hls"
+    acceptance:
+      - "APLY-AC-004"
+      - "APLY-AC-005"
+      - "APLY-AC-007"
+    notes: "Caso principal. El handoff debe funcionar con HLS en Safari 17.1+ (no romper por MMS)."
+
+  - id: US-APLY-002
+    persona: Viewer
+    narrative:
+      as: "espectador que terminó de ver en el TV"
+      want: "volver a reproducir en mi dispositivo cuando desconecto AirPlay"
+      so_that: "la experiencia se recupera sin recargar ni perder posición"
+    business_value: HIGH
+    risk_area:
+      - "transición de estado conectado a desconectado"
+    related_features:
+      - "playback-core"
+    acceptance:
+      - "APLY-AC-006"
+    notes: "El indicador 'AirPlay activo' debe ocultarse y la reproducción volver al local."
+
+  - id: US-APLY-003
+    persona: Viewer
+    narrative:
+      as: "usuario de Chrome o Firefox"
+      want: "que el player funcione con normalidad aunque no tenga AirPlay"
+      so_that: "no veo errores ni botones rotos por una feature que mi navegador no soporta"
+    business_value: HIGH
+    risk_area:
+      - "degradación elegante en navegadores no-WebKit"
+    related_features:
+      - "platform-config"
+      - "controls-api"
+    acceptance:
+      - "APLY-AC-002"
+      - "APLY-AC-003"
+    notes: "AirPlay es exclusivo de WebKit; el resto debe degradar silenciosamente."
+
+  - id: US-APLY-004
+    persona: Integrator
+    narrative:
+      as: "integrador que embebe el player"
+      want: "registrar listeners de airPlayConnected/airPlayDisconnected y leer player.airplay sin que mi código falle en ninguna plataforma"
+      so_that: "puedo construir UI o analytics propias de forma segura y portable"
+    business_value: MEDIUM
+    risk_area:
+      - "estabilidad de la superficie de API entre plataformas"
+      - "evento de disponibilidad no emitido (APLY-DEF-001)"
+    related_features:
+      - "events"
+      - "controls-api"
+    acceptance:
+      - "APLY-AC-003"
+      - "APLY-AC-011"
+    notes: >
+      Documentar que airPlayAvailabilityChange no se emite hoy; usar el getter
+      airplayAvailable para disponibilidad.
+
+  - id: US-APLY-005
+    persona: Integrator
+    narrative:
+      as: "integrador con contenido que no debe enviarse a AirPlay (p.ej. restricciones de licencia)"
+      want: "desactivar AirPlay vía configuración (view.airplay=false)"
+      so_that: "el botón no aparece y el contenido no puede enviarse a dispositivos externos"
+    business_value: MEDIUM
+    risk_area:
+      - "respeto del flag de configuración"
+    related_features:
+      - "platform-config"
+    acceptance:
+      - "APLY-AC-010"
+    notes: "Path de configuración hoy sin cobertura de test (GAP-APLY-004)."
+
+  - id: US-APLY-006
+    persona: Operator
+    narrative:
+      as: "operador de analytics / producto"
+      want: "saber qué porcentaje del consumo ocurre vía AirPlay"
+      so_that: "puedo medir el uso de external playback y priorizar inversión en esa experiencia"
+    business_value: MEDIUM
+    risk_area:
+      - "exactitud del flag ext_pb en los beacons"
+    related_features:
+      - "analytics-streammetrics"
+    acceptance:
+      - "APLY-AC-011"
+    notes: "ext_pb=1 mientras AirPlay conectado; cruzar con módulo analytics-streammetrics."
+
+  - id: US-APLY-007
+    persona: Viewer
+    narrative:
+      as: "espectador con el video muteado que decide enviarlo al TV"
+      want: "escuchar el audio en el televisor al activar AirPlay"
+      so_that: "no tengo que volver a subir el volumen manualmente tras el handoff"
+    business_value: LOW
+    risk_area:
+      - "forzado de unmute al abrir el picker"
+    related_features:
+      - "controls-api"
+    acceptance:
+      - "APLY-AC-013"
+    notes: "showPicker fuerza volume=1 y muted=false; cuidar UX de autoplay muteado."

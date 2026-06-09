@@ -1,0 +1,149 @@
+version: "1.0"
+module: dash
+last_updated: "2026-06-08"
+
+user_stories:
+
+  - id: US-DASH-001
+    persona: Viewer
+    narrative:
+      as: "usuario en un navegador Chrome/Firefox/Edge"
+      want: "que el video en formato DASH cargue y se reproduzca automáticamente sin configuración adicional"
+      so_that: "pueda ver el contenido sin fricciones ni errores de compatibilidad"
+    business_value: HIGH
+    risk_area:
+      - "selección de handler"
+      - "inicialización de dash.js"
+    related_features:
+      - "playback-core"
+    acceptance:
+      - DASH-AC-001
+      - DASH-AC-002
+      - DASH-AC-003
+    notes: "El happy path más crítico del módulo. Falla aquí = el producto no funciona para el formato DASH."
+
+  - id: US-DASH-002
+    persona: Viewer
+    narrative:
+      as: "usuario viendo un stream en vivo con diferido (DVR)"
+      want: "poder retroceder en el tiempo dentro de la ventana disponible y buscar momentos pasados del live"
+      so_that: "no me pierda partes del evento que ocurrieron mientras no estaba mirando"
+    business_value: HIGH
+    risk_area:
+      - "DVR seek"
+      - "dvrWindow"
+      - "timeShiftBufferDepth"
+    related_features:
+      - "playback-core"
+    acceptance:
+      - DASH-AC-011
+      - DASH-AC-012
+    notes: "Feature crítica para broadcasting y sports live. Actualmente bloqueada por DASH-DEF-001 (ContentIds.dashDvr sin DVR real)."
+
+  - id: US-DASH-003
+    persona: Viewer
+    narrative:
+      as: "usuario con conexión lenta o variable"
+      want: "que el video se adapte automáticamente a mi ancho de banda y continúe reproduciendo sin pausas largas"
+      so_that: "pueda ver el contenido sin interrupciones aunque mi red fluctúe"
+    business_value: HIGH
+    risk_area:
+      - "ABR dash.js"
+      - "levelchanged event"
+      - "buffer management"
+    related_features:
+      - "quality-selector"
+    acceptance:
+      - DASH-AC-006
+      - DASH-AC-018
+    notes: "dash.js maneja el ABR internamente con algoritmo DYNAMIC. El player no necesita intervenir salvo para exponer los eventos."
+
+  - id: US-DASH-004
+    persona: Viewer
+    narrative:
+      as: "usuario que quiere controlar manualmente la calidad del video"
+      want: "poder seleccionar una representación específica (720p, 1080p) y que el player la mantenga"
+      so_that: "pueda ahorrar datos o garantizar la máxima calidad disponible independientemente del bandwidth"
+    business_value: MEDIUM
+    risk_area:
+      - "player.level setter"
+      - "setRepresentationForTypeByIndex"
+      - "autoLevelEnabled"
+    related_features:
+      - "quality-selector"
+    acceptance:
+      - DASH-AC-007
+      - DASH-AC-008
+    notes: "La fijación manual de nivel en DASH es asíncrona (setTimeout 0). La UI del quality selector debe tolerar este delay."
+
+  - id: US-DASH-005
+    persona: Integrator
+    narrative:
+      as: "desarrollador integrando el player en una plataforma con P2P CDN de System73"
+      want: "que el player active el SDK de System73 automáticamente cuando la metadata del contenido lo configure"
+      so_that: "los usuarios se beneficien de la optimización P2P sin cambios en mi código de integración"
+    business_value: MEDIUM
+    risk_area:
+      - "System73 SDK lazy-load"
+      - "wrapPlayer lifecycle"
+      - "stale-src guard"
+    related_features:
+      - "platform-config"
+    acceptance:
+      - DASH-AC-013
+      - DASH-AC-014
+      - DASH-AC-015
+    notes: "Si el SDK de System73 falla, el player debe continuar sin P2P (degradación suave). El integrador no debe necesitar manejar este fallo."
+
+  - id: US-DASH-006
+    persona: Operator
+    narrative:
+      as: "operador de la plataforma configurando un evento live con anuncios SSAI via Google DAI"
+      want: "que el player reproduzca el stream DASH de DAI con los anuncios ya insertados en el servidor"
+      so_that: "los anuncios no se puedan bloquear con adblockers y la experiencia sea continua"
+    business_value: HIGH
+    risk_area:
+      - "Google DAI DASH"
+      - "handler selection con DAI src"
+      - "SSAI MPD con anuncios"
+    related_features:
+      - "ads-dai"
+    acceptance:
+      - DASH-AC-017
+    notes: "Feature en test.fixme — requiere credenciales DAI en .env. El player selecciona DashHandler cuando el plugin DAI provee src.mpd."
+
+  - id: US-DASH-007
+    persona: Viewer
+    narrative:
+      as: "usuario que ve contenido premium con DRM en Chrome"
+      want: "que el stream DASH cifrado con Widevine se reproduzca tras la verificación de licencia transparentemente"
+      so_that: "pueda ver el contenido protegido sin pasos adicionales de mi parte"
+    business_value: HIGH
+    risk_area:
+      - "DRM Widevine EME"
+      - "getDashProtectionData"
+      - "license server request"
+    related_features:
+      - "drm"
+    acceptance:
+      - DASH-AC-019
+    notes: "El DashHandler pasa protectionData a dash.js antes de initialize(). dash.js gestiona la negociación EME internamente. En CI solo Widevine L3 está disponible."
+
+  - id: US-DASH-008
+    persona: Integrator
+    narrative:
+      as: "desarrollador que migra contenido de DASH a HLS o viceversa"
+      want: "que el player seleccione el handler correcto automáticamente según la URL del stream"
+      so_that: "no tenga que cambiar el código de integración al cambiar el formato del stream"
+    business_value: MEDIUM
+    risk_area:
+      - "auto-detect handler"
+      - "regresión HLS"
+    related_features:
+      - "playback-core"
+      - "hls"
+    acceptance:
+      - DASH-AC-003
+      - DASH-AC-004
+      - DASH-AC-016
+    notes: "La regresión HLS (AC-016) es tan importante como la selección DASH. Un bug en el auto-detect que afecte HLS impactaría todos los streams HLS existentes."

@@ -1,0 +1,127 @@
+version: "1.0"
+module: ads-adswizz
+last_updated: "2026-06-08"
+
+existing_tests: []
+# No existen specs para AdsWizz en tests/. Glob de *adswizz* / *awz* en tests/ no devolvió archivos.
+# Toda la cobertura listada abajo es un gap.
+
+coverage_gaps:
+  - id: GAP-AWZ-001
+    priority: MUST
+    ac_ref: AWZ-AC-003
+    title: "El audio se reproduce aunque el SDK de AdsWizz no cargue"
+    suggested_spec: "tests/integration/adswizz.spec.ts"
+    notes: >
+      Simular fallo de carga del CDN (bloquear el dominio del SDK o forzar import error).
+      Verificar que el stream de audio reproduce, el banner no se muestra y no hay error fatal.
+    industry_note: "Degradación silenciosa: nunca bloquear contenido de audio por falta de aviso. Adblockers bloquean estos dominios de forma rutinaria."
+
+  - id: GAP-AWZ-002
+    priority: MUST
+    ac_ref: AWZ-AC-002
+    title: "Decoración SSAI de la URL del stream con params de sesión"
+    suggested_spec: "tests/integration/adswizz.spec.ts"
+    notes: >
+      Con edge_data.server + afrUrl presentes, verificar que la URL final del stream contiene
+      es (edge server) y pz (zone) y, cuando aplica, listenerid; y que se invocó
+      decorateURLAndCreateSession. Mockear window.adswizzSDK.
+    industry_note: "La decoración correcta es lo que habilita el conteo de impresiones; pérdida silenciosa = pérdida de revenue."
+
+  - id: GAP-AWZ-003
+    priority: MUST
+    ac_ref: AWZ-AC-002
+    title: "decorateURL con edge server no responsivo no debe colgar el play indefinidamente"
+    suggested_spec: "tests/integration/adswizz.spec.ts"
+    notes: >
+      Simular que decorateURLAndCreateSession nunca invoca su callback. Verificar comportamiento
+      observado (hoy: cuelga — documentar). Sirve de test de regresión si se añade timeout/fallback.
+    industry_note: "AWZ-RISK-002 / AWZ-DEF-001: la creación de sesión sin timeout es el riesgo de mayor severidad."
+
+  - id: GAP-AWZ-004
+    priority: MUST
+    ac_ref: AWZ-AC-004
+    title: "El banner companion aparece al iniciar un aviso de audio"
+    suggested_spec: "tests/integration/adswizz.spec.ts"
+    notes: >
+      Disparar willDisplayListener desde el SDK mock; verificar que .np__adswizz__banner pasa a
+      display:block con dimensiones 300x250.
+
+  - id: GAP-AWZ-005
+    priority: MUST
+    ac_ref: AWZ-AC-005
+    title: "El banner se oculta al terminar el aviso y el audio continúa"
+    suggested_spec: "tests/integration/adswizz.spec.ts"
+    notes: >
+      Disparar outOfContextListener; verificar display:none y que la reproducción de audio sigue.
+
+  - id: GAP-AWZ-006
+    priority: MUST
+    ac_ref: AWZ-AC-006
+    title: "AdsWizz no se activa ni interfiere en contenido de video"
+    suggested_spec: "tests/integration/adswizz.spec.ts"
+    notes: >
+      Con playerType=video, verificar que no se decora la URL como audio AdsWizz ni se monta el
+      banner de audio, y que el ciclo de IMA (pause/resume) no se ve afectado.
+    industry_note: "Audio SSAI y video CSAI son escenarios disjuntos; mezclarlos no es soportado."
+
+  - id: GAP-AWZ-007
+    priority: SHOULD
+    ac_ref: AWZ-AC-001
+    title: "Gate de activación: hasAW + afrUrl requeridos"
+    suggested_spec: "tests/integration/adswizz.spec.ts"
+    notes: >
+      Cubrir las combinaciones de AWZ-LEARN-005: (hasAW+afrUrl+server), (hasAW+afrUrl sin server),
+      (hasAW sin afrUrl), (sin hasAW). Verificar qué subconjunto de la feature se activa en cada una.
+
+  - id: GAP-AWZ-008
+    priority: SHOULD
+    ac_ref: AWZ-AC-007
+    title: "resetSession al desmontar el contenedor del banner"
+    suggested_spec: "tests/integration/adswizz.spec.ts"
+    notes: >
+      Verificar que onContainerMounted(null) llama resetSession() y que no quedan timers de
+      polling activos (AWZ-RISK-006 / AWZ-DEF-005).
+
+  - id: GAP-AWZ-009
+    priority: SHOULD
+    ac_ref: AWZ-AC-008
+    title: "Fallback zone cuando el aviso no trae companion"
+    suggested_spec: "tests/integration/adswizz.spec.ts"
+    notes: >
+      Verificar que setCompanionBannerConfig recibe fallbackZoneId y que el contenedor no rompe
+      el layout cuando no hay creativo ni fallback.
+
+  - id: GAP-AWZ-010
+    priority: SHOULD
+    ac_ref: AWZ-AC-009
+    title: "Origen del listenerId con listenerConsent=true (privacidad)"
+    suggested_spec: "tests/integration/adswizz.spec.ts"
+    notes: >
+      Verificar que init recibe listenerConsent: true y documentar que el ID viene de cookie sin
+      gate de consentimiento (AWZ-DEF-003).
+    industry_note: "Bajo GDPR/CCPA el origen del identificador debería depender del consentimiento real."
+
+  - id: GAP-AWZ-011
+    priority: SHOULD
+    ac_ref: AWZ-AC-008
+    title: "Contexto cookieless (iframe cross-origin / ITP) — Second Metadata Connection"
+    suggested_spec: "tests/integration/adswizz.spec.ts"
+    notes: >
+      Validar que decorateURLAndCreateSession funciona en contexto cookieless y que el banner
+      sigue sincronizándose vía TIMED_POLLING.
+    industry_note: "AWZ-LEARN-008: la SMC existe precisamente para el contexto sin cookies de terceros (Safari ITP)."
+
+  - id: GAP-AWZ-012
+    priority: COULD
+    ac_ref: AWZ-AC-011
+    title: "SSAI + companion comparten el singleton del SDK"
+    suggested_spec: "tests/integration/adswizz.spec.ts"
+    notes: "Verificar que getAdswizzSDK devuelve la misma promesa para loadConfig y el componente (AWZ-LEARN-003)."
+
+  - id: GAP-AWZ-013
+    priority: COULD
+    ac_ref: AWZ-AC-012
+    title: "Logging de getVersion() solo en modo debug"
+    suggested_spec: "tests/integration/adswizz.spec.ts"
+    notes: "Con debug=true verificar log de versión; sin debug, sin log."

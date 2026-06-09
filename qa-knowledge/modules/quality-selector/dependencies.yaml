@@ -1,0 +1,59 @@
+version: "1.0"
+module: quality-selector
+last_updated: "2026-06-08"
+
+internal:
+  - id: hls
+    reason: "La implementación real de level/levels/nextLevel/bandwidth/bitrate para streams HLS vive en el handler de hls.js. ABR de HLS es controlado por hls.js."
+    coupling: high
+    files:
+      - "src/player/handler/hls/handler.js"
+
+  - id: dash
+    reason: "La implementación de la API de calidad para streams DASH vive en el handler de dash.js. ABR de DASH y la selección manual (setRepresentationForTypeByIndex) las maneja dash.js."
+    coupling: high
+    files:
+      - "src/player/handler/dash/handler.js"
+
+  - id: controls-api
+    reason: "base.js/controls enrutan get/set('level') hacia el handler activo. El ad manager puede interceptar get('level') durante un ad linear."
+    coupling: medium
+    files:
+      - "src/player/base.js"
+      - "src/controls/index.js"
+
+  - id: events
+    reason: "Los eventos levelchange/levelchanged se emiten vía internalEmitter y se reexponen al integrador. La UI y analytics dependen de ellos."
+    coupling: high
+    files:
+      - "src/events/index.js"
+      - "constants.cjs"
+
+  - id: youbora
+    reason: "El tracker de Youbora/NPAW lee bandwidth/bitrate/level/droppedFrames para reportar QoE (rendition, throughput, dropped frames)."
+    coupling: low
+    files:
+      - "src/analytics/youbora/tracker.js"
+      - "src/analytics/streammetrics/tracker.js"
+
+external:
+  - id: hls.js
+    package: "hls.js (bundled vía getSystem73HlsSDK / variantes hls/hls-beta/hls-light)"
+    version: "1.6.x (rama actual del player)"
+    reason: "Motor de streaming HLS y de ABR. Provee currentLevel, nextLevel, loadLevel, autoLevelEnabled, bandwidthEstimate, levels."
+    risk: medium
+    note: "currentLevel hace flush de buffer (stall); el player usa nextLevel+loadLevel (no destructivo). El estimador de bandwidth requiere varios segmentos para converger. Issues conocidos: #1201 (hang en nextLevel switch), #5230 (stopLoad/startLoad fuerza nivel más bajo)."
+
+  - id: dash.js
+    package: "dashjs"
+    version: "5.1.1"
+    reason: "Motor de streaming MPEG-DASH y de ABR (algoritmos DYNAMIC/BOLA). Provee getRepresentationsByType, setRepresentationForTypeByIndex, getAverageThroughput, updateSettings(abr.autoSwitchBitrate)."
+    risk: medium
+    note: "dash.js v5 REMOVIÓ setQualityFor(); el player usa la API moderna setRepresentationForTypeByIndex + updateSettings({streaming:{abr:{autoSwitchBitrate}}}). NO usa la API deprecada. autoSwitchBitrate es por mediaType (video/audio). El mapeo representación↔nivel se hace por (height,width,bitrate) — depende de que esos campos sean estables."
+
+  - id: System73
+    package: "@system73/* (peering SDK, cargado dinámicamente)"
+    version: "dinámico (config de plataforma)"
+    reason: "Wrapper opcional de P2P/peering sobre hls.js y dash.js. Puede envolver el config y el player, afectando indirectamente la carga de segmentos y por tanto el comportamiento de ABR."
+    risk: low
+    note: "Solo activo si metadata.peering.system73.enabled. Si está activo, las estimaciones de bandwidth/throughput pueden no reflejar la red directa del usuario (tráfico P2P)."

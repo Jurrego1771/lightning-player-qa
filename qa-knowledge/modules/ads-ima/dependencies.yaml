@@ -1,0 +1,90 @@
+version: "1.0"
+module: ads-ima
+last_updated: "2026-06-08"
+
+internal:
+  - id: playback-core
+    reason: "AdsHandler pausa y reanuda el contenido via getComponent('player').pause()/play(). La posición de reanudación se toma de element.currentTime."
+    coupling: high
+    files:
+      - "src/ads/googleIma/handler.js"
+    note: "Un bug en el método play() de playback-core puede dejar el player colgado después de un ad. El handler también llama play()+pause() al inicializar ads para cumplir con el requisito del IMA SDK."
+
+  - id: events
+    reason: "AdsHandler extiende EventEmitter y usa internalEmitter para propagar todos los eventos de ads. internalEmitter.on(Events._volumechange) sincroniza el volumen del player con el adsManager."
+    coupling: high
+    files:
+      - "src/ads/googleIma/handler.js"
+      - "src/ads/googleIma/index.js"
+    note: "Si internalEmitter falla, los eventos de ads no se propagan a la API pública."
+
+  - id: ads-manager
+    reason: "AdsHandler se registra como componente 'ad' via register('ad', handler). La API pública player.ad.* delega a este handler."
+    coupling: high
+    files:
+      - "src/ads/googleIma/index.js"
+      - "src/ads/googleIma/handler.js"
+    note: "El componente 'api' lee isPlayingAd via AdsHandler para bloquear seek durante ads."
+
+  - id: platform-config
+    reason: "El VAST URL (ads.map) y las opciones de ads (canPause, ppid, listenerId, custom) provienen del contexto del player, que es inicializado desde la plataforma Mediastream."
+    coupling: medium
+    files:
+      - "src/ads/googleIma/index.js"
+
+  - id: controls-api
+    reason: "Los controles del player leen isPlayingAd para deshabilitar seeks y mostrar el indicador de ad. Durante el ad, player.currentTime setter retorna null."
+    coupling: medium
+    files:
+      - "src/ads/googleIma/handler.js"
+
+  - id: ads-dai
+    reason: "Comparte window.google.ima con DAI. La detección de si el SDK IMA está cargado usa ima.AdsRenderingSettings (presente tanto en IMA como en DAI). Cargar DAI primero puede satisfacer esta condición y omitir la carga de IMA para ads VAST/VMAP."
+    coupling: medium
+    files:
+      - "src/ads/googleIma/ima.js"
+    note: "Comentario en código: 'To account for DAI, also part of window.google.ima'"
+
+external:
+  - id: google-ima-sdk-v3
+    package: "https://imasdk.googleapis.com/js/sdkloader/ima3.js"
+    version: "3.x (latest — cargado desde CDN en runtime, sin version pinning)"
+    reason: "SDK completo para VAST/VMAP: AdDisplayContainer, AdsLoader, AdsManager, Ad, AdsRequest, AdsRenderingSettings"
+    risk: high
+    note: |
+      Cargado lazy en runtime desde CDN externo. No hay version pinning — se obtiene siempre la última versión.
+      Si el CDN falla (imasdk.googleapis.com no disponible): el player detecta el error y continúa sin ads.
+      Si el CDN devuelve una versión con breaking changes: puede romper silenciosamente.
+      El SDK debug está en ima3_debug.js — NUNCA usar en producción.
+      URL configurada en constants.cjs: files.ads.google / files.ads.google_debug.
+
+  - id: bowser
+    package: "bowser (npm)"
+    version: "^2.x (incluida en el bundle del player)"
+    reason: "Detecta si el browser es mobile/tablet para establecer el parámetro $mobile$ en el VAST URL"
+    risk: low
+    note: "Usado en AdsRequest para platform detection."
+
+  - id: checkCanAutoplay-helper
+    package: "interno (src/helper/checkCanAutoplay)"
+    version: "n/a"
+    reason: "Determina si el browser puede hacer autoplay (con o sin mute). El resultado se usa para setAdWillAutoPlay y setAdWillPlayMuted en el VAST request."
+    risk: medium
+    note: "Si checkCanAutoplay retorna un falso negativo, el vpmute/vpa del VAST request será incorrecto. Verificado en tests de tag params."
+
+  - id: vast-vmap-endpoint
+    package: "externo (URL configurada en ads.map)"
+    version: "VAST 2.0/3.0/4.x o VMAP 1.0"
+    reason: "Fuente de los ads. El player soporta VAST wrapper chains y VMAP para pre/mid/post-rolls."
+    risk: high
+    note: |
+      El IMA SDK resuelve VAST wrappers automáticamente.
+      VAST vacío (0 ads) retorna adsError o adsAllAdsCompleted inmediato — ambos son comportamientos válidos.
+      Timeout de red → adsError, content continúa.
+
+  - id: omid-sdk
+    package: "incluido en Google IMA SDK"
+    version: "OMID 1.x (incluido en ima3.js)"
+    reason: "Open Measurement SDK para verificación de viewability de anuncios."
+    risk: low
+    note: "El OMID SDK se activa automáticamente cuando el IMA SDK está cargado. Los beacons de impression y quartiles se envían via OMID/VAST tracking URLs."

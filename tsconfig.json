@@ -23,7 +23,8 @@
     "mock-vast/**/*.ts",
     "scripts/**/*.ts",
     "agents/**/*.ts",
-    "skills/**/*.ts"
+    "skills/**/*.ts",
+    "src/**/*.ts"
   ],
   "exclude": ["node_modules", "dist", "fixtures/streams/**"]
 }

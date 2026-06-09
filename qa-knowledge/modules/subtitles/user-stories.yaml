@@ -1,0 +1,127 @@
+version: "1.0"
+module: subtitles
+last_updated: "2026-06-08"
+
+user_stories:
+
+  - id: US-SUB-001
+    persona: Viewer
+    narrative:
+      as: "espectador que necesita accesibilidad"
+      want: "activar subtítulos en mi idioma"
+      so_that: "puedo seguir el contenido sin depender del audio"
+    business_value: HIGH
+    risk_area:
+      - accessibility
+    related_features: []
+    acceptance:
+      - SUB-AC-001
+      - SUB-AC-006
+    notes: "Flujo principal de selección. Cubre selección desde popover y verificación visual."
+
+  - id: US-SUB-002
+    persona: Viewer
+    narrative:
+      as: "espectador con subtítulos activos"
+      want: "desactivarlos con un toggle rápido sin abrir el menú"
+      so_that: "no interrumpo la experiencia mientras veo el contenido"
+    business_value: MEDIUM
+    risk_area:
+      - accessibility
+    related_features: []
+    acceptance:
+      - SUB-AC-002
+    notes: "Toggle On/Off en el popover. Verificar que subtitlechange emite null."
+
+  - id: US-SUB-003
+    persona: Viewer
+    narrative:
+      as: "espectador multilingüe"
+      want: "cambiar el idioma de los subtítulos sin que dos idiomas aparezcan simultáneamente"
+      so_that: "no veo texto superpuesto"
+    business_value: HIGH
+    risk_area:
+      - subtitles-core
+    related_features: []
+    acceptance:
+      - SUB-AC-003
+    notes: "Stream con ≥2 pistas. Riesgo de race condition en cambio rápido (SUB-RISK-001)."
+
+  - id: US-SUB-004
+    persona: Viewer
+    narrative:
+      as: "espectador usando Chromecast"
+      want: "que los subtítulos sigan disponibles en el televisor"
+      so_that: "mantengo la accesibilidad al castear"
+    business_value: HIGH
+    risk_area:
+      - chromecast
+      - accessibility
+    related_features:
+      - chromecast
+    acceptance:
+      - SUB-AC-008
+      - SUB-AC-009
+    notes: "Solo WebVTT disponible en Cast. ASS se filtra silenciosamente (SUB-RISK-005)."
+
+  - id: US-SUB-005
+    persona: Viewer
+    narrative:
+      as: "espectador con contenido en formato ASS (subtítulos tipográficos)"
+      want: "ver los estilos y posiciones del archivo ASS correctamente"
+      so_that: "recibo la experiencia visual que el creador diseñó"
+    business_value: MEDIUM
+    risk_area:
+      - subtitles-ass
+    related_features: []
+    acceptance:
+      - SUB-AC-004
+      - SUB-AC-010
+      - SUB-AC-013
+    notes: "Incluye normalización EZTitles (SUB-DEF-002) y fallback de resolución (SUB-RISK-004)."
+
+  - id: US-SUB-006
+    persona: Viewer
+    narrative:
+      as: "espectador usando zoom en dispositivo móvil"
+      want: "que los subtítulos sigan visibles y posicionados correctamente al hacer zoom"
+      so_that: "no pierdo el texto al acercar la imagen"
+    business_value: MEDIUM
+    risk_area:
+      - zoom
+      - subtitles-core
+    related_features:
+      - zoom
+    acceptance:
+      - SUB-AC-007
+    notes: "Requiere zoom > 1.001. VTT → overlay nativo, ASS → renderer propio sin cambios."
+
+  - id: US-SUB-007
+    persona: Integrator
+    narrative:
+      as: "integrador que construye un reproductor personalizado"
+      want: "añadir pistas de subtítulos programáticamente sin reconfigurar el player"
+      so_that: "soporto flujos donde los subtítulos se cargan bajo demanda"
+    business_value: LOW
+    risk_area:
+      - api
+    related_features: []
+    acceptance:
+      - SUB-AC-012
+    notes: "Vía player.addTextTrack(). Verificar que la pista aparece en el popover."
+
+  - id: US-SUB-008
+    persona: Integrator
+    narrative:
+      as: "integrador que usa Google DAI"
+      want: "saber qué pistas de subtítulos estarán disponibles con DAI activo"
+      so_that: "no configuro subtítulos externos que serán ignorados silenciosamente"
+    business_value: MEDIUM
+    risk_area:
+      - ads-dai
+      - subtitles-core
+    related_features:
+      - ads-dai
+    acceptance:
+      - SUB-AC-003
+    notes: "Limitación conocida (SUB-DEF-003). DAI elimina config.subtitles antes del init."

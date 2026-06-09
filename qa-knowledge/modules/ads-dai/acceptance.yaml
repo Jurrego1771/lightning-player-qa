@@ -1,0 +1,168 @@
+version: "1.0"
+module: ads-dai
+last_updated: "2026-06-08"
+
+acceptance_criteria:
+
+  # ── Google DAI — Stream Request ─────────────────────────────────────────────
+
+  - id: DAI-AC-001
+    priority: MUST
+    scenario: "Stream request retorna URL modificada y el player inicia reproducción"
+    given: "Player configurado con ads.googleDAI.key (HLS) y ads.googleDAI.backup"
+    when: "El SDK de Google DAI procesa el stream request exitosamente"
+    then:
+      - "El evento LOADED del SDK se recibe con streamData.url o streamData.streamId"
+      - "setData recibe el src modificado (URL DAI o src con adInsertionGoogleStreamId)"
+      - "El player inicia reproducción del stream DAI sin error de init"
+      - "El evento 'playing' se emite antes de timeout de 45s"
+
+  - id: DAI-AC-002
+    priority: MUST
+    scenario: "Error en stream request activa fallback al stream sin ads"
+    given: "Player configurado con ads.googleDAI.key y ads.googleDAI.backup"
+    when: "El SDK de Google DAI emite evento ERROR (stream request falla o SDK no carga)"
+    then:
+      - "GoogleDAIManager llama destroy() y emite 'error'"
+      - "El componente GoogleDAI llama setData({ src: backup }) con la URL de respaldo"
+      - "El player continúa reproducción usando el stream de backup"
+      - "No hay crash JavaScript no capturado en la página"
+
+  - id: DAI-AC-003
+    priority: MUST
+    scenario: "SDK no disponible (CDN bloqueado) activa fallback"
+    given: "La CDN de imasdk.googleapis.com no responde o devuelve error"
+    when: "GoogleDAIManager emite error 'Google DAI SDK not loaded'"
+    then:
+      - "GoogleDAI plugin detecta el error y hace setData({ src: backup })"
+      - "El player no queda en estado colgado esperando el SDK indefinidamente"
+
+  - id: DAI-AC-004
+    priority: MUST
+    scenario: "DASH stream request usa assetKeyDash cuando streamFormat=dash"
+    given: "Player configurado con ads.googleDAI.keyDash y streamFormat='dash'"
+    when: "GoogleDAIManager construye el stream request"
+    then:
+      - "request.format = 'dash'"
+      - "request.assetKey = assetKeyDash (no el assetKey HLS)"
+      - "El stream DAI retornado es un MPD (MPEG-DASH)"
+
+  # ── Google DAI — Beacons y Eventos ─────────────────────────────────────────
+
+  - id: DAI-AC-005
+    priority: MUST
+    scenario: "Beacons de cuartiles se emiten en el orden correcto durante un ad"
+    given: "Player reproduciendo un stream DAI con al menos un ad de 30+ segundos"
+    when: "El ad alcanza 25%, 50%, 75% y 100% de su duración"
+    then:
+      - "internalEmitter emite _adsFirstQuartile (25%)"
+      - "internalEmitter emite _adsMidpoint (50%)"
+      - "internalEmitter emite _adsThirdQuartile (75%)"
+      - "internalEmitter emite _adsComplete (100%)"
+      - "Los eventos se emiten exactamente una vez por ad"
+
+  - id: DAI-AC-006
+    priority: MUST
+    scenario: "adsContentPauseRequested y adsContentResumeRequested delimitan el ad break"
+    given: "Player reproduciendo stream DAI"
+    when: "El stream alcanza el inicio y fin de un ad break"
+    then:
+      - "AD_BREAK_STARTED dispara _adsContentPauseRequested"
+      - "controls.addOverride() es llamado (controles disabled durante ad)"
+      - "El contenedor DAI (div) se hace visible (display: block)"
+      - "AD_BREAK_ENDED dispara _adsContentResumeRequested"
+      - "controls.removeOverride() es llamado (controles re-habilitados)"
+      - "El contenedor DAI se oculta (display: none)"
+
+  - id: DAI-AC-007
+    priority: MUST
+    scenario: "adsStarted incluye adInfo con duration, id, podIndex"
+    given: "Player reproduciendo stream DAI con un ad activo"
+    when: "El SDK DAI emite evento STARTED"
+    then:
+      - "internalEmitter._adsStarted se emite con adInfo completo"
+      - "adInfo.duration > 0"
+      - "adInfo.id es un string no vacío"
+      - "adInfo.podIndex >= 0"
+      - "adInfo.isLinear === true"
+
+  # ── Google DAI — vpmute sync ────────────────────────────────────────────────
+
+  - id: DAI-AC-008
+    priority: MUST
+    scenario: "vpmute=0 en stream request cuando player está unmuted al init"
+    given: "Player con volumen > 0 (no muted)"
+    when: "GoogleDAIManager construye el stream request"
+    then:
+      - "request.adTagParameters.vpmute = '0'"
+
+  - id: DAI-AC-009
+    priority: MUST
+    scenario: "vpmute se actualiza via replaceAdTagParameters al togglear mute"
+    given: "Sesión DAI activa (manager inicializado)"
+    when: "El usuario muteó/desmuteó el player vía API pública (volume === 0 o > 0)"
+    then:
+      - "GoogleDAIManager detecta el cambio via internalEmitter._volumechange"
+      - "manager.replaceAdTagParameters({ vpmute: '1' }) si muted"
+      - "manager.replaceAdTagParameters({ vpmute: '0' }) si unmuted"
+      - "Solo se llama replaceAdTagParameters cuando el estado de mute cambia (no en cambios de volumen sin mute)"
+
+  # ── Google DAI — Seek y Live ────────────────────────────────────────────────
+
+  - id: DAI-AC-010
+    priority: SHOULD
+    scenario: "Seek hacia ad break no visto en VOD redirige al inicio del break"
+    given: "Stream DAI VOD con cuepoints; el usuario intenta seek más allá de un break no visto"
+    when: "#handleSeeked detecta que hay un cuepoint no reproducido antes de currentTime"
+    then:
+      - "currentTime se resetea al inicio del cuepoint (ignoreNextSeek = true)"
+      - "El ad break se reproduce antes de que el contenido continúe"
+      - "No hay loop infinito de seeks"
+
+  - id: DAI-AC-011
+    priority: SHOULD
+    scenario: "Stream live DAI usa proxy CDN de Mediastream por defecto"
+    given: "Player configurado con type=live, ads.googleDAI.key, sin skipCdn"
+    when: "El stream request retorna streamId exitosamente"
+    then:
+      - "El src resultante es el originalSrc con adInsertionGoogleStreamId appended"
+      - "No se usa la URL directa del SDK DAI"
+
+  - id: DAI-AC-012
+    priority: SHOULD
+    scenario: "Stream DAI DASH+DRM coordina correctamente con DRMPlugin"
+    given: "Player con ads.googleDAI.keyDash y DRM configurado (drm.vkeySystem resuelto)"
+    when: "deferredManifest está disponible (_daiDeferredManifestUrl en drm)"
+    then:
+      - "streamFormat se resuelve según selectedSrcType (no el streamFormat config)"
+      - "backupForSdk usa deferredManifest como backup URL"
+      - "El plugin no inicia hasta que waitingDrmResolution === false"
+
+  # ── MediaTailor DAI ─────────────────────────────────────────────────────────
+
+  - id: DAI-AC-013
+    priority: MUST
+    scenario: "MediaTailor session init retorna manifest_url y el player usa ese src"
+    given: "Player live/DVR con ads.mediaTailorDAI.enabled=true"
+    when: "La sesión SSAI se obtiene exitosamente de /live-stream/{id}/ssai-session.json"
+    then:
+      - "setData({ src: manifest_url }) se llama con la URL de MediaTailor"
+      - "El player carga el stream con ads insertados por MediaTailor"
+
+  - id: DAI-AC-014
+    priority: MUST
+    scenario: "MediaTailor session falla — player continúa con stream sin ads"
+    given: "Player live con mediaTailorDAI configurado"
+    when: "El fetch a /ssai-session.json devuelve error (5xx o network error)"
+    then:
+      - "setData({ src: baseSrc }) se llama con el src original"
+      - "El player inicia reproducción sin ads (sin crash)"
+
+  - id: DAI-AC-015
+    priority: SHOULD
+    scenario: "MediaTailor beacon de impresión se dispara al detectar un avail"
+    given: "MediaTailorDAIManager activo con trackingUrl"
+    when: "El polling detecta un avail con ads en el manifest"
+    then:
+      - "Se dispara GET a trackingEvents.impression para cada ad"
+      - "internalEmitter emite _adsStarted"

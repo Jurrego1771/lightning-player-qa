@@ -1,0 +1,163 @@
+version: "1.0"
+module: ads-ima
+last_updated: "2026-06-08"
+
+user_stories:
+
+  - id: US-IMA-001
+    persona: Viewer
+    narrative:
+      as: "espectador que abre un video en la plataforma"
+      want: "ver el pre-roll y que el contenido empiece automáticamente después"
+      so_that: "puedo ver el contenido que busqué sin intervención manual"
+    business_value: HIGH
+    risk_area:
+      - "IMA lifecycle: CONTENT_RESUME_REQUESTED no emitido"
+      - "IMA SDK CDN falla"
+    related_features:
+      - "playback-core"
+      - "ads-ima"
+    acceptance:
+      - "IMA-AC-001"
+      - "IMA-AC-002"
+      - "IMA-AC-003"
+    notes: "El escenario más común. Si el pre-roll no completa el ciclo, el usuario queda bloqueado."
+
+  - id: US-IMA-002
+    persona: Viewer
+    narrative:
+      as: "espectador que tiene un ad blocker activo"
+      want: "que el contenido se reproduzca normalmente aunque el ad no pueda cargarse"
+      so_that: "no me quedo con una pantalla en blanco o un error cuando mis ads están bloqueados"
+    business_value: HIGH
+    risk_area:
+      - "IMA SDK CDN bloqueado por ad blocker"
+      - "VAST URL bloqueada por ad blocker"
+    related_features:
+      - "ads-ima"
+    acceptance:
+      - "IMA-AC-003"
+      - "IMA-AC-005"
+    notes: "25-40% de usuarios en desktop tienen ad blockers. El player DEBE degradar gracefully."
+
+  - id: US-IMA-003
+    persona: Viewer
+    narrative:
+      as: "espectador que ve un pre-roll skippable"
+      want: "poder skipear el ad después de 5 segundos"
+      so_that: "puedo acceder al contenido más rápido si no me interesa el anuncio"
+    business_value: HIGH
+    risk_area:
+      - "Skip antes del skipOffset tiene efecto (bug)"
+      - "discardAdBreak cancela ads siguientes del break"
+    related_features:
+      - "ads-ima"
+      - "controls-api"
+    acceptance:
+      - "IMA-AC-008"
+      - "IMA-AC-009"
+    notes: "El skip es una expectativa de UX. Si no funciona, impacto directo en satisfacción del usuario."
+
+  - id: US-IMA-004
+    persona: Viewer
+    narrative:
+      as: "espectador que ve contenido con mid-rolls"
+      want: "que después del mid-roll el video retome exactamente donde lo dejé"
+      so_that: "no pierdo el hilo de lo que estaba viendo"
+    business_value: HIGH
+    risk_area:
+      - "isCustomPlaybackUsed: src+time no restaurados correctamente"
+      - "parseInt trunca décimas de segundo"
+    related_features:
+      - "ads-ima"
+      - "playback-core"
+    acceptance:
+      - "IMA-AC-010"
+    notes: "La reanudación en posición incorrecta después de mid-roll es muy molesta para usuarios."
+
+  - id: US-IMA-005
+    persona: Viewer
+    narrative:
+      as: "espectador que carga el player con autoplay activado en un browser moderno"
+      want: "que el pre-roll arranque automáticamente (aunque sea muted) sin que necesite hacer clic"
+      so_that: "la experiencia de visualización es fluida y no necesito interactuar para comenzar"
+    business_value: MEDIUM
+    risk_area:
+      - "NotAllowedError: autoplay policy deja ads sin inicializar"
+      - "vpmute incorrecto en VAST request"
+    related_features:
+      - "ads-ima"
+      - "playback-core"
+    acceptance:
+      - "IMA-AC-012"
+      - "IMA-AC-013"
+    notes: "Autoplay muted es el fallback estándar en browsers modernos. vpmute=1 es correcto en este caso."
+
+  - id: US-IMA-006
+    persona: Integrator
+    narrative:
+      as: "desarrollador que integra el Lightning Player en una plataforma de contenido"
+      want: "configurar el VAST URL con macros dinámicos (dimensiones del player, URL de la página)"
+      so_that: "el ad server puede devolver creatives apropiados para el contexto de reproducción"
+    business_value: HIGH
+    risk_area:
+      - "Macros no resueltos en VAST URL"
+      - "Dominio no-mdstrm.com: macros forzados no se aplican"
+    related_features:
+      - "ads-ima"
+      - "platform-config"
+    acceptance:
+      - "IMA-AC-001"
+      - "IMA-AC-013"
+    notes: |
+      Los macros $page-url$, $player-width$, $player-height$, $timestamp$ son los más
+      usados. Para dominios mdstrm.com, los macros forzados se añaden automáticamente.
+
+  - id: US-IMA-007
+    persona: Integrator
+    narrative:
+      as: "desarrollador que integra el player en una página con política de cookies restringida"
+      want: "poder deshabilitar las cookies del IMA SDK"
+      so_that: "el player cumple con las políticas de privacidad del sitio (GDPR, CCPA)"
+    business_value: MEDIUM
+    risk_area:
+      - "Cookies habilitadas por default — puede violar GDPR si no se configura"
+    related_features:
+      - "ads-ima"
+    acceptance:
+      - "IMA-AC-001"
+    notes: "Configurar withoutCookies=true en la config del player. Verificar que setCookiesEnabled(false) se llama al IMA SDK."
+
+  - id: US-IMA-008
+    persona: Operator
+    narrative:
+      as: "operador de una plataforma de streaming que monetiza contenido con VMAP pre/mid/post-roll"
+      want: "que los beacons de tracking (impression, quartiles, complete) se disparen exactamente una vez por ad"
+      so_that: "los reportes de viewability y billing del ad server son precisos y no hay discrepancias"
+    business_value: HIGH
+    risk_area:
+      - "Double-firing de beacons por reset sin destroy"
+      - "Beacons omitidos en ads cortos (<3s)"
+    related_features:
+      - "ads-ima"
+    acceptance:
+      - "IMA-AC-004"
+    notes: "Double-firing de beacons puede resultar en multas o suspensión de cuentas de ad server. Criticidad de billing."
+
+  - id: US-IMA-009
+    persona: Operator
+    narrative:
+      as: "operador que distribuye contenido en plataformas de audio (radio, podcast)"
+      want: "que los ads de audio se reproduzcan en un elemento video fallback sin romper la experiencia de audio"
+      so_that: "los ingresos por publicidad en contenido de audio no se pierden por incompatibilidades de tipo de contenido"
+    business_value: MEDIUM
+    risk_area:
+      - "type='audio': AdDisplayContainer usando elemento audio en lugar de video fallback"
+    related_features:
+      - "ads-ima"
+    acceptance:
+      - "IMA-AC-014"
+    notes: |
+      Para type='audio', el componente React monta un elemento <video> fallback invisible.
+      El IMA SDK necesita un video element para renderizar ads lineales. Sin el fallback,
+      los ads de video no pueden reproducirse en contenido de audio.

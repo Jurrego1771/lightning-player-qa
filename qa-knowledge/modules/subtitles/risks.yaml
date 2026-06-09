@@ -1,0 +1,86 @@
+version: "1.0"
+module: subtitles
+last_updated: "2026-06-08"
+
+risks:
+
+  - id: SUB-RISK-001
+    severity: high
+    title: "Race condition en modo ASS por setTimeout(0)"
+    description: >
+      textTracks.js usa setTimeout(0) para emitir el evento 'change' después de mutar
+      track.mode en el Proxy ASS. En condiciones de carga hay una ventana donde el modo
+      reportado por el Proxy difiere del modo real de la pista nativa.
+    affected_files:
+      - src/player/textTracks.js
+    trigger: "Cambio rápido de pista ASS (seleccionar → desactivar < 16ms)"
+    mitigation: "subtitleUiRevisionAtom fuerza re-render; pero el estado intermedio puede ser incorrecto"
+    test_priority: MUST
+
+  - id: SUB-RISK-002
+    severity: high
+    title: "EZTitles regex frágil para normalización ASS"
+    description: >
+      normalizeAssFormat() detecta archivos EZTitles por presencia de 'EZTitles' en el
+      contenido O por 'Format: Marked,'. Si EZTitles cambia su formato de exportación,
+      la normalización falla silenciosamente y ass-html5 renderiza mal o no renderiza.
+    affected_files:
+      - src/view/video/components/container/subtitle/assSubtitle.jsx
+    trigger: "Actualización de EZTitles a nueva versión de exportación"
+    mitigation: "Ninguna actualmente; fallo es silencioso (subtítulos no aparecen)"
+    test_priority: SHOULD
+
+  - id: SUB-RISK-003
+    severity: medium
+    title: "DAI rompe subtítulos de config"
+    description: >
+      loadConfig.js elimina config.subtitles cuando DAI está activo (línea 452-459).
+      Solo funcionan pistas VTT embebidas en el manifiesto HLS. Pistas ASS con DAI
+      son imposibles. Este comportamiento no es evidente para integradores.
+    affected_files:
+      - src/platform/loadConfig.js
+    trigger: "Integración simultánea de DAI + subtítulos externos"
+    mitigation: "Documentado en comentario de código; sin workaround para ASS+DAI"
+    test_priority: MUST
+
+  - id: SUB-RISK-004
+    severity: medium
+    title: "PlayResY con aspect ratio incorrecto en ASS"
+    description: >
+      Cuando un .ass no tiene PlayResY, se calcula desde la relación
+      element.videoHeight/videoWidth. Si el elemento no tiene dimensiones aún
+      (antes de que el video cargue), usa DEFAULT_HEIGHT/DEFAULT_WIDTH (360/640).
+      Subtítulos pueden quedar mal posicionados en resoluciones no-16:9.
+    affected_files:
+      - src/view/video/components/container/subtitle/assSubtitle.jsx
+    trigger: "ASS sin PlayResY en stream no-16:9 o cuando se activa antes de primer frame"
+    mitigation: "Ninguna; el cálculo usa dimensiones del elemento en el momento de montaje"
+    test_priority: SHOULD
+
+  - id: SUB-RISK-005
+    severity: medium
+    title: "Pista ASS incompatible con Chromecast sin aviso al usuario"
+    description: >
+      filterChromecastCompatible() silenciosamente excluye .ass/.ssa. Si el usuario
+      tiene activo un subtítulo ASS y conecta Chromecast, la pista desaparece de la
+      lista sin mensaje de error ni fallback.
+    affected_files:
+      - src/chromecast/subtitles.js
+      - src/view/video/atoms/subtitle.js
+    trigger: "Usuario con subtítulo ASS activo → conecta Chromecast"
+    mitigation: "effectiveSubtitleListAtom filtra silenciosamente; no hay notificación"
+    test_priority: SHOULD
+
+  - id: SUB-RISK-006
+    severity: low
+    title: "WeakMap cache de archivos ASS sin invalidación"
+    description: >
+      memoryAssFiles en assSubtitle.jsx cachea el contenido del archivo ASS en un
+      WeakMap keyed por el objeto track. Si la URL del subtítulo cambia pero el objeto
+      track es el mismo (mismo source, contenido actualizado en servidor), sirve el
+      contenido antiguo.
+    affected_files:
+      - src/view/video/components/container/subtitle/assSubtitle.jsx
+    trigger: "CDN purge o actualización de archivo .ass con mismo URL"
+    mitigation: "Reload del player limpia el WeakMap"
+    test_priority: COULD

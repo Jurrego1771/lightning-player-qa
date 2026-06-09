@@ -1,0 +1,181 @@
+version: "1.0"
+module: ads-ima
+last_updated: "2026-06-08"
+
+learnings:
+
+  # ── HALLAZGOS DEL CÓDIGO FUENTE ─────────────────────────────────────────────
+
+  - id: IMA-LEARN-001
+    title: "El player hace play()+pause() inmediatamente para inicializar ads — no es un bug"
+    discovery: "código fuente: src/ads/googleIma/handler.js líneas 296-318"
+    detail: |
+      AdsHandler.#_loadAds() llama playerHandler.play() seguido inmediatamente de
+      playerHandler.pause() antes de inicializar el AdsManager. Esto es un requisito
+      documentado del IMA SDK: el AdDisplayContainer.initialize() debe llamarse en el
+      contexto de un user gesture o justo después de un intento de play. El play/pause
+      inmediato crea ese contexto. Si play() retorna una Promise rechazada con NotAllowedError,
+      el handler aborta la inicialización de ads (autoplay policy activa).
+    impact_on_tests: |
+      Los tests no deben interpretar este play+pause como un bug. Al interceptar eventos del
+      player, pueden aparecer eventos 'play' y 'pause' antes de adsStarted — son normales.
+      Si se testea el estado del player justo antes del pre-roll, el estado puede ser 'pause'
+      brevemente.
+
+  - id: IMA-LEARN-002
+    title: "AdsHandler usa un Proxy en GoogleIma — los métodos del SDK se delegan automáticamente"
+    discovery: "código fuente: src/ads/googleIma/ima.js líneas 22-36"
+    detail: |
+      GoogleIma crea un Proxy que delega cualquier propiedad no definida en la clase hacia
+      window.google.ima. Esto permite que AdsLoader y AdsRequest accedan directamente a
+      clases del SDK (ima.AdsRequest, ima.AdDisplayContainer, etc.) sin necesidad de
+      referencias explícitas. El patrón permite que el SDK se cargue lazy y esté disponible
+      tan pronto como la Promise de carga resuelve.
+    impact_on_tests: |
+      En tests que mockean window.google.ima, el mock debe exponer las mismas propiedades
+      que el SDK real (AdsRequest, AdDisplayContainer, AdsLoader, AdsRenderingSettings,
+      ViewMode, AdEvent.Type, AdErrorEvent.Type, ImaSdkSettings).
+
+  - id: IMA-LEARN-003
+    title: "AdsRenderingSettings.uiElements = [] — el player oculta los controles nativos del IMA SDK"
+    discovery: "código fuente: src/ads/googleIma/adsLoader.js línea 92"
+    detail: |
+      El código establece settings.uiElements = [] para ocultar los elementos de UI nativos
+      del IMA SDK (temporizador de countdown, botón de skip nativo, etc.). El player
+      implementa su propia UI de ads via el contexto React (_adsPlaying, _adsSkippable).
+      Esto significa que el skip button del IMA SDK NO se renderiza — el player muestra el
+      suyo propio basándose en el estado skippable del Ad wrapper.
+    impact_on_tests: |
+      No buscar un botón de skip nativo del IMA SDK en el DOM. El skip button es
+      implementado por el player y está condicionado al estado _adsSkippable del contexto.
+      Los tests de skip deben llamar player.ad.skip() o interactuar con el botón del player,
+      no con un elemento IMA.
+
+  - id: IMA-LEARN-004
+    title: "ad.skip() tiene dos paths: adsManager.skip() con fallback a discardAdBreak()"
+    discovery: "código fuente: src/ads/googleIma/ad.js líneas 105-130"
+    detail: |
+      Ad.skip() primero verifica si el ad es skippable. Si sí, intenta adsManager.skip().
+      Luego espera 500ms: si remainingTime > 0 (el SDK no procesó el skip — puede estar
+      renderizando su propio botón de skip y rechazando el skip programático), usa
+      discardAdBreak() como fallback. discardAdBreak() cancela todo el ad break (no solo el
+      ad actual), lo cual es el único camino cuando el SDK no responde al skip() programático.
+    impact_on_tests: |
+      Al testear skip, agregar al menos 600ms de espera después de llamar skip() antes
+      de verificar que adsSkipped fue emitido. El path discardAdBreak también omite ads
+      restantes del break — si hay 2 ads en el break, ambos serán omitidos.
+
+  - id: IMA-LEARN-005
+    title: "El player sincrona el volumen del ad en tiempo real via internalEmitter"
+    discovery: "código fuente: src/ads/googleIma/handler.js líneas 121, 192-194"
+    detail: |
+      AdsHandler se suscribe a Events._volumechange via internalEmitter. Cuando el usuario
+      cambia el volumen del player durante un ad, el cambio se propaga inmediatamente al
+      adsManager.setVolume(). La limpieza (off) ocurre en reset(). El volumen inicial del
+      ad se fija en el volumen del player en el momento de initialize() via #_playerVolume.
+    impact_on_tests: |
+      Para testear sincronización de volumen, cambiar player.volume DURANTE la reproducción
+      del ad y verificar que el ad responde. No es suficiente setear el volumen antes de
+      que arranque el ad.
+
+  - id: IMA-LEARN-006
+    title: "isCustomPlaybackUsed determina si se restaura el src del video al reanudar"
+    discovery: "código fuente: src/ads/googleIma/handler.js líneas 246-262"
+    detail: |
+      Cuando el IMA SDK usa custom playback (adsManager.isCustomPlaybackUsed() === true),
+      el player guarda src+time antes del ad y los restaura en CONTENT_RESUME_REQUESTED.
+      Para live streams (isLive && !isDVR), el src se restaura sin hash de tiempo.
+      Para VOD y DVR, el src se restaura con `#t=${parseInt(resumeTime)}` para que el
+      browser seekee al tiempo correcto. Este mecanismo es crítico para que el mid-roll
+      reanude en la posición correcta.
+    impact_on_tests: |
+      Al testear mid-rolls, verificar que player.currentTime después de adsContentResumeRequested
+      es aproximadamente igual al currentTime antes de adsContentPauseRequested.
+      La restauración puede tener una diferencia de ±1s (parseInt trunca decimales).
+
+  - id: IMA-LEARN-007
+    title: "AdsLoader reutiliza contentComplete() para post-rolls — setOnContentEnded controla el listener"
+    discovery: "código fuente: src/ads/googleIma/adsLoader.js líneas 124-164"
+    detail: |
+      AdsLoader escucha el evento 'ended' del elemento de video para llamar
+      adsLoader.contentComplete(), que le indica al IMA SDK que el contenido terminó y
+      puede reproducir el post-roll. El listener se registra/desregistra via setOnContentEnded().
+      Durante el ad break, se desregistra (setOnContentEnded(false)) para evitar que el
+      evento 'ended' del contenido durante un ad (que no ocurre pero es defensive coding)
+      trigger otro post-roll.
+    impact_on_tests: |
+      Para testear post-rolls, el contenido debe llegar a su fin natural (ended).
+      Si se hace seek directamente al final, el evento 'ended' debe dispararse.
+      Si el test destruye el player antes de 'ended', contentComplete() no se llama
+      y no se verifica el post-roll.
+
+  # ── HALLAZGOS DE LA INDUSTRIA ───────────────────────────────────────────────
+
+  - id: IMA-LEARN-008
+    title: "VPAID está en proceso de deprecación — la industria migra a SIMID"
+    discovery: "investigación web: IAB Tech Lab, infillion.com, radiantmediaplayer.com"
+    detail: |
+      VPAID (Video Player-Ad Interface Definition) fue introducido por IAB para ads
+      interactivos pero tiene problemas de seguridad (ejecuta JavaScript arbitrario del
+      ad en el contexto del player) y no funciona bien en entornos SSAI/OTT.
+      En 2019, IAB introdujo SIMID (Secure Interactive Media Interface Definition) como
+      reemplazo: usa VAST como transporte y provee interactividad segura. El player
+      soporta VPAID via insecureVpaidMode pero no tiene SIMID implementado aún.
+    impact_on_tests: |
+      No agregar tests de VPAID que dependan de VPAID creatives específicos.
+      Documentar en defects que SIMID no está implementado.
+      Tests de VPAID deben testear el fallback graceful (error o skip del ad).
+
+  - id: IMA-LEARN-009
+    title: "AdsLoader debe ser instanciado UNA vez por página — el player re-instancia en cada reset"
+    discovery: "investigación web: developers.google.com/interactive-media-ads + código fuente"
+    detail: |
+      Google documenta que AdsLoader debe mantenerse como una sola instancia por página
+      para evitar problemas de estado. El player actualmente crea un nuevo AdsLoader en
+      cada llamada a handler.initialize() (que ocurre al cargar nuevo contenido). Esto es
+      necesario porque el design del player destruye y recrea el AdsLoader en cada
+      'element' change en React. Puede haber edge cases donde múltiples instancias de
+      AdsLoader existan brevemente durante una transición.
+    impact_on_tests: |
+      Al testear load() de nuevo contenido, verificar que los eventos del primer contenido
+      no aparecen en el segundo (no contaminación de estado entre sesiones de AdsLoader).
+
+  - id: IMA-LEARN-010
+    title: "vpmute se fija en requestAds() y no cambia durante VMAP — comportamiento documentado"
+    discovery: "código fuente: src/ads/googleIma/adsRequest.js línea 161-166 + tests/e2e/ads-ima-tag-params.spec.ts"
+    detail: |
+      El parámetro vpmute del VAST request se determina en el momento de requestAds() según
+      el volumen del player en ese instante. Para VMAP, todos los ad breaks (pre/mid/post)
+      comparten los parámetros de sesión del request inicial. Esto significa que si el
+      usuario mutea el player después del pre-roll, el mid-roll sigue teniendo vpmute=0 en
+      el request (fue fijado en la sesión VMAP inicial). replaceAdTagParameters no tiene
+      efecto sobre sesiones VMAP ya iniciadas.
+    impact_on_tests: |
+      Verificado en tests/e2e/ads-ima-tag-params.spec.ts. No testear que mid-roll actualiza
+      vpmute si el usuario muta durante el contenido — es un comportamiento intencional del IMA SDK.
+
+  - id: IMA-LEARN-011
+    title: "Autoplay detection es asíncrona — puede retornar falso negativo en algunos browsers"
+    discovery: "investigación web: developers.google.com/interactive-media-ads/docs/sdks/html5/client-side/autoplay"
+    detail: |
+      checkCanAutoplay() intenta play() en un video element para detectar si el browser
+      permite autoplay. Algunos browsers (Safari) tienen políticas de autoplay que dependen
+      del historial del usuario con el sitio — el mismo browser puede permitir autoplay en
+      un visit y no en otro. Esto puede causar que el mismo test falle intermitentemente
+      si el harness de tests no controla el estado de autoplay del browser.
+    impact_on_tests: |
+      En Playwright, usar page.addInitScript para mockear checkCanAutoplay si se necesita
+      comportamiento determinístico. Alternativamente, forzar el volumen a 0 (isMuted=true)
+      para asegurar que setAdWillPlayMuted(true) se llame consistentemente.
+
+  - id: IMA-LEARN-012
+    title: "El IMA SDK no emite eventos en headless WebKit ni Firefox — solo Chromium para tests de IMA"
+    discovery: "código fuente: tests/e2e/ads-ima-tag-params.spec.ts línea 47"
+    detail: |
+      El IMA SDK de Google requiere un browser Chromium completo para funcionar correctamente
+      en tests automatizados. En Firefox y WebKit headless, el SDK puede cargar pero no
+      emitir los eventos de ad lifecycle. Esto es una limitación conocida del SDK, no del
+      player. Todos los tests de IMA ads deben agregar test.skip para non-Chromium browsers.
+    impact_on_tests: |
+      Agregar en todos los specs de ads: test.skip(({ browserName }) => browserName !== 'chromium', 'IMA SDK requiere Chromium')
+      Los tests de IMA SOLO se ejecutan en Chromium en CI.

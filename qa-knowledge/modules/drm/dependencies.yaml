@@ -1,0 +1,90 @@
+version: "1.0"
+module: drm
+last_updated: "2026-06-08"
+
+internal:
+  - id: platform-config
+    reason: "loadConfig.js construye _candidateUrls y determina takeDrmPath según responseDrm del backend; el objeto drm con serverURL y tokens viene de la plataforma"
+    coupling: high
+    files:
+      - "src/platform/loadConfig.js"
+
+  - id: playback-core
+    reason: "DRMPlugin.setData() actualiza el contexto con src, drm, y selectedSrcType; el core de playback consume estos valores para inicializar el handler correcto (hls vs dash)"
+    coupling: high
+    files:
+      - "src/player/drm/plugin.jsx"
+
+  - id: hls
+    reason: "FairPlay vía hls.js con emeEnabled=true requiere que el handler HLS reciba drmSystems en su config; drm-fairplay-hls.spec.ts valida la coordinación"
+    coupling: medium
+    files:
+      - "src/player/drm/plugin.jsx"
+
+  - id: dash
+    reason: "Widevine y PlayReady usan natively dash.js (o el handler DASH nativo del browser); getDashProtectionData() construye el objeto protData para player.setProtectionData()"
+    coupling: high
+    files:
+      - "src/player/drm/getDashProtectionData.js"
+
+  - id: ads-dai
+    reason: "Cuando deferSrcForGoogleDAI=true, DRMPlugin no resuelve src hasta recibir _daiDeferredManifestUrl de Google DAI; ambos plugins deben coordinarse para evitar race conditions"
+    coupling: medium
+    files:
+      - "src/player/drm/plugin.jsx"
+
+  - id: ads-mediataylor
+    reason: "Cuando skipMtCdn=true, DRMPlugin espera mediaTailorManifestUrl antes de resolver y detecta el key system early para que MediaTailor sepa qué formato de stream pedir"
+    coupling: medium
+    files:
+      - "src/player/drm/plugin.jsx"
+
+  - id: events
+    reason: "DRMPlugin usa internalEmitter.emit(Events._error) para reportar DRM_NOT_SUPPORTED y PlayerInitError; errores DRM pasan por el mismo canal que el resto de errores del player"
+    coupling: medium
+    files:
+      - "src/player/drm/plugin.jsx"
+      - "src/error/error.js"
+
+external:
+  - id: w3c-eme
+    package: "browser native — Encrypted Media Extensions (W3C)"
+    version: "Level 1 (2017) — implementación varía por browser"
+    reason: "navigator.requestMediaKeySystemAccess() es la API principal para detectar key systems y gestionar sesiones de decryption; getDRMSupport.js la usa directamente"
+    risk: high
+    note: "Playwright WebKit headless NO implementa EME completo — FairPlay no funciona en CI headless. Chromium headless soporta Widevine L3 (software) pero no L1 (hardware). EME Level 2 (Media Capabilities) no es usada por este player."
+
+  - id: widevine-cdm
+    package: "Google Widevine CDM (Content Decryption Module)"
+    version: "L1 (hardware) | L3 (software)"
+    reason: "CDM que realiza el descifrado AES-128/AES-256 del stream protegido; Chromium incluye el CDM de software (L3) por defecto"
+    risk: high
+    note: "L1 requiere hardware TEE (Trusted Execution Environment) — no disponible en browsers de escritorio. L3 (software) es suficiente para streaming en calidad SD/HD pero no para UHD/4K. En CI headless solo hay L3."
+
+  - id: fairplay-cdm
+    package: "Apple FairPlay Streaming (FPS)"
+    version: "Safari 9+ / iOS 9+"
+    reason: "CDM propietario de Apple para contenido HLS protegido; requiere un certificado de servidor y usa el key system 'com.apple.fps.1_0'"
+    risk: high
+    note: "FairPlay SOLO funciona en Safari (macOS e iOS). Playwright WebKit no tiene FairPlay CDM — no se puede testear en CI. Requiere certificado FPS válido del servidor de licencias."
+
+  - id: playready-cdm
+    package: "Microsoft PlayReady"
+    version: "PlayReady 3.0+ (Edge)"
+    reason: "CDM de Microsoft presente en Edge y dispositivos Windows; usa 'com.microsoft.playready'"
+    risk: medium
+    note: "Prácticamente obsoleto en browsers de escritorio modernos. Edge moderno (Chromium-based) soporta tanto Widevine como PlayReady. IE11 solo tiene PlayReady. No testeable en CI sin entorno Windows específico."
+
+  - id: license-server
+    package: "External — Mediastream platform / third-party license server"
+    version: "varies"
+    reason: "Provee las licencias de decryption key en respuesta a los license requests del CDM; la URL se configura via drm.widevine.serverURL / drm.fairplay.serverURL"
+    risk: high
+    note: "Dependencia externa crítica: si el license server está caído, todo el contenido DRM falla. No hay fallback. El player emite DRM_LICENSE_ERROR ante cualquier HTTP 4xx/5xx del servidor."
+
+  - id: axinom-drm
+    package: "Axinom DRM (AxDRM) — token auth header X-AxDRM-Message"
+    version: "varies"
+    reason: "El token en drm.widevine.token / drm.drmToken se envía como X-AxDRM-Message — header de autenticación propietario del sistema DRM Axinom usado por la plataforma Mediastream"
+    risk: medium
+    note: "El header X-AxDRM-Message es específico de Axinom DRM. Si se cambia a otro proveedor de DRM, la lógica de auth en getDashProtectionData.js necesita actualización."

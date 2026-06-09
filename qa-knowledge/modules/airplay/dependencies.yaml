@@ -1,0 +1,73 @@
+version: "1.0"
+module: airplay
+last_updated: "2026-06-08"
+
+internal:
+  - id: playback-core
+    reason: "AirPlay opera sobre el mismo elemento <video> que los handlers de reproducción. El estado de conexión se reporta en el payload de analytics de playback (ext_pb)."
+    coupling: medium
+    files:
+      - "src/api/player.jsx"
+      - "src/view/video/atoms/airplay.js"
+
+  - id: hls
+    reason: "Acoplamiento crítico con ManagedMediaSource. El handler HLS setea preferManagedMediaSource=!isAirPlaySupported() para evitar que MMS rompa AirPlay (fix #6197). Además el atom añade un segundo <source> HLS cuando MMS está presente."
+    coupling: high
+    files:
+      - "src/player/handler/hls/handler.js"
+      - "src/view/video/atoms/airplay.js"
+
+  - id: events
+    reason: "El atom traduce eventos del AirPlayManager (connected/disconnected) a Events._airPlayConnected / _airPlayDisconnected en el internalEmitter, que se reexportan como API pública."
+    coupling: high
+    files:
+      - "src/view/video/atoms/airplay.js"
+      - "constants.cjs"
+
+  - id: controls-api
+    reason: "Las propiedades públicas player.airplay y player.airplayAvailable se registran mediante expose() de controls/methods."
+    coupling: medium
+    files:
+      - "src/view/video/atoms/airplay.js"
+      - "src/controls/methods.js"
+
+  - id: platform-config
+    reason: "El flag de contexto view.airplay controla si el módulo se activa. Leído vía contextValueFamily."
+    coupling: low
+    files:
+      - "src/view/video/atoms/airplay.js"
+
+  - id: ui-video
+    reason: "El skin de video renderiza el botón y el AirPlayIndicator basándose en los atoms airPlayAvailableAtom / airPlayConnectedAtom."
+    coupling: low
+    files:
+      - "src/view/video/components/airplay/AirPlayIndicator.jsx"
+      - "src/view/common/components/airplay/AirPlayIcon.jsx"
+
+  - id: drm
+    reason: "Contenido FairPlay reproducido vía AirPlay sigue las restricciones de copia del SO Apple al hacer handoff. No hay código compartido pero hay interacción funcional."
+    coupling: low
+    files:
+      - "src/player/handler/native.js"
+
+external:
+  - id: webkit-airplay-api
+    package: "navegador (WebKit / Safari) — no es un paquete npm"
+    version: "Safari 6.1+ (picker); WebKitPlaybackTargetAvailabilityEvent Safari 9+"
+    reason: "API nativa propietaria de WebKit: webkitShowPlaybackTargetPicker(), webkitCurrentPlaybackTargetIsWireless, eventos webkitplaybacktargetavailabilitychanged y webkitcurrentplaybacktargetiswirelesschanged."
+    risk: high
+    note: "Solo existe en WebKit (Safari macOS/iOS). No estandarizada — el estándar W3C es Remote Playback API (remote.*), que Safari no implementa. La API webkit-prefijada está marcada como legacy por WebKit pero sigue siendo el único camino para AirPlay en web. No reproducible en headless: WebKit Playwright headless no expone receptores AirPlay reales."
+
+  - id: managed-media-source
+    package: "navegador (WebKit) — window.ManagedMediaSource"
+    version: "Safari 17.1+ / iOS 17.1+"
+    reason: "API de MSE gestionada por el SO. El player la detecta para aplicar el workaround del segundo <source> y la desactiva (preferManagedMediaSource=false) cuando AirPlay es soportado."
+    risk: high
+    note: "hls.js #6197: cuando MMS está activo, hls.js setea disableRemotePlayback=true, lo que oculta el botón AirPlay e impide que webkitplaybacktargetavailabilitychanged dispare. Además MMS usa un blob: URL que el Apple TV no puede fetchear (MSE incompatible con AirPlay por diseño — requiere URL única). Fuente: WebKit blog 'How to use Media Source Extensions with AirPlay'."
+
+  - id: hls.js
+    package: "hls.js (vía getSystem73HlsSDK)"
+    version: "variante System73 del player"
+    reason: "Motor de reproducción HLS en MSE. Su config preferManagedMediaSource depende de isAirPlaySupported()."
+    risk: medium
+    note: "Comportamiento de disableRemotePlayback varía entre versiones de hls.js. Verificar tras cada bump de la dependencia que el botón AirPlay sigue apareciendo en Safari."

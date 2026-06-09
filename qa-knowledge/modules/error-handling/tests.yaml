@@ -1,0 +1,131 @@
+version: "1.0"
+module: error-handling
+last_updated: "2026-06-08"
+
+existing_tests:
+  - spec_file: "tests/integration/error-recovery.spec.ts"
+    description: >
+      Content config 403 → error event + getErrors() reporta (con fallback 3-way por backfill race).
+      Cubre: 403 expone type/code/message; error de segmento expone info; fallo persistente de segmentos
+      emite fatal tras retries; interrupción de 3 segmentos recupera y continúa; segmento faltante
+      mid-stream (vod-with-error fixture); 503 transitorio recupera; 503 persistente emite error;
+      404 mid-stream igual a 503.
+    ac_coverage:
+      - ERR-AC-003
+      - ERR-AC-004
+      - ERR-AC-005
+      - ERR-AC-013
+
+  - spec_file: "tests/integration/ads-ima-error.spec.ts"
+    description: >
+      Errores del flujo de ads IMA — verifica que un fallo de ad se reporta como error de ad sin
+      necesariamente romper el contenido (aislamiento AdError vs PlayerError).
+    ac_coverage:
+      - ERR-AC-010
+
+  - spec_file: "tests/visual/player-ui.spec.ts (snapshot video-error-state)"
+    description: "Snapshot del estado visual de error del player (UI de error fatal)."
+    ac_coverage:
+      - ERR-AC-002
+
+coverage_gaps:
+  - id: GAP-ERR-001
+    priority: MUST
+    ac_ref: ERR-AC-001
+    title: "Contrato del objeto error: type ∈ ErrorType, fatal boolean, message no vacío"
+    suggested_spec: "tests/contract/error-object-shape.spec.ts"
+    notes: >
+      No hay test que valide la FORMA del PlayerError emitido (type es uno de los 5 strings del enum,
+      fatal es boolean, message string no vacío). Suscribirse al evento 'error' y validar el shape para
+      red, media e init. Es contrato de API pública.
+    industry_note: >
+      SVTA recomienda que todo error tenga clasificación; un type vacío o ausente es un anti-patrón.
+
+  - id: GAP-ERR-002
+    priority: MUST
+    ac_ref: ERR-AC-006
+    title: "DRM no soportado emite init_player fatal con data DRM_NOT_SUPPORTED"
+    suggested_spec: "tests/integration/drm-error.spec.ts"
+    notes: >
+      No hay test que fuerce un dispositivo/browser sin el key system requerido y verifique
+      type==='init_player', fatal===true, data==='DRM_NOT_SUPPORTED'. Puede simularse desactivando EME o
+      apuntando a un license server inválido.
+    industry_note: "Los errores DRM son los más opacos del ecosistema; verificar la causa identificable es clave."
+
+  - id: GAP-ERR-003
+    priority: MUST
+    ac_ref: ERR-AC-002
+    title: "Getter 'error' SOLO refleja fatales (no-fatal no actualiza getter)"
+    suggested_spec: "tests/contract/error-getter-fatal-only.spec.ts"
+    notes: >
+      Verificar el comportamiento de ERR-LEARN-002: tras un error transitorio no-fatal (503 dentro del
+      budget) el getter 'error' sigue null aunque el evento se emitió; tras un fatal el getter se popula.
+      Crítico para que integradores no dependan del getter para detectar fallos transitorios.
+
+  - id: GAP-ERR-004
+    priority: MUST
+    ac_ref: ERR-AC-010
+    title: "Aislamiento: AdError no marca el contenido como fatal"
+    suggested_spec: "tests/integration/ad-error-isolation.spec.ts"
+    notes: >
+      Tras un VAST vacío / MediaFile no encontrado / VPAID error, el getter 'error' del CONTENIDO debe
+      seguir null y el contenido debe reanudar. ads-ima-error.spec.ts cubre el flujo de ad pero no asegura
+      explícitamente que el getter de contenido permanece limpio.
+    industry_note: "Regla universal OTT: el contenido nunca debe fallar por un ad (graceful ad failure)."
+
+  - id: GAP-ERR-005
+    priority: SHOULD
+    ac_ref: ERR-AC-007
+    title: "Manifest error (load/parse/timeout) → NetworkError fatal sin retry loop"
+    suggested_spec: "tests/integration/manifest-error.spec.ts"
+    notes: >
+      Mockear manifest 403/malformado/timeout y verificar type==='network_error', fatal===true, y que NO
+      hay ciclo de startLoad (a diferencia de errores de segmento). Cubre ERR-RISK-002 y ERR-LEARN-009.
+
+  - id: GAP-ERR-006
+    priority: SHOULD
+    ac_ref: ERR-AC-009
+    title: "Native error code 4 → MediaError fatal; codes 1/2/3 sin normalizar"
+    suggested_spec: "tests/integration/native-media-error.spec.ts"
+    notes: >
+      En path native (iOS Safari HLS nativo / sin MSE), forzar code 4 (src no soportado) → MediaError
+      fatal con message 'MEDIA_ERR_SRC_NOT_SUPPORTED'. Documentar que codes 1/2/3 llegan sin type
+      (ERR-DEF-003). Probablemente Tier 2 (requiere device real / webkit).
+
+  - id: GAP-ERR-007
+    priority: SHOULD
+    ac_ref: ERR-AC-008
+    title: "Formato forzado no disponible → init_player fatal FORMAT_NOT_AVAILABLE"
+    suggested_spec: "tests/integration/format-not-available.spec.ts"
+    notes: >
+      goto con format=dash en contenido sin mpd (y format=hls sin hls en video) debe emitir
+      PlayerInitError fatal con data==='FORMAT_NOT_AVAILABLE'. No cubierto hoy.
+
+  - id: GAP-ERR-008
+    priority: SHOULD
+    ac_ref: ERR-AC-005
+    title: "Startup error reporta a NPAW (regression guard de YBRA-DEF-001)"
+    suggested_spec: "tests/integration/youbora-startup-error.spec.ts"
+    notes: >
+      Guard de regresión para ERR-DEF-001/YBRA-DEF-001: cuando se arregle el adapter null, este test debe
+      verificar que un 403 pre-ready emite el beacon /error de NPAW. Hoy test.fixme; mantener documentado.
+    industry_note: "EBVS / startup errors son la métrica QoE más correlacionada con churn (NPAW/Conviva)."
+
+  - id: GAP-ERR-009
+    priority: COULD
+    ac_ref: ERR-AC-012
+    title: "Propagación cross-frame del error vía postMessage msp:error"
+    suggested_spec: "tests/e2e/embed-error-propagation.spec.ts"
+    notes: >
+      En embed/iframe, verificar que el evento 'error' del player interno llega al frame contenedor vía
+      window.postMessage({ event: 'msp:error' }). Cubre ERR-LEARN-006 y ERR-AC-012.
+
+  - id: GAP-ERR-010
+    priority: COULD
+    ac_ref: ERR-AC-015
+    title: "AdError getType()/getVastErrorCode() por rango de código"
+    suggested_spec: "tests/contract/ad-error-classification.spec.ts"
+    notes: >
+      Unit-style: verificar getType()==='AdLoad' para 100–399 y 'AdPlay' para el resto; getVastErrorCode()
+      normaliza a 900 fuera de 100–999. VPAID_ERROR (901) documentado como legacy (ERR-LEARN-010).
+      Posiblemente más apropiado como unit test en el repo del player.

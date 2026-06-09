@@ -1,0 +1,84 @@
+version: "1.0"
+module: ads-manager
+last_updated: "2026-06-08"
+
+defects:
+  - id: ADMGR-DEF-001
+    status: known_limitation
+    severity: medium
+    title: "handler.skippable getter siempre retorna false — no implementado"
+    description: "AdsHandler.skippable tiene un TODO explícito: 'Implement custom platform skippable logic'. El getter retorna siempre false independientemente del estado real del ad. Esto afecta la prop _adsSkippable expuesta via setData() al contexto React, que se inicializa leyendo handler.skippable en onAdsContentPauseRequested. El estado correcto se propaga después via adsSkippableStateChanged, pero hay una ventana inicial donde _adsSkippable es false aunque el ad sea skippable desde el inicio."
+    workaround: "player.ad.info.skippable sí refleja el estado real. Los controles deben usar adsSkippableStateChanged event para actualizar la UI de skip en vez de depender del valor inicial de _adsSkippable."
+    source_comment: "src/ads/manager/render/handler.js: `get skippable () { // TODO: Implement custom platform skippable logic // this.#skipAt return false }`"
+    industry_known: false
+    regression_risk: medium
+
+  - id: ADMGR-DEF-002
+    status: known_limitation
+    severity: medium
+    title: "AdsManager.stop() es no-op — no implementado"
+    description: "AdsManager.stop() tiene un cuerpo vacío (no-op). La documentación indica que debería detener la reproducción de ads y retornar al contenido. Sin esta implementación, no existe un path explícito para cancelar un ad break en progreso (aparte de destroy()). Esto afecta escenarios donde el operador quiere saltar todos los ads restantes programáticamente."
+    workaround: "Usar handler.reset() para destruir completamente el ad system, aunque esto tiene el costo de limpiar todos los ads pendientes y estado."
+    source_comment: "src/ads/manager/manager/index.js: `stop () {} // Stop playing the ads...`"
+    industry_known: false
+    regression_risk: low
+
+  - id: ADMGR-DEF-003
+    status: known_limitation
+    severity: low
+    title: "discardAdBreak() es no-op — VMAP skip de un ad break no implementado"
+    description: "AdsManager.discardAdBreak() tiene cuerpo vacío. Según la especificación IMA SDK, debería permitir descartar el ad break actual y pasar al siguiente. Sin implementación, no es posible saltar un ad break completo (como un mid-roll) programáticamente sin destruir el AdsManager."
+    workaround: "Ninguno disponible a nivel de API pública."
+    source_comment: "src/ads/manager/manager/index.js: `discardAdBreak () {}`"
+    industry_known: false
+    regression_risk: low
+
+  - id: ADMGR-DEF-004
+    status: known_limitation
+    severity: low
+    title: "AdProgressData incompleta — adBreakDuration, adPosition, totalAds son undefined"
+    description: "AdsTracker#onTimeUpdate crea AdProgressData con solo currentTime y duration. Los campos adBreakDuration, adPosition y totalAds están comentados con '// TODO: Missing props must be added when implementing vmaps'. Esto significa que player.ad.info derivado de AdProgressData no tiene información de pod (pod info se obtiene directamente del ad object, no de AdProgressData)."
+    workaround: "player.ad.info obtiene adPosition y totalAds directamente de currentAd.getAdPodInfo(), no de AdProgressData. La info de pod está disponible correctamente en adInfo."
+    source_comment: "src/ads/manager/tracker/index.js líneas 414-420"
+    industry_known: false
+    regression_risk: low
+
+  - id: ADMGR-DEF-005
+    status: known_limitation
+    severity: low
+    title: "updateAdsRenderingSettings() es no-op — no implementado para VMAP between breaks"
+    description: "AdsManager.updateAdsRenderingSettings() tiene cuerpo vacío. Según IMA spec, debería permitir actualizar bitrate y otras rendering settings entre ad breaks de un VMAP. Sin implementación, las rendering settings son fijas para toda la sesión de ads."
+    workaround: "Configurar AdsRenderingSettings una vez en #onAdsManagerLoaded. No es posible cambiar bitrate entre mid-rolls."
+    source_comment: "src/ads/manager/manager/index.js: `updateAdsRenderingSettings (adsRenderingSettings) {}`"
+    industry_known: false
+    regression_risk: low
+
+  - id: ADMGR-DEF-006
+    status: known_limitation
+    severity: medium
+    title: "userRequestContext no se usa — VMAP context tracking parcialmente implementado"
+    description: "AdsLoader.requestAds() acepta userRequestContext como segundo parámetro pero un TODO en el código indica: 'userRequestContext is not used anywhere so we may remove it when we implement VMAP'. El objeto se propaga a los eventos AdsManagerLoaded y AdError pero no se usa para correlacionar requests con responses."
+    workaround: "No usar userRequestContext para tracking de sesión. No afecta la funcionalidad de reproducción."
+    source_comment: "src/ads/manager/loader/index.js línea 55: `// TODO: userRequestContext is not used anywhere so we may remove it when we implement VMAP`"
+    industry_known: false
+    regression_risk: low
+
+  - id: ADMGR-DEF-007
+    status: known_limitation
+    severity: low
+    title: "Pending tracking events no implementados en AdsTracker"
+    description: "AdsTracker.handleEvent() tiene un comentario 'Pending events: playerExpand, playerCollapse, fullscreen, exitFullscreen, adCollapse, acceptInvitation, close'. Estos eventos de tracking VAST no son disparados. Las campañas de ads que requieren tracking de fullscreen o collapse no recibirán beacons para estos eventos."
+    workaround: "Los beacons críticos (impression, quartiles, complete, skip, error, clickthrough) están implementados. Los eventos de UX (fullscreen, collapse) son secundarios para la mayoría de campañas."
+    source_comment: "src/ads/manager/tracker/index.js líneas 344-351"
+    industry_known: false
+    regression_risk: low
+
+  - id: ADMGR-DEF-008
+    status: open
+    severity: medium
+    title: "VMAP midroll preload value hardcodeado a 8 segundos"
+    description: "El tiempo de preload del midroll siguiente está hardcoded a 8 segundos en #waitForNextAdBreak(). Un TODO indica que debería venir de request config. En conexiones lentas o con VAST con Wrapper chains, 8 segundos puede ser insuficiente para cargar el ad antes del cue point, resultando en un gap perceptible entre el contenido y el mid-roll."
+    workaround: "No configurable desde la API pública. Aceptar el comportamiento de preload fijo a 8s."
+    source_comment: "src/ads/manager/manager/index.js línea 566: `} else if (!this.#preloaded && currentTime >= nextAdBreak - 8) { // TODO: get value from request config`"
+    industry_known: false
+    regression_risk: medium

@@ -1,0 +1,166 @@
+version: "1.0"
+module: next-episode
+last_updated: "2026-06-08"
+
+risks:
+  - id: NEPI-RISK-001
+    severity: high
+    title: "Race condition entre el auto-load del timer y el evento 'ended'"
+    description: |
+      En el video view, hay DOS rutas que pueden llamar a api.load(): el setTimeout(5000) iniciado
+      cuando shouldShow=true, y el handler del evento 'ended'. Si el video tiene exactamente entre
+      5 y 30 segundos restantes cuando aparece la UI, ambas rutas pueden dispararse casi
+      simultáneamente. El guard isLoadingRef.current mitiga esto en headless, pero en video view
+      el componente usa variables de estado locales que pueden tener stale closures.
+    affected_files:
+      - "src/view/video/components/nextEpisode/index.jsx"
+    trigger: "Video con nextEpisodeTime ≥ video duration restante cuando aparece la UI, combinado con latencia de red alta"
+    mitigation: "El flag userClickedRef se verifica antes del auto-load en el timer; el handler de ended verifica requiresConfirmation"
+    industry_note: "Netflix solucionó este problema moviendo toda la lógica de auto-load a un state machine centralizado en lugar de múltiples useEffect independientes"
+    test_priority: MUST
+
+  - id: NEPI-RISK-002
+    severity: high
+    title: "Autoplay bloqueado por políticas del browser al cargar el siguiente episodio"
+    description: |
+      Cuando api.load() carga el siguiente episodio, el player intenta reproducirlo con autoplay.
+      En iOS Safari y Chrome (sin user gesture reciente), el autoplay con audio puede ser bloqueado.
+      Esto no afecta la transición de contenido per se, sino que el video del siguiente episodio
+      queda en estado paused/waiting, requiriendo interacción manual del usuario.
+      En Low Power Mode (iOS 17+), incluso el autoplay muted está bloqueado.
+    affected_files:
+      - "src/view/video/hooks/useNextEpisodeLoader.js"
+      - "src/view/none/hooks/useNextEpisodeLoader.js"
+    trigger: "Usuario en iOS Safari sin interacción explícita reciente; Low Power Mode activo"
+    mitigation: "La transición de contenido ya fue iniciada por interacción del usuario (clic en Watch Next) en el caso manual. El auto-load puede bloquearse."
+    industry_note: "Bitmovin (2021): Safari requiere una interacción activa con el documento para autoplay unmuted. Chrome permite autoplay si MEI (Media Engagement Index) es alto, pero iOS no tiene MEI."
+    test_priority: MUST
+
+  - id: NEPI-RISK-003
+    severity: high
+    title: "La UI no aparece si las traducciones (i18n) no están listas"
+    description: |
+      El componente NextEpisode en video view tiene el guard 'if (!ready) return null' donde
+      ready viene del hook useTranslation. Si el bundle de traducciones tarda en cargarse
+      (entornos de CI sin cache, primera carga, CDN lento), la UI puede no aparecer aunque
+      shouldShow=true. El módulo headless no tiene este problema porque no renderiza UI.
+    affected_files:
+      - "src/view/video/components/nextEpisode/index.jsx"
+    trigger: "Primer load sin caché de traducciones, o error en CDN de i18n bundles"
+    mitigation: "Ninguna en el código actual — el guard es hard-coded"
+    industry_note: "Patrón anti-recomendado en producción: bloquear features críticas por i18n. La recomendación de la industria es usar fallback strings o claves literales."
+    test_priority: MUST
+
+  - id: NEPI-RISK-004
+    severity: high
+    title: "Stale closure en el handler del evento 'ended' cuando confirmedNextEpisode cambia"
+    description: |
+      En index.jsx, el useEffect que escucha el evento 'ended' tiene confirmedNextEpisode,
+      nextEpisode y loadNextEpisodeWithEvent en sus dependencias. Si nextEpisodeConfirmed se
+      emite cerca del final del video (pocos segundos antes de 'ended'), la closure del handler
+      puede capturar el estado anterior (null) antes del re-render de React, resultando en
+      la carga del episodio original en vez del confirmado.
+    affected_files:
+      - "src/view/video/components/nextEpisode/index.jsx"
+    trigger: "nextEpisodeConfirmed emitido dentro de los últimos 2-3 segundos antes de 'ended'"
+    mitigation: "El useEffect se re-registra cuando las dependencias cambian, pero hay una ventana de ~16ms (un render frame) donde la closure puede estar stale"
+    industry_note: "Patrón conocido de React: evitar handlers de eventos en useEffect con dependencias que cambian frecuentemente. Preferir useRef para valores que se usan en callbacks."
+    test_priority: SHOULD
+
+  - id: NEPI-RISK-005
+    severity: medium
+    title: "keepWatching no persiste después de seekar hacia atrás"
+    description: |
+      keepWatchingRef se inicializa en false y solo se setea en true cuando el integrador emite
+      nextEpisodeKeepWatching. Sin embargo, el flag NO se resetea si el usuario hace seek hacia
+      atrás (fuera del rango del next episode). Si el usuario: emite keepWatching → hace seek
+      hacia atrás → deja terminar el video, el keepWatching seguirá activo y NO se cargará el
+      siguiente episodio, potencialmente contra la expectativa del usuario.
+    affected_files:
+      - "src/view/none/hooks/useNextEpisodeEvents.js"
+      - "src/view/video/components/nextEpisode/index.jsx"
+    trigger: "Usuario emite keepWatching, hace seek hacia atrás, y deja terminar el video naturalmente"
+    mitigation: "Solo se resetea en sourcechange. No hay lógica para reset por seek."
+    industry_note: "Netflix y Hulu resetean el estado de 'keep watching' si el usuario hace seek a más de 10s antes del threshold"
+    test_priority: SHOULD
+
+  - id: NEPI-RISK-006
+    severity: medium
+    title: "nextEpisodeOverride sin nextEpisodeConfirmed bloquea el next episode indefinidamente"
+    description: |
+      Si metadata.nextEpisodeOverride está definido (cualquier valor truthy), requiresConfirmation=true.
+      En ese estado: la UI NO aparece, el auto-load NO ocurre al terminar el video, y nextEpisodePlayNext
+      tampoco funciona (el guard requiresConfirmation está en handleNextEpisode y handleVideoEnded).
+      El integrador DEBE emitir nextEpisodeConfirmed para desbloquear el flujo. Si no lo hace,
+      el usuario queda sin next episode de forma silenciosa.
+    affected_files:
+      - "src/view/video/hooks/useNextEpisodeTiming.js"
+      - "src/view/video/components/nextEpisode/index.jsx"
+    trigger: "metadata.nextEpisodeOverride definido pero integrador no implementa el handler nextEpisodeIncoming"
+    mitigation: "Ninguna en el player. El integrador debe conocer este contrato."
+    industry_note: "Patrón de 'gated autoplay' común en plataformas con contenido premium — requiere documentación clara del contrato API"
+    test_priority: SHOULD
+
+  - id: NEPI-RISK-007
+    severity: medium
+    title: "Diferencia de tipo default entre headless ('media') y video view ('episode')"
+    description: |
+      useNextEpisodeLoader.js en view/none usa type='media' por defecto, mientras que
+      el mismo hook en view/video usa type='episode'. Esta inconsistencia puede causar
+      comportamientos diferentes en la plataforma Mediastream dependiendo del view usado,
+      especialmente si el backend trata diferente a 'media' vs 'episode'.
+      Nota: según player_system.md, 'episode' es equivalente interno a 'media' — pero
+      esto puede no ser válido en todos los entornos o versiones de plataforma.
+    affected_files:
+      - "src/view/none/hooks/useNextEpisodeLoader.js"
+      - "src/view/video/hooks/useNextEpisodeLoader.js"
+    trigger: "Integrador usa view='none' para headless testing pero espera type='episode' en los callbacks de la plataforma"
+    mitigation: "Pasar type explícitamente en nextEpisodeConfirmed sobrescribe el default"
+    industry_note: "N/A — inconsistencia interna del codebase"
+    test_priority: SHOULD
+
+  - id: NEPI-RISK-008
+    severity: medium
+    title: "incomingEventEmitted no se resetea si shouldShow nunca es true (seek hacia atrás)"
+    description: |
+      En video view, incomingEventEmittedRef se resetea SOLO cuando shouldEmitIncomingEvent=false
+      AND shouldShow=false. Si el usuario hace seek fuera del threshold y luego vuelve al final,
+      el evento nextEpisodeIncoming NO se vuelve a emitir porque incomingEventEmittedRef sigue
+      en true hasta que ambas condiciones sean false simultáneamente.
+    affected_files:
+      - "src/view/video/hooks/useNextEpisodeEvents.js"
+    trigger: "Seek fuera del threshold seguido de seek de vuelta al threshold, en la misma sesión de contenido"
+    mitigation: "En headless, incomingEventEmittedRef se resetea en sourcechange. En video view, el reset es condicional."
+    industry_note: "N/A"
+    test_priority: COULD
+
+  - id: NEPI-RISK-009
+    severity: low
+    title: "Accesibilidad: countdown sin anuncio ARIA para usuarios de screen reader"
+    description: |
+      El countdown de 5 segundos es puramente visual (CSS animation ::after). No hay ningún
+      atributo aria-live, role='timer', ni actualización de texto accesible que informe a
+      usuarios de screen readers sobre el countdown. WCAG 1.4.2 requiere que el usuario pueda
+      pausar/detener media autoplaying; el botón existe pero no se anuncia el tiempo restante.
+    affected_files:
+      - "src/view/video/components/nextEpisode/index.jsx"
+      - "src/view/video/components/nextEpisode/nextEpisode.scss"
+    trigger: "Usuario con screen reader (NVDA, VoiceOver) cuando aparece la UI de next episode"
+    mitigation: "Los botones tienen texto y son focuseables; el usuario puede navegar y activarlos, pero no sabe cuánto tiempo tiene"
+    industry_note: "WCAG 2.1 SC 2.2.1 (Timing Adjustable) y SC 1.4.2 (Audio Control). La industria recomienda aria-live='polite' para countdowns o al menos un aria-describedby con el texto del timer."
+    test_priority: SHOULD
+
+  - id: NEPI-RISK-010
+    severity: low
+    title: "CSS :focus con outline:none — pérdida de focus ring estándar"
+    description: |
+      Los botones del next episode tienen ':focus { outline: none }' en el SCSS. El focus visual
+      se reemplaza por el scale transform de next-episode__button--focused. Esto puede ser
+      insuficiente para usuarios con baja visión o modos de alto contraste que dependen del
+      focus ring nativo del browser.
+    affected_files:
+      - "src/view/video/components/nextEpisode/nextEpisode.scss"
+    trigger: "Usuarios navegando con teclado en modo de alto contraste o con baja visión"
+    mitigation: "La clase --focused aplica border-color y scale, pero no es equivalente al focus ring nativo"
+    industry_note: "WCAG 2.1 SC 2.4.7 (Focus Visible). CSS outline:none es un anti-patrón de accesibilidad documentado por W3C."
+    test_priority: COULD

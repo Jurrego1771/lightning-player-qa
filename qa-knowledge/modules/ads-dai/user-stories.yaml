@@ -1,0 +1,138 @@
+version: "1.0"
+module: ads-dai
+last_updated: "2026-06-08"
+
+user_stories:
+
+  - id: US-DAI-001
+    persona: Viewer
+    narrative:
+      as: "espectador de contenido premium con suscripción ad-supported"
+      want: "ver el contenido sin interrupciones abruptas ni saltos de video entre ads y contenido"
+      so_that: "la experiencia de visualización sea fluida y comparable a la TV tradicional"
+    business_value: HIGH
+    risk_area:
+      - "transición seamless content→ad→content"
+      - "buffering en boundaries de ad"
+    related_features:
+      - "playback-core"
+      - "hls"
+    acceptance:
+      - "DAI-AC-001"
+      - "DAI-AC-006"
+    notes: "SSAI garantiza esta experiencia mejor que CSAI porque no hay cambio de stream. El riesgo principal son los freezes por SCTE35 markers (DAI-RISK-006)."
+
+  - id: US-DAI-002
+    persona: Viewer
+    narrative:
+      as: "espectador que usa el player con volumen muted"
+      want: "que los ads se reproduzcan también en mute sin que el ad tenga audio cuando no lo quiero"
+      so_that: "el comportamiento de audio sea consistente durante toda la sesión de reproducción"
+    business_value: HIGH
+    risk_area:
+      - "vpmute sync"
+      - "audio flash en ad start"
+    related_features:
+      - "events"
+    acceptance:
+      - "DAI-AC-008"
+      - "DAI-AC-009"
+    notes: "El 'audio flash' (ad que arranca con audio cuando el usuario está en mute) es uno de los problemas de UX más reportados en SSAI. El hotfix de vpmute aborda esto."
+
+  - id: US-DAI-003
+    persona: Viewer
+    narrative:
+      as: "espectador de contenido VOD con ads pre-rolls y mid-rolls"
+      want: "que los mid-rolls se reproduzcan si intento saltarlos con seek"
+      so_that: "el modelo de negocio del publisher sea respetado y yo entienda las reglas del contenido ad-supported"
+    business_value: MEDIUM
+    risk_area:
+      - "seek dentro de ad break VOD"
+      - "cuepoints"
+    related_features:
+      - "playback-core"
+    acceptance:
+      - "DAI-AC-010"
+    notes: "Comportamiento requerido por Google DAI para VOD. El usuario debe ver los breaks antes de poder avanzar más allá de ellos."
+
+  - id: US-DAI-004
+    persona: Viewer
+    narrative:
+      as: "espectador con subtítulos activados"
+      want: "que mis subtítulos continúen disponibles después de que el stream DAI cargue"
+      so_that: "pueda seguir el contenido con accesibilidad completa durante toda la sesión"
+    business_value: HIGH
+    risk_area:
+      - "subtítulos perdidos tras setData DAI"
+    related_features:
+      - "subtitles"
+    acceptance:
+      - "DAI-AC-001"
+    notes: "Cubre el defecto DAI-DEF-001. Actualmente los subtítulos se pierden al cargar el stream DAI. Impacto de accesibilidad WCAG 2.1 AA."
+
+  - id: US-DAI-005
+    persona: Integrator
+    narrative:
+      as: "integrador que configura Google DAI para un canal live"
+      want: "que si el servidor DAI no responde, el stream siga funcionando usando el backup configurado"
+      so_that: "un fallo de la infraestructura de ads no deje a los espectadores sin contenido"
+    business_value: HIGH
+    risk_area:
+      - "fallback al backup stream"
+      - "SDK DAI no disponible"
+    related_features:
+      - "playback-core"
+    acceptance:
+      - "DAI-AC-002"
+      - "DAI-AC-003"
+    notes: "El backup stream es el principal mecanismo de resiliencia de DAI. Sin él configurado, un fallo de DAI corta la reproducción completamente."
+
+  - id: US-DAI-006
+    persona: Integrator
+    narrative:
+      as: "integrador que configura Google DAI con DASH + DRM para contenido premium"
+      want: "que el player coordine correctamente la inicialización de DAI y DRM sin condiciones de carrera"
+      so_that: "el contenido protegido con ads se reproduzca correctamente en todos los navegadores soportados"
+    business_value: HIGH
+    risk_area:
+      - "coordinación DAI+DRM"
+      - "deferred manifest URL"
+    related_features:
+      - "drm"
+      - "dash"
+    acceptance:
+      - "DAI-AC-012"
+    notes: "El flujo DRM+DAI es el más complejo. Los tests actuales están en test.fixme() porque requieren credenciales y CDM real."
+
+  - id: US-DAI-007
+    persona: Integrator
+    narrative:
+      as: "integrador que configura MediaTailor DAI para un canal live"
+      want: "que si la sesión SSAI de MediaTailor no se puede obtener, el live siga reproduciéndose"
+      so_that: "un fallo del sistema de ads no interrumpa la transmisión en vivo"
+    business_value: HIGH
+    risk_area:
+      - "MediaTailor session fallback"
+    related_features:
+      - "playback-core"
+    acceptance:
+      - "DAI-AC-014"
+    notes: "Para live, la continuidad del stream es crítica. MediaTailor falla silenciosamente hacia el src original."
+
+  - id: US-DAI-008
+    persona: Operator
+    narrative:
+      as: "operador de plataforma que monitorea el rendimiento de ads"
+      want: "que los eventos de cuartiles (25%, 50%, 75%, 100%) se emitan correctamente durante cada ad"
+      so_that: "los sistemas de analytics (Youbora, Conviva) puedan reportar viewability y completion rate de ads con precisión"
+    business_value: HIGH
+    risk_area:
+      - "beacons de cuartiles"
+      - "adInfo completo"
+    related_features:
+      - "youbora"
+      - "ads-manager"
+    acceptance:
+      - "DAI-AC-005"
+      - "DAI-AC-007"
+    notes: "Los beacons son el fundamento del billing de ads. Un beacon missing implica revenue no reportado."

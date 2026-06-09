@@ -1,0 +1,104 @@
+version: "1.0"
+module: dash
+last_updated: "2026-06-08"
+
+risks:
+  - id: DASH-RISK-001
+    severity: high
+    title: "DVR DASH sin stream real en CI — tests en test.fixme permanente"
+    description: "ContentIds.dashDvr apunta al mismo ID que dashLive (6a0f2956a2a6f91404c3cc0c), que es un stream DASH live SIN ventana DVR configurada. __player.duration nunca se popula (retorna 0 o NaN), lo que hace que todos los tests de seek DVR fallen siempre. Los 4 tests en dash-dvr.spec.ts están marcados con test.fixme."
+    affected_files:
+      - "tests/e2e/dash-dvr.spec.ts"
+      - "fixtures/index.ts"
+    trigger: "Cualquier test que verifique dvrWindow, isDVR, o seek en tipo 'dvr' con DASH"
+    mitigation: "Configurar CONTENT_ID_DASH_DVR=<id-con-dvr-window> en .env o CI secrets. Plataforma debe proveer un contenido con timeShiftBufferDepth > 0 en el MPD. Hasta entonces, los tests están bloqueados con test.fixme."
+    industry_note: "La industria (Bitmovin, Shaka) recomienda tener fixtures DASH locales para tests de DVR. Un MPD dinámico con timeShiftBufferDepth puede generarse localmente con ffmpeg + packager."
+    test_priority: MUST
+
+  - id: DASH-RISK-002
+    severity: high
+    title: "getDvrWindow() puede retornar null o size=0 con delay post-playing"
+    description: "En streams DASH DVR, dash.js popula la ventana DVR con delay después del evento 'playing'. La función _getDvrWindow() tiene guardas: verifica que w.size > 0 y que w es un número finito. Si se lee dvrWindow inmediatamente después de 'playing', puede ser null incluso en un stream con DVR real."
+    affected_files:
+      - "src/player/handler/dash/handler.js"
+    trigger: "Leer player.dvrWindow justo después del evento 'playing'"
+    mitigation: "Usar expect.poll() con timeout para esperar que dvrWindow.size > 0 antes de hacer seek. Los tests en dash-dvr.spec.ts ya implementan este patrón con expect.poll(() => player.getDuration(), { timeout: 10_000 }).toBeGreaterThan(0)."
+    industry_note: "Problema conocido en dash.js: 'DVR with SegmentTimeline no time or duration is updated' (issue #1769). La ventana DVR se calcula a partir del manifiesto actualizado y puede no estar disponible hasta el primer segment download."
+    test_priority: MUST
+
+  - id: DASH-RISK-003
+    severity: high
+    title: "DASH no soportado en iOS Safari — el player debe proveer HLS para Apple"
+    description: "DASH usa MSE (Media Source Extensions) que no está completamente soportado en iOS Safari para video con DRM. Sin MSE, dash.js no puede funcionar. El player no tiene fallback automático de DASH a HLS para iOS."
+    affected_files:
+      - "src/player/handler/dash/handler.js"
+    trigger: "Cargar un content con src.mpd solo (sin src.hls) en iOS Safari"
+    mitigation: "La plataforma Mediastream provee tanto src.hls como src.mpd. El player selecciona el handler correcto según la plataforma. Para iOS, la plataforma debe garantizar que src.hls esté disponible. Los tests E2E de DASH tienen test.skip para WebKit."
+    industry_note: "Práctica universal de la industria (Netflix, YouTube, Disney+): servir HLS para Apple devices, DASH para Android/Web. CMAF package-once permite reusar el mismo contenido empaquetado para ambos. DASH 'no puede reproducirse nativamente en iPhone/iPad' según documentación de compatibilidad de Bitmovin (2024)."
+    test_priority: MUST
+
+  - id: DASH-RISK-004
+    severity: high
+    title: "Race condition stale-src en _load() con SDK System73 async"
+    description: "Cuando System73 está habilitado, _load() hace `await getSystem73DashSDK()`. Si durante ese await el src cambia (otro player.load() llega), el guard `if (this.state.src !== src) return` evita aplicar el wrapper al nuevo MediaPlayer. Sin este guard, el wrapper del contenido A se aplicaría al MediaPlayer del contenido B."
+    affected_files:
+      - "src/player/handler/dash/handler.js"
+    trigger: "player.load(contentA) seguido inmediatamente de player.load(contentB) cuando System73 está habilitado y el SDK tarda en cargar"
+    mitigation: "Guard implementado en handler.js línea ~240: `if (this.state.src !== src) return`. Test de regresión en tests/integration/system73-dash.spec.ts (test 4)."
+    industry_note: "Patrón común en players que lazy-cargan SDKs externos. El stale-src guard es esencial para cualquier await dentro de _load()."
+    test_priority: MUST
+
+  - id: DASH-RISK-005
+    severity: medium
+    title: "ABR de dash.js opera independientemente del control del player"
+    description: "A diferencia de hls.js donde el ABR puede configurarse en detalle, dash.js maneja el ABR (BOLA/DYNAMIC) internamente. El player puede fijar una representación via setRepresentationForTypeByIndex() pero el ABR automático es menos predecible. player.level=-1 restaura ABR pero el algoritmo (BOLA vs DYNAMIC) depende de la versión de dash.js."
+    affected_files:
+      - "src/player/handler/dash/handler.js"
+    trigger: "Tests que verifican switching de calidad bajo condiciones de red específicas"
+    mitigation: "Los tests de ABR DASH (dash-abr.spec.ts) aceptan que 'levelchanged' se emita sin verificar el nivel exacto. El throttling de red via CDP es necesario para forzar el cambio."
+    industry_note: "dash.js usa BOLA (buffer-based) o DYNAMIC (híbrido) según configuración. BOLA maximiza estabilidad del buffer; DYNAMIC es el algoritmo por defecto en 5.x. El estándar MPEG-DASH no especifica el algoritmo ABR — cada implementación es diferente."
+    test_priority: SHOULD
+
+  - id: DASH-RISK-006
+    severity: medium
+    title: "CORS en MPD y segmentos puede bloquear reproducción"
+    description: "El MPD se fetch via dash.js con el origen del player. Si el servidor CDN no incluye cabeceras CORS apropiadas (Access-Control-Allow-Origin), el fetch del MPD o de los segmentos falla. Este error se mapea a NetworkError en el handler."
+    affected_files:
+      - "src/player/handler/dash/handler.js"
+    trigger: "Stream DASH en un dominio diferente al origen del player sin CORS configurado"
+    mitigation: "Los streams de la plataforma DEV tienen CORS configurado. Para tests con ExternalStreams.dash.vod (dash-abr.spec.ts), si el stream externo no es accesible desde CI, los tests se saltan."
+    industry_note: "Problema universal en DASH/HLS. La industria recomienda configurar CORS en el CDN y en los servidores de manifiestos. Fraunhofer documenta 'CORS issues' como uno de los pitfalls más comunes en producción DASH."
+    test_priority: SHOULD
+
+  - id: DASH-RISK-007
+    severity: medium
+    title: "pauseBuffering / resumeBuffering son no-op en DASH"
+    description: "El handler HLS implementa pauseBuffering() para detener la carga de segmentos sin pausar la reproducción (usado durante ad breaks en SSAI). dash.js no tiene una API equivalente. Los métodos están implementados como no-op con comentario explícito."
+    affected_files:
+      - "src/player/handler/dash/handler.js"
+    trigger: "Usar SSAI/SGAI con streams DASH — el sistema de ads puede llamar pauseBuffering() esperando que funcione"
+    mitigation: "Documentado en el código con comentario. Los plugins de ads deben verificar el handler activo antes de llamar pauseBuffering(). No hay plan de solución conocido (limitación de dash.js API)."
+    industry_note: "Shaka Player también carece de una API directa de pauseBuffering equivalente. Bitmovin implementa un buffer management propio. Esta es una limitación reconocida del ecosistema DASH."
+    test_priority: SHOULD
+
+  - id: DASH-RISK-008
+    severity: low
+    title: "programDateTime en DASH es un timestamp de inicio, no metadata por segmento"
+    description: "En HLS, programDateTime viene de EXT-X-PROGRAM-DATE-TIME y puede cambiar por segmento. En DASH, se extrae de getDashAdapter().getAvailabilityStartTime() en MANIFEST_LOADED — es un único timestamp de inicio del stream, no actualizable por segmento. El evento 'programdatetime' se emite una sola vez."
+    affected_files:
+      - "src/player/handler/dash/handler.js"
+    trigger: "Tests que esperan múltiples emisiones del evento 'programdatetime' en DASH"
+    mitigation: "No aplicar tests de HLS programDateTime a streams DASH. En DASH, verificar solo que programDateTime es una fecha válida al inicio."
+    industry_note: "MPEG-DASH usa availabilityStartTime en la raíz del MPD para anclar el tiempo. No hay equivalente al EXT-X-PROGRAM-DATE-TIME granular de HLS. Los players modernos usan esta diferencia para adaptar el comportamiento de la UI de timeshifting."
+    test_priority: COULD
+
+  - id: DASH-RISK-009
+    severity: low
+    title: "Double-load guard _loadingSrc puede impedir reintentos con mismo src"
+    description: "Si _load() es llamado dos veces concurrentes con el mismo src, la segunda llamada retorna inmediatamente (guard `if (this._loadingSrc === src) return`). Si la primera llamada falla silenciosamente antes de crear el controller, el player queda en estado indefinido."
+    affected_files:
+      - "src/player/handler/dash/handler.js"
+    trigger: "player.load() llamado dos veces con el mismo src en el mismo tick JS"
+    mitigation: "El guard está testeado en system73-dash.spec.ts (test 5). El riesgo práctico es bajo porque el player normalmente no llama load() dos veces con el mismo src."
+    industry_note: ""
+    test_priority: COULD

@@ -1,0 +1,125 @@
+version: "1.0"
+module: error-handling
+last_updated: "2026-06-08"
+
+learnings:
+  - id: ERR-LEARN-001
+    title: "El 'type' de error es un string constante, no un código numérico"
+    discovery: "código fuente: src/constants.cjs:240 (ErrorType), src/error/error.js"
+    detail: >
+      ErrorType expone strings: 'network_error', 'media_error', 'other', 'init_player', 'default'. La
+      subclase determina el type (MediaError→media_error, NetworkError→network_error,
+      PlayerInitError→init_player, PlayerError base→default). NO existe un código numérico estilo
+      MediaError.code en el objeto PlayerError; el code numérico solo aparece en AdError (VAST) y en el
+      HTMLMediaElement nativo (1–4).
+    impact_on_tests: >
+      Aserciones sobre el type deben comparar contra los strings exactos del enum, no contra números.
+      Para errores de contenido, validar 'type' y 'fatal'; para ads, validar getErrorCode()/getType().
+
+  - id: ERR-LEARN-002
+    title: "El getter 'error' solo se actualiza con errores FATALES"
+    discovery: "código fuente: src/error/index.js:27-31 (handleError → if err.fatal → setError)"
+    detail: >
+      ErrorHandler escribe el error al contexto (y por tanto al getter público 'error') únicamente
+      cuando err.fatal es true. Los errores no-fatales (network transitorio, level load, buffer stalled,
+      autoplay bloqueado) se EMITEN como evento pero el getter sigue null. Es un comportamiento
+      deliberado pero contraintuitivo: 'error' significa 'último error fatal', no 'último error'.
+    impact_on_tests: >
+      Para verificar errores no-fatales hay que suscribirse al evento 'error', nunca leer el getter.
+      Para verificar fatales se pueden usar ambos (getter + evento + status==='error').
+
+  - id: ERR-LEARN-003
+    title: "getErrors() es un helper del harness QA, no API del player"
+    discovery: "código fuente: fixtures/player-mixins/QoEMixin.ts:47; src/error/index.js (no expone getErrors)"
+    detail: >
+      El player NO tiene método getErrors(). getErrors() del harness lee window.__qa.errors, un array
+      acumulado por el listener del harness sobre el evento 'error'. El player solo retiene el ÚLTIMO
+      error fatal en el getter 'error'. No existe historial de errores en la API pública del player.
+    impact_on_tests: >
+      No documentar getErrors() como API del player. Cuando un test usa getErrors(), está leyendo el
+      historial del harness, sujeto a backfill race (el listener puede registrarse tarde). Usar fallback
+      3-way (initError | getErrors | status | eventData) para errores pre-ready.
+
+  - id: ERR-LEARN-004
+    title: "Recovery automático difiere por tipo: startLoad (red) vs recoverMediaError (media)"
+    discovery: "código fuente: src/player/handler/hls/handler.js:408,415"
+    detail: >
+      Para network error fatal NO-manifest, el player llama hls.startLoad() y degrada el error a no-fatal.
+      Para media error, llama hls.recoverMediaError() y emite MediaError no-fatal. Los errores de manifest
+      (LOAD/PARSING/TIMEOUT) NO se recuperan: van directo a fatal. KEY_SYSTEM_NO_ACCESS no emite error y
+      entra a buffering. swapAudioCodec() está implementado en hls.js pero comentado/no encadenado aquí.
+    impact_on_tests: >
+      Tests de recovery deben separar: (a) red transitoria → recovery a playing; (b) red persistente →
+      fatal; (c) manifest → fatal inmediato sin recovery; (d) media transitoria → recuperable. El budget
+      de hls.js usa backoff exponencial: timeouts de espera deben ser >= 60s para fallo total.
+
+  - id: ERR-LEARN-005
+    title: "loadConfig captura el status HTTP en error.data.status"
+    discovery: "código fuente: src/platform/loadConfig.js:170-174"
+    detail: >
+      El catch de la petición de config construye PlayerInitError con data = { data, status, metadata }.
+      status proviene de err.response.status (ej. 403) o 500 por default. Es el único punto donde un
+      código HTTP queda accesible en el objeto de error del player; los errores de red de hls.js solo
+      llevan el string 'details' (ej. 'fragLoadError'), no el status HTTP.
+    impact_on_tests: >
+      Para 403 de config, verificar data.status === 403. Para 403/503/404 de SEGMENTOS no esperar un
+      status numérico: hls.js no lo propaga; verificar por el details/message o por fatal+status='error'.
+
+  - id: ERR-LEARN-006
+    title: "El evento error se re-emite cross-frame y va a console.error en debug"
+    discovery: "código fuente: src/events/index.js:27-34"
+    detail: >
+      Emitter.emit publica window.postMessage({ event: 'msp:error' }) al mismo origin para sincronizar
+      instancias en iframes. En modo debug, los eventos válidos del enum se loguean; 'error' usa
+      console.error (no console.log). Solo eventos en el enum Events se re-emiten a externalEmitter.
+    impact_on_tests: >
+      Tests de embed/iframe pueden observar el error vía el canal msp:. En CI con console capture, los
+      errores generan entradas console.error legítimas que NO deben tratarse como fallos de test.
+
+  - id: ERR-LEARN-007
+    title: "AdError tiene API rica y aislada; nunca marca el contenido fatal"
+    discovery: "código fuente: src/ads/manager/error/error.js, codes.js"
+    detail: >
+      AdError expone getErrorCode/getInnerError/getMessage/getType/getVastErrorCode. getType() devuelve
+      'AdLoad' (code 100–399) o 'AdPlay' (resto). getVastErrorCode normaliza a 900 (UNKNOWN_ERROR) fuera
+      de 100–999. En no-producción, el constructor valida que errorCode sea entero (throw si no). Esta
+      jerarquía no extiende PlayerError, así que no puede setear el estado fatal del contenido.
+    impact_on_tests: >
+      Verificar aislamiento: tras un AdError, el getter 'error' del contenido sigue null y el contenido
+      reanuda. Validar getType() por rango de código y getVastErrorCode() normalización a 900.
+
+  - id: ERR-LEARN-008
+    title: "Industria: estandarización SVTA de códigos de error de player"
+    discovery: "investigación web: https://www.svta.org/project/standardized-player-error-codes/ ; Castlabs blog"
+    detail: >
+      La SVTA QoE WG mapeó errores de iOS, ExoPlayer, dash.js, shaka, hls.js, Roku, tvOS, FireTV a un
+      conjunto unificado de códigos numéricos cortos, con 999 = totalmente desconocido y '<categoria>00'
+      (ej. 300) cuando la categoría se conoce pero faltan detalles. Objetivo: que players, analytics y
+      operadores hablen el mismo idioma de errores.
+    impact_on_tests: >
+      QA puede recomendar que el player exponga un código alineado con SVTA además del type string.
+      Tests pueden verificar que ningún error llegue 'sin clasificar' (todo error debería tener type !=
+      vacío). Útil para gaps de observabilidad.
+
+  - id: ERR-LEARN-009
+    title: "Industria: 403/404/manifest inválido deben escalar a fatal, no reintentar"
+    discovery: "investigación web: hls.js docs API.md / error-handling.md; diagnal.com debugging OTT"
+    detail: >
+      hls.js y la práctica OTT coinciden: para 403, 404, manifests inválidos o MIME no soportado se debe
+      mostrar error user-facing en lugar de reintentar indefinidamente, porque indican contenido no
+      disponible (no transitorio). El player ya marca manifests como fatales, lo cual está alineado.
+    impact_on_tests: >
+      Verificar que 403 de config y manifest error producen fatal SIN ciclo de retry visible. Verificar
+      que un 404 de segmento mid-stream emite error (hls.js no reintenta 404 como sí hace con 503).
+
+  - id: ERR-LEARN-010
+    title: "Industria/deprecated: VPAID en la jerarquía de error de ads"
+    discovery: "investigación web: VAST 4.x / IAB; código: src/ads/manager/error/vpaid-error.js"
+    detail: >
+      El player mantiene VpaidError (código VAST 901). VPAID está deprecado por la IAB en favor de SIMID
+      (VAST 4.1+) y OMID para verificación. Tener VpaidError no es incorrecto (compatibilidad legacy),
+      pero QA debe saber que un VPAID_ERROR (901) refleja una tecnología en retirada; los flujos modernos
+      deberían apoyarse en SIMID/OMID.
+    impact_on_tests: >
+      Tests de ad error pueden cubrir VPAID_ERROR (901) por compatibilidad, pero priorizar errores VAST
+      estándar (100, 303, 402, 403) que dominan en producción. Documentar VPAID como legacy, no bloquear.

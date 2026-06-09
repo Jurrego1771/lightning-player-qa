@@ -1,0 +1,161 @@
+version: "1.0"
+module: ads-sgai
+last_updated: "2026-06-08"
+
+user_stories:
+
+  - id: US-SGAI-001
+    persona: Viewer
+    narrative:
+      as: "espectador viendo un stream live con SGAI habilitado"
+      want: "que los anuncios se reproduzcan sin interrumpir ni congelar el stream del programa"
+      so_that: "pueda continuar viendo el contenido sin cambios abruptos de calidad ni buffering"
+    business_value: HIGH
+    risk_area:
+      - "dual-video buffering"
+      - "audio sync durante ad break"
+    related_features:
+      - "playback-core"
+      - "hls"
+    acceptance:
+      - "SGAI-AC-001"
+      - "SGAI-AC-005"
+    notes: >
+      El stream de contenido NUNCA debe pausar durante el ad break. El player mantiene
+      el HLS del programa descargando y buffering en background. El usuario no debería
+      notar un "salto" al inicio del ad ni al retorno al contenido.
+
+  - id: US-SGAI-002
+    persona: Viewer
+    narrative:
+      as: "espectador con el player silenciado (autoplay con muted en TV)"
+      want: "que los anuncios también estén silenciados y que al desmutar el audio sea consistente"
+      so_that: "no tenga la sorpresa de audio inesperado del ad cuando decida activar el sonido"
+    business_value: HIGH
+    risk_area:
+      - "vpmute sync"
+      - "race condition STREAM_INITIALIZED"
+    related_features:
+      - "events"
+    acceptance:
+      - "SGAI-AC-009"
+    notes: >
+      Crítico para autoplays en smart TVs donde el estándar es iniciar silenciado.
+      El parámetro vpmute informa al ad server que el viewer está en modo silenciado,
+      lo que puede afectar qué ads se sirven (ej: algunos formatos de ad requieren audio).
+
+  - id: US-SGAI-003
+    persona: Viewer
+    narrative:
+      as: "espectador usando DVR para retroceder en un stream live"
+      want: "que los ad breaks en la ventana DVR se gestionen correctamente (skip o replay)"
+      so_that: "no vea el mismo ad repetidamente ni quede atascado en un loop de ad break"
+    business_value: HIGH
+    risk_area:
+      - "DVR + SGAI interacción"
+      - "buffering state loop"
+    related_features:
+      - "playback-core"
+    acceptance:
+      - "SGAI-AC-002"
+      - "SGAI-AC-003"
+    notes: >
+      El defecto BUG-SGAI-001 (loop infinito buffering + DVR) afecta directamente esta
+      historia. La lógica de skip por fragmento avanzado (currentFragmentName check)
+      es el mecanismo de defensa, pero no está completamente verificada.
+
+  - id: US-SGAI-004
+    persona: Viewer
+    narrative:
+      as: "espectador en un dispositivo de baja potencia (TV embebida, tablet antigua)"
+      want: "que el player detecte que mi dispositivo no soporta dual-video HLS y no intente reproducir ads SGAI"
+      so_that: "el stream de contenido reproduzca sin crashes ni degradación de calidad"
+    business_value: HIGH
+    risk_area:
+      - "compatibility probe"
+      - "content-first policy"
+    related_features:
+      - "playback-core"
+    acceptance:
+      - "SGAI-AC-008"
+    notes: >
+      La política content-first es explícita en el código (comentario de producto en
+      SGAIService.js). En devices de TV, el dual-video HLS puede causar crashes del
+      decodificador de hardware. El probe pasivo es la primera línea de defensa.
+
+  - id: US-SGAI-005
+    persona: Integrator
+    narrative:
+      as: "desarrollador integrando Lightning Player en una plataforma de streaming"
+      want: "que SGAI se active solo cuando proveo networkCode y customAssetKey, y que el player funcione normalmente sin ellos"
+      so_that: "pueda hacer un rollout gradual de SGAI sin afectar los players ya desplegados sin config SGAI"
+    business_value: HIGH
+    risk_area:
+      - "configuración opcional"
+      - "backward compatibility"
+    related_features:
+      - "platform-config"
+    acceptance:
+      - "SGAI-AC-006"
+    notes: >
+      La config de SGAI viene de la plataforma (loadConfig response), no del embed config.
+      El integrador habilita SGAI en el dashboard de la plataforma Mediastream, no en el
+      código de embedding. Esto asegura backward compatibility con embeds existentes.
+
+  - id: US-SGAI-006
+    persona: Integrator
+    narrative:
+      as: "desarrollador integrando SGAI con un endpoint propio de ad break IDs"
+      want: "que el player use mi endpoint custom (adBreakIdEndpoint) para resolver el adBreakId en lugar del endpoint de la plataforma"
+      so_that: "pueda integrar mi propio sistema de decisión de ad breaks con SGAI"
+    business_value: MEDIUM
+    risk_area:
+      - "adBreakIdEndpoint custom"
+      - "contract del endpoint"
+    related_features:
+      - "platform-config"
+    acceptance:
+      - "SGAI-AC-012"
+    notes: >
+      El endpoint custom recibe currentTime y cust_params (format) como query params.
+      El integrador es responsable de devolver {adBreakId, googleDaiToken?, format?}.
+      El contrato de respuesta acepta alias: ad_break_id, podIdentifier.
+
+  - id: US-SGAI-007
+    persona: Operator
+    narrative:
+      as: "operador de una plataforma de streaming con streams live monetizados"
+      want: "que un fallo del SDK de Google IMA DAI no impida la reproducción del contenido"
+      so_that: "los viewers puedan seguir viendo el programa aunque los ads fallen"
+    business_value: HIGH
+    risk_area:
+      - "SDK CDN availability"
+      - "graceful degradation"
+    related_features:
+      - "platform-config"
+    acceptance:
+      - "SGAI-AC-007"
+    notes: >
+      La degradación graceful es una regla de negocio explícita: el contenido tiene
+      prioridad sobre los ads. Si el SDK de Google no carga por cualquier razón (red,
+      CDN, ad blocker), el stream de contenido debe reproducir sin interrupciones.
+      SGAI falla silenciosamente (sin error visible para el viewer).
+
+  - id: US-SGAI-008
+    persona: Operator
+    narrative:
+      as: "operador analizando revenue de ads en streams live"
+      want: "que cada sesión de viewer tenga un streamId único para tracking individual de impresiones"
+      so_that: "pueda medir correctamente el fill rate y eCPM por viewer"
+    business_value: HIGH
+    risk_area:
+      - "streamId uniqueness"
+      - "IMA DAI session management"
+    related_features:
+      - "platform-config"
+    acceptance:
+      - "SGAI-AC-001"
+    notes: >
+      El streamId lo genera Google IMA DAI via STREAM_INITIALIZED. Es único por instancia
+      de StreamManager (por sesión de viewer). Multi-instancia en la misma página puede
+      generar múltiples streamIds — verificar que cada player tiene su propio StreamManager.

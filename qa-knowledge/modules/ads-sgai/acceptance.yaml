@@ -1,0 +1,251 @@
+version: "1.0"
+module: ads-sgai
+last_updated: "2026-06-08"
+
+# ESTADO DE COBERTURA — GAP CONOCIDO
+# Este módulo tiene COBERTURA PARCIAL. Los tests existentes cubren:
+#   - Inicialización del plugin (ads-sgai.spec.ts — todos fixme, pendientes PR #595 merge)
+#   - destroy() cleanup (ads-sgai-lifecycle.spec.ts)
+#   - sin networkCode/customAssetKey (ads-sgai-lifecycle.spec.ts)
+#   - mute state lifecycle (ads-sgai-mute-state-lifecycle.spec.ts)
+# Los ACs de ad break completo (SGAI-AC-001, SGAI-AC-002, SGAI-AC-003) requieren
+# un mock del Google IMA DAI SDK — actualmente marcados como fixme en los tests.
+
+acceptance_criteria:
+
+  - id: SGAI-AC-001
+    priority: MUST
+    scenario: "Stream live con EXT-X-CUE-OUT activa ad break completo"
+    given: >
+      Player con SGAI configurado (networkCode + customAssetKey) reproduciendo un
+      stream HLS live con cue points EXT-X-CUE-OUT (formato AWS Elemental / SCTE-35)
+      y plataforma respondiendo correctamente en /sgai-ad-break
+    when: "El fragmento HLS trigger del cue point es cargado por hls.js"
+    then:
+      - "AD_BREAK_STARTED se emite internamente"
+      - "player.isPlayingAd devuelve true"
+      - "El ad video element comienza a reproducirse"
+      - "El layout del player aplica el formato correcto (sgai-format-{format})"
+      - "El audio del stream de contenido es ajustado según el formato"
+      - "AD_BREAK_ENDED se emite cuando el pod termina"
+      - "player.isPlayingAd vuelve a false"
+      - "El layout del player se restaura (exit transition de 600ms)"
+      - "El audio del stream de contenido se restaura exactamente al nivel previo"
+    covered_by: []
+    gap_status: MUST_implement
+    blocker: "Requiere mock del Google IMA DAI SDK (StreamManager + PodStreamRequest)"
+
+  - id: SGAI-AC-002
+    priority: MUST
+    scenario: "buffering state al llegar cue point — NO loop infinito"
+    given: >
+      Player con SGAI configurado en estado buffering (waiting/stalled en hls.js)
+      cuando el fragmento trigger del cue point es procesado por handleFragmentChange()
+    when: "SGAIService.#attemptPendingCuePlayback() evalúa el cue mientras el player está en buffering"
+    then:
+      - "El player NO entra en loop infinito alternando buffering y ad break state"
+      - "Si el ad pod no está listo dentro de la ventana de gracia (1200ms), el break se skipea"
+      - "Si el buffering se resuelve dentro de la ventana, el ad break puede reproducirse normalmente"
+      - "No hay errores JavaScript no capturados"
+    covered_by:
+      - "tests/integration/ads-sgai-lifecycle.spec.ts (fixme — requiere SDK mock)"
+    gap_status: MUST_implement
+    notes: "BUG-SGAI-001 documenta el loop infinito observado en producción"
+
+  - id: SGAI-AC-003
+    priority: MUST
+    scenario: "DVR + seek antes del fragmento trigger — ad break skipped"
+    given: >
+      Player DVR con SGAI configurado, usuario hace seek a posición donde
+      currentFragmentName != segmentName del cue pendiente
+    when: "#attemptPendingCuePlayback() verifica currentFragmentName !== segmentName"
+    then:
+      - "El ad break es marcado como skipped (pendingCues.delete())"
+      - "AD_BREAK_STARTED NO se emite"
+      - "El contenido continúa desde la posición del seek"
+      - "No hay estado residual en pendingCues ni pendingCueTimers"
+    covered_by:
+      - "tests/integration/ads-sgai-lifecycle.spec.ts (fixme — requiere SDK mock)"
+    gap_status: MUST_implement
+    notes: "La lógica de skip está en SGAIService.js línea ~412 — verificable sin SDK real"
+
+  - id: SGAI-AC-004
+    priority: MUST
+    scenario: "destroy() durante ad break — cleanup sin errores ni memory leaks"
+    given: "Player con SGAI configurado (con o sin ad break activo)"
+    when: "Se llama player.destroy()"
+    then:
+      - "El listener _volumechange es removido de internalEmitter"
+      - "stopFragmentTracking() es llamado — el FRAG_CHANGED listener se remueve"
+      - "sgaiService.destroy() es llamado — todos los listeners del SDK se remueven"
+      - "StreamManager.reset() es llamado"
+      - "AdPlaybackController.destroy() es llamado"
+      - "pLoader custom es removido del contexto del player (setData({pLoader: undefined}))"
+      - "No hay errores JavaScript no capturados"
+      - "El elemento <video> del ad overlay es removido del DOM"
+      - "No hay memory leaks detectables (heap growth < 20% en 4 ciclos init-destroy)"
+    covered_by:
+      - "tests/integration/ads-sgai-lifecycle.spec.ts"
+    gap_status: PARTIALLY_covered
+
+  - id: SGAI-AC-005
+    priority: MUST
+    scenario: "Audio del contenido restaurado exactamente después del ad break"
+    given: >
+      Stream de contenido reproduciendo con volumen V cuando llega un ad break SGAI
+      en cualquier formato (fullscreen, pip, sidebyside, lbanner)
+    when: "El ad break termina (AD_BREAK_ENDED)"
+    then:
+      - "El volumen del stream de contenido vuelve exactamente a V"
+      - "Si el formato era fullscreen, el contenido había sido muteado — se desmutea"
+      - "Si el formato era pip/sidebyside, el volumen no cambió — se mantiene"
+      - "No hay diferencia de volumen audible post-break"
+      - "emitProgramVolumeAfterSgai() es llamado con el flag wasFullscreen correcto"
+    covered_by: []
+    gap_status: MUST_implement
+
+  - id: SGAI-AC-006
+    priority: MUST
+    scenario: "Sin networkCode o customAssetKey — SGAI no inicializa, content reproduce normal"
+    given: >
+      Player con ads.sgai configurado pero sin networkCode O sin customAssetKey
+      (o con objeto ads.sgai vacío)
+    when: "El player inicializa y useGoogleSGAILifecycle se ejecuta"
+    then:
+      - "El guard if (!networkCode || !customAssetKey) return evalúa false y retorna"
+      - "sgaiService.initialize() NO es llamado"
+      - "El pLoader custom NO es inyectado en el contexto del player"
+      - "El stream de contenido reproduce normalmente"
+      - "No hay errores JavaScript"
+    covered_by:
+      - "tests/integration/ads-sgai-lifecycle.spec.ts"
+    gap_status: COVERED
+
+  - id: SGAI-AC-007
+    priority: MUST
+    scenario: "Google IMA DAI SDK CDN falla — content reproduce sin ads"
+    given: "Player con SGAI configurado, red bloquea la carga del SDK desde imasdk.googleapis.com"
+    when: "SDKLoader.load() lanza error (network failure)"
+    then:
+      - "sgaiService.emit(SGAI_EVENTS.ERROR, error) es llamado"
+      - "isInitialized permanece false"
+      - "El stream de contenido inicia y reproduce normalmente (sin ads)"
+      - "No hay errores JavaScript no capturados"
+      - "No hay pantalla negra ni freeze"
+    covered_by:
+      - "tests/integration/ads-sgai.spec.ts (fixme — pendiente merge PR #595)"
+    gap_status: PARTIALLY_covered
+    notes: "El fixme se remueve cuando PR #595 sea mergeado a develop CDN"
+
+  - id: SGAI-AC-008
+    priority: MUST
+    scenario: "Compatibilidad probe falla (device no compatible) — SGAI deshabilitado"
+    given: >
+      Player con SGAI configurado corriendo en un dispositivo sin MediaCapabilities,
+      sin requestVideoFrameCallback, o con hardwareConcurrency < 2
+    when: "SGAIService.#probeCompatibility() evalúa los señales pasivos"
+    then:
+      - "#setCompatibilityMode('unsupported') es llamado"
+      - "El ad pod NO es precargado (preload no se llama)"
+      - "El pending cue es eliminado de pendingCues"
+      - "El stream de contenido reproduce normalmente"
+      - "No hay errores JavaScript"
+    covered_by: []
+    gap_status: SHOULD_implement
+
+  - id: SGAI-AC-009
+    priority: MUST
+    scenario: "mute state sincronizado con vpmute durante sesión SGAI"
+    given: "Player con SGAI configurado y StreamManager inicializado"
+    when: "El usuario muta o desmuta el player durante una sesión SGAI activa"
+    then:
+      - "internalEmitter._volumechange dispara onVolumeChange(volume)"
+      - "sgaiService.updateMuteState(isMuted) es llamado con el valor correcto"
+      - "streamManager.replaceAdTagParameters({vpmute: '0'|'1'}) es llamado"
+      - "El estado de vpmute en el ad server refleja el mute state del usuario"
+    covered_by:
+      - "tests/integration/ads-sgai-mute-state-lifecycle.spec.ts"
+    gap_status: COVERED
+
+  - id: SGAI-AC-010
+    priority: SHOULD
+    scenario: "Ad pod URL con googleDaiToken incluye auth-token en la query"
+    given: >
+      Platform responde a fetchAdBreakId() con googleDaiToken en el payload,
+      el token incluye pd= y/o scte35= encodados
+    when: "SGAIService.#buildAdPodUrl() construye la URL del pod"
+    then:
+      - "Si googleDaiToken incluye pd=N, ese valor sobreescribe el duration del cue"
+      - "Si googleDaiToken incluye scte35=..., ese valor sobreescribe el scte35 del cue"
+      - "auth-token=googleDaiToken se añade al final de la URL"
+      - "La URL resultante es válida y el ad pod puede ser precargado"
+    covered_by: []
+    gap_status: SHOULD_implement
+
+  - id: SGAI-AC-011
+    priority: SHOULD
+    scenario: "lbanner multi-creativo: cierre correcto tras todos los creativos"
+    given: "Ad break SGAI con formato lbanner y un pod de N creativos (N > 1)"
+    when: "Todos los creativos del pod se han reproducido"
+    then:
+      - "sgaiPodCreativeTotal se captura del evento AD_PERIOD_STARTED (streamData.adPeriodData.totalAds)"
+      - "La cuenta de sgaiLbannerAdBreakEndedCount alcanza sgaiPodCreativeTotal"
+      - "#closeActiveBreak() es llamado exactamente una vez"
+      - "AD_BREAK_ENDED se emite una sola vez"
+      - "El layout vuelve al estado normal"
+    covered_by: []
+    gap_status: SHOULD_implement
+
+  - id: SGAI-AC-012
+    priority: SHOULD
+    scenario: "Platform endpoint custom adBreakIdEndpoint usado cuando está configurado"
+    given: "Player con ads.sgai.adBreakIdEndpoint configurado con una URL custom"
+    when: "AdBreakService.fetchAdBreakId() es invocado para un cue point"
+    then:
+      - "La request se hace al adBreakIdEndpoint custom (no al endpoint por defecto de embed host)"
+      - "Se pasan currentTime y cust_params como query params"
+      - "La respuesta normaliza adBreakId desde adBreakId, ad_break_id, o podIdentifier"
+    covered_by: []
+    gap_status: SHOULD_implement
+
+  - id: SGAI-AC-013
+    priority: SHOULD
+    scenario: "Deduplicación de cues — el mismo cue no activa dos ad breaks"
+    given: >
+      Stream HLS donde el mismo cue point aparece en múltiples refrescos del manifest
+      (comportamiento normal en streams live de larga duración)
+    when: "handleCues() es llamado varias veces con el mismo cueId (scte35 || segmentName)"
+    then:
+      - "El segundo cue con el mismo id es ignorado (processedCues.has(cueId) == true)"
+      - "Solo un ad break es iniciado por cue point único"
+      - "processedCues no crece más allá de MAX_PROCESSED_CUES (100)"
+    covered_by: []
+    gap_status: SHOULD_implement
+
+  - id: SGAI-AC-014
+    priority: SHOULD
+    scenario: "Reinicialización del player sin unmount — listener isolation"
+    given: >
+      Player con SGAI configurado que ejecuta player.load() para cambiar contenido
+      sin desmontar el componente React (reinit sin unmount)
+    when: "El hook useGoogleSGAILifecycle re-ejecuta su efecto en el ciclo 2"
+    then:
+      - "El listener _volumechange del ciclo 1 es removido antes de registrar el del ciclo 2"
+      - "Un mute toggle en ciclo 2 solo dispara updateMuteState() una vez"
+      - "No hay stale listeners del servicio SGAI del ciclo 1"
+    covered_by:
+      - "tests/integration/ads-sgai-mute-state-lifecycle.spec.ts (Suite 6)"
+    gap_status: COVERED
+
+  - id: SGAI-AC-015
+    priority: COULD
+    scenario: "destroy() inmediato antes de que SDK responda — sin errores"
+    given: "Player con SGAI configurado, SDKLoader.load() tarda (red lenta o bloqueada)"
+    when: "player.destroy() es llamado antes de que initialize() resuelva"
+    then:
+      - "El guard if (!isMounted) return después del await previene acceso a refs stale"
+      - "No hay errores JavaScript del cleanup"
+      - "No hay referencias colgantes a DOM elements ya removidos"
+    covered_by:
+      - "tests/integration/ads-sgai-lifecycle.spec.ts"
+    gap_status: COVERED

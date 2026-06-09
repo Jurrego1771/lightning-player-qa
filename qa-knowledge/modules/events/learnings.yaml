@@ -1,0 +1,184 @@
+version: "1.0"
+module: events
+last_updated: "2026-06-08"
+
+learnings:
+
+  # ── Hallazgos del código fuente ────────────────────────────────────────────
+
+  - id: EVT-LEARN-001
+    title: "El player usa EventEmitter (Node.js style) en lugar de EventTarget nativo del browser"
+    discovery: "código fuente: src/events/index.js + context.yaml (paths + depends_on: constants)"
+    detail: >
+      El player implementa su sistema de eventos con el patrón EventEmitter de Node.js
+      (on/off/once/emit/removeAllListeners) transpilado para el browser via webpack.
+      NO usa la API nativa de browser EventTarget + addEventListener + CustomEvent.
+      Esto implica que:
+      1. Los eventos NO hacen bubbling ni capturing (son pub/sub plano)
+      2. No hay stopPropagation() ni preventDefault()
+      3. removeAllListeners() es una función específica de EventEmitter, no de EventTarget
+      4. La implementación es un polyfill de Node.js 'events' en el bundle
+    impact_on_tests: >
+      No intentar usar dispatchEvent() ni CustomEvent en tests. Usar exclusivamente
+      player.on(), player.off(), player.once(). No asumir bubbling de eventos.
+      No usar waitForEvent() con patrones de EventTarget.
+
+  - id: EVT-LEARN-002
+    title: "player.on() tiene una capa de validación isValidEvent que filtra silenciosamente"
+    discovery: "código fuente: behavior.json api_contracts, context.yaml negative_cases"
+    detail: >
+      Antes de registrar un listener, el player verifica que el eventName esté
+      en Events.* (de constants.cjs). Si no está, la llamada es un no-op silencioso.
+      Esto significa que:
+      - player.on('ready', fn) funciona → 'ready' está en Events._ready
+      - player.on('playerReady', fn) falla silenciosamente → no existe Events._playerReady
+      - player.on('_ready', fn) falla silenciosamente → _ready es el InternalEvents key, no el value
+      El value del evento es lo que importa, no el key de la constante.
+    impact_on_tests: >
+      Siempre usar el string value del evento (ej: 'ready', 'playing') nunca el
+      key de la constante (ej: '_ready'). Los tests deben verificar que eventos
+      inválidos no lanzan error (EVT-AC-006).
+
+  - id: EVT-LEARN-003
+    title: "InternalEvents.* son completamente distintos de Events.* y NO son públicos"
+    discovery: "código fuente: constants.cjs líneas 173-181"
+    detail: >
+      InternalEvents contiene: _ready, _adsLoaded, _playerLoaded, pluginsReady,
+      controlsReady, _federationLoaded, _isCurrentMediaSession.
+      Estos eventos se usan para coordinación interna entre módulos del player
+      (ej: esperar a que los plugins estén listos antes de iniciar ads).
+      NO están en Events.* y por tanto player.on(InternalEvents._ready, fn) es un no-op.
+      Son de acceso directo solo vía internalEmitter que es privado.
+    impact_on_tests: >
+      Los tests NUNCA deben intentar escuchar InternalEvents. Si un test necesita
+      verificar que el player está "listo internamente", usar player.on('ready')
+      (Events._ready) que es el equivalente público.
+
+  - id: EVT-LEARN-004
+    title: "postMessage usa uniqueId para identificar la instancia y filtrar bucles"
+    discovery: "código fuente: behavior.json api_contracts.internalEmitter.emit side_effects"
+    detail: >
+      Cuando internalEmitter emite un evento, el player también llama:
+        window.postMessage({ event: 'msp:' + eventName, id: uniqueId }, location.origin)
+      El uniqueId es un identificador único por instancia del player (generado en init).
+      Cuando el player recibe un mensaje postMessage, verifica que el id NO sea su
+      propio uniqueId (para no procesar sus propios mensajes y evitar bucle infinito).
+      Los mensajes de otras instancias (diferente id, mismo origin) SÍ son procesados.
+    impact_on_tests: >
+      El test de multi-instancia (multi-instance.spec.ts) cubre este comportamiento.
+      Los tests de iframe (embed.spec.ts) también dependen de este mecanismo.
+      Para tests de postMessage directo, siempre enviar desde el mismo origin.
+
+  - id: EVT-LEARN-005
+    title: "player.off() requiere referencia exacta de función — incompatible con funciones anónimas"
+    discovery: "código fuente: behavior.json api_contracts.player.off + industria: MDN addEventListener docs"
+    detail: >
+      La implementación de off() (removeListener de EventEmitter) usa igualdad de
+      referencia estricta para encontrar el handler a eliminar. Una función anónima
+      creada en el call site de on() nunca puede ser eliminada porque cada evaluación
+      crea una nueva referencia.
+
+      Patrón incorrecto (memory leak):
+        player.on('timeupdate', () => updateUI())  // referencia perdida
+        // No hay forma de llamar player.off() para este listener
+
+      Patrón correcto:
+        const handler = () => updateUI()
+        player.on('timeupdate', handler)
+        // Luego: player.off('timeupdate', handler)
+    impact_on_tests: >
+      Los tests deben siempre usar referencias nombradas para handlers que se van a
+      desregistrar. Los tests de memory leak (EVT-AC-011) deben verificar que
+      después de off() el handler no se invoca.
+
+  - id: EVT-LEARN-006
+    title: "destroy() limpia internalEmitter pero no garantiza cleanup de listeners externos"
+    discovery: "código fuente: behavior.json api_contracts.internalEmitter.reset"
+    detail: >
+      internalEmitter.reset() llama removeAllListeners() que elimina TODOS los handlers
+      del emitter interno. Esto sucede en player.destroy().
+      Sin embargo, si el integrador tiene referencias a la instancia del player después
+      de destroy(), los calls a player.on() post-destroy son undefined behavior.
+      El window listener de postMessage (el que procesa mensajes msp:) también se
+      elimina en reset(), por lo que post-destroy el player no procesa más postMessages.
+    impact_on_tests: >
+      El test de destroy en multi-instance.spec.ts cubre que destroy(player1) no
+      interrumpe player2. Agregar test que verifique que player.on() post-destroy
+      es un no-op seguro.
+
+  # ── Hallazgos de la industria ──────────────────────────────────────────────
+
+  - id: EVT-LEARN-007
+    title: "La industria está migrando de EventEmitter a EventTarget nativo + TypeScript generics"
+    discovery: "investigación web: https://dev.to/43081j/strongly-typed-event-emitters-using-eventtarget-in-typescript-3658"
+    detail: >
+      En 2024-2025, la tendencia en el ecosistema TypeScript es usar EventTarget nativo
+      del browser (que ahora también está disponible en Node.js 14+) con TypeScript
+      generics para type safety. El patrón recomendado es:
+
+        interface PlayerEventMap {
+          'playing': CustomEvent<{ currentTime: number }>;
+          'error': CustomEvent<{ code: string }>;
+        }
+        class Player extends (EventTarget as TypedEventTarget<PlayerEventMap>) {}
+
+      El Lightning Player usa EventEmitter de Node.js (polyfill), que es funcional pero:
+      - No es type-safe para event payloads
+      - No tiene soporte nativo de browser (requiere polyfill en bundle)
+      - No permite verificar en tiempo de compilación los nombres de eventos
+      Este no es un bug ni un deprecated — es una deuda técnica de DX para integradores TypeScript.
+    impact_on_tests: >
+      Los tests actuales usan strings para nombres de eventos. Una futura mejora
+      sería importar Events.* de constants.cjs y usarlos como type-safe references.
+      Documentar en business-rules que los strings de eventos son los contratos
+      de integración, no las constantes.
+
+  - id: EVT-LEARN-008
+    title: "Memory leak por listeners de video player es el bug #1 más reportado en producción (industria)"
+    discovery: "investigación web: https://github.com/vimeo/player.js/issues/500, https://github.com/CookPete/react-player/issues/616"
+    detail: >
+      Vimeo player.js issue #500: memory leak por onMessage arrow function en window
+      que nunca se elimina. React-player issue #616: removeEventListener con callbacks
+      diferentes a los pasados a addEventListener. Ambos documentan el mismo patrón:
+      players que usan arrow functions o bind() para handlers no pueden ser
+      desregistrados correctamente.
+
+      El patrón de "retornar unsubscribe" (como lo hace RxJS, Vue 3 watch, y Svelte stores)
+      es la solución moderna que elimina el problema de raíz:
+        const unsub = player.on('playing', fn)  // retorna función
+        unsub()  // elimina el listener
+
+      El Lightning Player actualmente NO implementa este patrón — player.on() retorna void.
+    impact_on_tests: >
+      Crear test que verifique que múltiples mounts/unmounts de un componente que usa
+      player.on() no acumulan listeners. Este es GAP-EVT-008 en tests.yaml.
+
+  - id: EVT-LEARN-009
+    title: "Event bus con canal-topic hierarchy es un patrón más escalable para players complejos"
+    discovery: "investigación web: https://dev.to/ivandotv/event-bus-pattern-via-native-eventemmiter-class-72a"
+    detail: >
+      El patrón de event bus con jerarquía canal/topic (ej: 'ads/started', 'playback/playing')
+      es más escalable que el flat namespace del Lightning Player. Permite suscripción a
+      categorías completas (ej: todos los eventos de ads) sin enumerar cada uno.
+      El Lightning Player usa namespace flat con prefijo explícito (adsStarted, adsComplete)
+      que funciona bien pero requiere que el integrador conozca cada nombre de evento.
+      No es un deprecated — es una diferencia de diseño con trade-offs claros.
+    impact_on_tests: >
+      Para tests que verifican grupos de eventos (ej: todos los beacons de ads),
+      construir helpers que acepten arrays de event names en lugar de verificar
+      uno por uno. Ver tests/integration/ad-beacons.spec.ts como referencia.
+
+  - id: EVT-LEARN-010
+    title: "El patrón once() con {once: true} nativo de EventTarget previene reentrada explícitamente"
+    discovery: "investigación web: MDN addEventListener options.once"
+    detail: >
+      La API nativa addEventListener({ once: true }) garantiza que el listener es
+      eliminado ANTES de ser invocado, previniendo reentrada. El EventEmitter de
+      Node.js tiene el mismo comportamiento documentado en sus specs.
+      Para el Lightning Player, player.once() delega a EventEmitter.once() que
+      implementa el mismo patrón seguro. Sin embargo, esto no está explícitamente
+      documentado en el API del player, lo que puede llevar a integradores a
+      implementar su propio wrapper de once() innecesariamente.
+    impact_on_tests: >
+      EVT-AC-002 verifica el comportamiento de once(). El test debe incluir un
+      caso de reentrada para confirmar que once() no se ejecuta dos veces.

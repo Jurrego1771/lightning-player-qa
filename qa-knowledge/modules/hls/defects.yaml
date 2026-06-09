@@ -1,0 +1,64 @@
+version: "1.0"
+module: hls
+last_updated: "2026-06-08"
+
+defects:
+  - id: HLS-DEF-001
+    status: known_limitation
+    severity: medium
+    title: "liveBackBufferLength deprecated en hls.js v1.x"
+    description: "El handler configura hls.js con liveBackBufferLength=0, que está marcado como deprecated en hls.js v1.x. El reemplazo recomendado es backBufferLength. En v1.6.13 aún funciona pero podría ser eliminado en versiones futuras."
+    workaround: "Funcional en v1.6.13. Migrar a backBufferLength antes de actualizar a versiones mayores de hls.js."
+    source_comment: "src/player/handler/hls/handler.js línea ~166: liveBackBufferLength: 0"
+    industry_known: true
+    regression_risk: low
+
+  - id: HLS-DEF-002
+    status: known_limitation
+    severity: medium
+    title: "LL-HLS stuttering en v1.6.6+ por cambio frecuente de part loading"
+    description: "En streams LL-HLS (Apple Low-Latency HLS) con hls.js v1.6.6+, el player puede sufrir stuttering por cambios frecuentes entre LL-Part loading ON/OFF cada 1-2 segundos. Esto causa reinicios del transmuxer session y pérdida ocasional de A/V sync. El issue #7431 en hls.js GitHub fue reportado en v1.6.6 y aplica a v1.6.13."
+    workaround: "No hay workaround documentado en el código. Monitorear releases de hls.js para el fix. Como mitigación operacional: evitar streams LL-HLS en producción hasta que el issue esté resuelto en hls.js."
+    source_comment: "Externo: https://github.com/video-dev/hls.js/issues/7431"
+    industry_known: true
+    regression_risk: medium
+
+  - id: HLS-DEF-003
+    status: known_limitation
+    severity: medium
+    title: "BUFFER_STALLED_ERROR múltiple puede causar freeze sin error visible al usuario"
+    description: "Si BUFFER_STALLED_ERROR se dispara múltiples veces en ráfaga (issue #7433 en hls.js GitHub), el player puede quedar en estado de freeze donde currentTime no avanza y no hay error fatal reportado. El usuario ve el video congelado sin mensaje de error. nudgeMaxRetry=10 ayuda pero no garantiza recovery en todos los casos."
+    workaround: "nudgeMaxRetry=10 y nudgeOffset=0.016 configurados para recovery automático. Sin workaround garantizado para casos extremos."
+    source_comment: "src/player/handler/hls/handler.js: nudgeMaxRetry: 10, nudgeOffset: 0.016"
+    industry_known: true
+    regression_risk: medium
+
+  - id: HLS-DEF-004
+    status: known_limitation
+    severity: low
+    title: "ABR tests sin CDP throttling nunca producen level switch"
+    description: "En tests de integración con red local (localhost:9001), el bandwidth estimado por hls.js siempre es alto (>100 Mbps). El ABR nunca cambiará de nivel automáticamente sin throttling de red via CDP. Tests que no usan CDP pueden verificar la API (player.level, player.levels) pero no pueden verificar el comportamiento ABR real."
+    workaround: "Tests ABR deben usar CDP throttling (createCDPSession + setNetworkThrottle) y correr solo en Chromium. Ver hls-abr.spec.ts para el patrón correcto."
+    source_comment: "tests/integration/hls-abr.spec.ts línea 30-31: setNetworkThrottle con 500 Kbps"
+    industry_known: false
+    regression_risk: low
+
+  - id: HLS-DEF-005
+    status: known_limitation
+    severity: low
+    title: "System73 P2P SDK falla silenciosamente sin telemetría de error"
+    description: "Si el SDK System73 falla (CDN inalcanzable, error en wrapPlayerConfig/wrapPlayer), los errores se capturan con console.error pero no se emite ningún evento ni métrica pública. La plataforma no puede saber si el P2P está activo o no desde la API del player."
+    workaround: "Monitorear logs de System73 en el CDN propio de System73. El player sigue funcionando sin P2P (degradación suave)."
+    source_comment: "src/player/handler/hls/handler.js línea ~238: console.error('[HlsHandler] System73 wrapPlayer error', err)"
+    industry_known: false
+    regression_risk: low
+
+  - id: HLS-DEF-006
+    status: known_limitation
+    severity: low
+    title: "hls-beta.js apunta a la versión estable — el canal beta no está activo"
+    description: "El archivo hls-beta.js tiene comentado el import de hls.js-beta y en su lugar importa hls.js normal. El canal beta está preparado para activar temporalmente versiones canary de hls.js pero requiere acción manual. Si alguien lo usa asumiendo que tiene el beta, se comporta igual que hls.js estable."
+    workaround: "Para activar beta: npm install hls.js-beta@npm:hls.js@<version> y descomentar el import en hls-beta.js. Instrucciones documentadas en el propio archivo."
+    source_comment: "src/player/handler/hls/hls-beta.js líneas 1-11: comentario con instrucciones de activación"
+    industry_known: false
+    regression_risk: low

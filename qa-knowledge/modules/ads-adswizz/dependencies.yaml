@@ -1,0 +1,58 @@
+version: "1.0"
+module: ads-adswizz
+last_updated: "2026-06-08"
+
+internal:
+  - id: platform-config
+    reason: "loadConfig.js es la fuente de toda la config AdsWizz (adswizz_companion, edge_data) y el lugar donde se decora la URL del stream antes de reproducir. Acoplamiento crítico: la URL decorada ES la URL que se reproduce."
+    coupling: high
+    files:
+      - "src/platform/loadConfig.js"
+
+  - id: playback-core
+    reason: "El elemento <audio> (context.element) se pasa al SDK como contentPlayer para sincronizar el companion. AdsWizz asume contenido de audio; no controla pause/resume del contenido (a diferencia de IMA)."
+    coupling: medium
+    files:
+      - "src/ads/adswizz/index.jsx"
+
+  - id: ads-manager
+    reason: "AdsWizz convive con otros ad systems (IMA video, GPT) montados en la misma vista de radio. ads-manager coordina qué sistema aplica; AdsWizz es el camino para audio SSAI + companion."
+    coupling: medium
+    files:
+      - "src/view/radioSA/components/ads/index.js"
+      - "src/view/radioSA/components/layout/index.js"
+      - "src/view/radio/components/index.jsx"
+
+  - id: events
+    reason: "Solo consume el flag internalEmitter.debug para logging de versión del SDK. AdsWizz NO emite eventos de ciclo de vida de aviso al internalEmitter (a diferencia de IMA)."
+    coupling: low
+    files:
+      - "src/ads/adswizz/index.jsx"
+
+  - id: metadata
+    reason: "El gate de activación lee metadata.hasAW, metadata.adswizz_companion y metadata.player._id (playerId)."
+    coupling: medium
+    files:
+      - "src/view/common/components/adswizz.jsx"
+
+external:
+  - id: adswizz-web-sdk
+    package: "AdsWizz JavaScript HTML5 SDK (window.adswizzSDK, cargado vía CDN)"
+    version: "no-pin (CDN), resuelta en runtime; visible vía getVersion()"
+    reason: "Crea la sesión SSAI (decorateURLAndCreateSession), gestiona el companion banner, la Second Metadata Connection (TIMED_POLLING) y el listenerId. Es el corazón de la integración."
+    risk: high
+    note: "CDN por entorno en *.s-mdstrm.com (devel/staging/prod). Sin version pin: una actualización del SDK puede cambiar el contrato (init, setCompanionBannerConfig, MetadataConnection). Carga bloqueante para el companion; si falla, getAdswizzSDK devuelve null silenciosamente. EventSource no soportado en IE/Edge legacy → el código fuerza setUseSetTimeoutForSynchronization(true)."
+
+  - id: adswizz-edge-server
+    package: "AdsWizz AIS edge server (host en edge_data.server)"
+    version: "n/a (servicio)"
+    reason: "Servidor SSAI que inserta los avisos de audio en el stream y expone la Second Metadata Connection. La sesión se crea contra este host."
+    risk: high
+    note: "La AIS debe tener activado el flag set-session-cookie para que funcione la sesión cookieless (Second Metadata Connection). Si el edge server no responde, decorateURLAndCreateSession puede colgar la promesa (no hay timeout explícito en el código)."
+
+  - id: adswizz-ad-server-afr
+    package: "AdsWizz AFR ad delivery endpoint (adswizz_companion.afrUrl)"
+    version: "n/a (servicio)"
+    reason: "baseURL del companion banner; resuelve qué creativo display mostrar para la zona (zoneId/fallbackZoneId)."
+    risk: medium
+    note: "Si afrUrl es inválida o la zona no resuelve, el banner no aparece pero el audio no se ve afectado. DAAST (formato histórico de audio) está deprecado y reemplazado por VAST 4.1 con adType=audio."

@@ -1,0 +1,127 @@
+version: "1.0"
+module: next-episode
+last_updated: "2026-06-08"
+
+learnings:
+  - id: NEPI-LEARN-001
+    title: "El threshold de incoming (5s) es ADICIONAL al nextEpisodeTime, no el mismo"
+    discovery: "código fuente — useNextEpisodeTiming.js línea 63: incomingThreshold = nextEpisodeTimeNum + 5"
+    detail: |
+      nextEpisodeIncoming se emite cuando timeRemaining <= (nextEpisodeTime + 5).
+      Si nextEpisodeTime=30, incoming se emite a los 35 segundos restantes, y la UI aparece
+      a los 30 segundos. Si nextEpisodeTime=1 (como en los tests), incoming se emite a 6s
+      y la UI a 1s. Un test que busca incoming con seek a (duration - 1) puede no recibir
+      el evento si el threshold de 6s ya pasó antes de que el seek complete.
+    impact_on_tests: "Al hacer seek para tests, buscar (duration - nextEpisodeTime - 5 - 0.5) para garantizar que incoming se emitirá. Los smoke tests usan duration-0.5 con nextEpisodeTime=1, que funciona porque threshold=6s > 0.5s."
+
+  - id: NEPI-LEARN-002
+    title: "Dos rutas de auto-load en video view: timer (shouldShow) y evento ended"
+    discovery: "código fuente — src/view/video/components/nextEpisode/index.jsx (dos useEffect independientes)"
+    detail: |
+      El componente video tiene DOS useEffect que pueden llamar a api.load():
+      1. useEffect([shouldShow]): cuando shouldShow=true, inicia setTimeout(5s) que carga si !userClickedRef
+      2. useEffect([Events._ended]): cuando el video termina, carga si !requiresConfirmation
+      Ambos usan loadNextEpisodeWithEvent. La separación es intencional: el timer maneja
+      el caso "usuario ve la UI y no hace nada", ended maneja el caso "video termina sin que
+      la UI haya aparecido" (e.g., nextEpisodeTime=0) o cuando el timer fue cancelado.
+    impact_on_tests: "Los tests deben verificar AMBAS rutas. El test de smoke cubre la ruta via playNext (evento externo). No existe test para la ruta timer. No existe test para ended sin UI previa."
+
+  - id: NEPI-LEARN-003
+    title: "metadata.nextEpisodeOverride bloquea silenciosamente el next episode"
+    discovery: "código fuente — useNextEpisodeTiming.js línea 16-18: requiresConfirmation"
+    detail: |
+      Si metadata.nextEpisodeOverride tiene cualquier valor truthy (string, boolean, objeto),
+      requiresConfirmation=true y todo el flujo de next episode queda bloqueado:
+      - shouldShow siempre false (la UI no aparece)
+      - handleVideoEnded no llama a api.load()
+      - handleNextEpisode no llama a api.load()
+      - nextEpisodePlayNext SÍ funciona (bypassa requiresConfirmation via handlePlayNext)
+      El único unlock es emitir nextEpisodeConfirmed con un { id } válido.
+    impact_on_tests: "Cubrir el caso nextEpisodeOverride en tests de integración. El test existente cubre updateNextEpisode pero no el escenario donde nextEpisodePlayNext bypassa el override."
+
+  - id: NEPI-LEARN-004
+    title: "La animación del countdown es CSS puro (::after con animation: progress 5s)"
+    discovery: "código fuente — nextEpisode.scss líneas 98-122"
+    detail: |
+      La barra de progreso del countdown NO usa JavaScript para el timing. Es la animación CSS
+      'progress' de 5s que hace width: 0% → 100%. El JS solo hace setTimeout(5000) en paralelo.
+      Esto significa que si el navegador tiene un tab background throttling (Chrome reduce
+      setTimeout a 1Hz en tabs ocultos), el timer JS puede dispararse diferente a la animación.
+      En tests visuales, la animación debe desactivarse con CSS override para screenshots estables.
+    impact_on_tests: "Los tests visuales ya usan disableAnimations(). No hacer asserts de timing basados en la duración de la animación CSS — es independiente del timer JS."
+
+  - id: NEPI-LEARN-005
+    title: "useTranslation ready guard puede silenciar la UI en entornos de test sin bundle i18n"
+    discovery: "código fuente — index.jsx línea 267: if (!ready) return null"
+    detail: |
+      El componente retorna null hasta que el hook useTranslation reporte ready=true.
+      En el harness de QA, si el bundle de traducciones no carga (mock o CDN lento),
+      la UI nunca aparece aunque shouldShow=true. Los tests de visual regression detectarían
+      esto como "elemento no visible" pero sin error explícito. Los tests de integración
+      headless (view='none') no tienen este problema.
+    impact_on_tests: "Los tests de video view deben verificar que i18n está listo antes de esperar .next-episode. Considerar mockear el hook useTranslation en tests de integración de video view."
+
+  - id: NEPI-LEARN-006
+    title: "Netflix probó 5, 10 y 15 segundos de countdown — 5s es el estándar actual"
+    discovery: "investigación web: Hacker News thread (ex-Netflix dev, 2019)"
+    detail: |
+      Netflix comenzó con 10 segundos de countdown pero evolucionó a 5s cuando los usuarios
+      "se condicionaron a esperar el autoplay". El estudio de 2025 (arxiv.org/abs/2412.16040)
+      identifica los 5 segundos como "apenas suficiente para que el usuario reconsidere".
+      Lightning Player tiene hardcoded 5s (setTimeout(5000) en index.jsx línea 242).
+      Esto está alineado con el estándar de la industria, pero es un magic number sin constante
+      nombrada en el código.
+    impact_on_tests: "El valor 5000ms es crítico para tests. Si se modifica (e.g., a 3000ms para pruebas A/B), los tests de timing fallarían. Documentar como magic number a vigilar."
+
+  - id: NEPI-LEARN-007
+    title: "Autoplay del siguiente episodio puede bloquearse en iOS Safari (Low Power Mode)"
+    discovery: "investigación web: Bitmovin (autoplay-policies-safari-14-chrome-64)"
+    detail: |
+      Cuando iOS 17+ tiene Low Power Mode activado, Safari bloquea TODO autoplay incluyendo
+      muted. api.load() con autoplay puede resultar en un estado paused/waiting sin error
+      explícito. El player muestra el siguiente episodio cargado pero detenido, requiriendo
+      tap del usuario. Esto NO es un bug del player sino una restricción del OS/browser.
+    impact_on_tests: "Tests en dispositivos iOS físicos con Low Power Mode activo tienen comportamiento esperado diferente a CI. Agregar skip o allowance para iOS real devices."
+
+  - id: NEPI-LEARN-008
+    title: "WCAG 1.4.2 y 2.2.1: el countdown carece de accesibilidad completa"
+    discovery: "investigación web: W3C WCAG 2.0 Techniques F93, BOIA accessibility blog"
+    detail: |
+      Según WCAG 2.1 AA (SC 1.4.2 Audio Control y SC 2.2.1 Timing Adjustable):
+      1. El usuario debe poder pausar/detener media autoplaying
+      2. Los timers deben ser ajustables o el usuario debe poder pausarlos
+      El botón 'Watch Credits' sirve como control de pausa del autoload, cumpliendo (1).
+      Sin embargo, el countdown de 5s no es adjustable ni hay aria-live announcement,
+      incumpliendo (2) parcialmente. El CSS outline:none en :focus viola WCAG 2.4.7.
+    impact_on_tests: "Tests de accesibilidad con axe-core deben cubrir: keyboard nav completa, foco visible, y ausencia de aria-live. Los violations son conocidos y documentados como NEPI-DEF-003."
+
+  - id: NEPI-LEARN-009
+    title: "El override de controles (play/pause/seek) puede tener efectos secundarios en analytics"
+    discovery: "código fuente — useNextEpisodeControls.js + análisis de interacciones con youbora"
+    detail: |
+      Cuando la UI de next episode está visible, controls.addOverride retorna false para
+      play() y pause(). Si el sistema de analytics (Youbora/NPAW) intenta pausar internamente
+      para sincronización de beacons, puede recibir false y comportarse incorrectamente.
+      No hay evidencia de bug actual, pero es una interacción de riesgo entre módulos.
+    impact_on_tests: "Verificar que los beacons de analytics se emiten correctamente durante y después del next episode transition. Fuera del scope actual de tests."
+
+  - id: NEPI-LEARN-010
+    title: "Apple recomienda reusar un solo <video> element para secuencias (no crear nuevos)"
+    discovery: "investigación web: Bitmovin, Apple Developer Forums"
+    detail: |
+      Apple recomienda 'use one media element and change its source' para playlists y
+      contenido consecutivo en iOS Safari. El patrón del player (api.load() que hace
+      sourcechange y reutiliza el elemento de video existente) está alineado con esta
+      recomendación, lo cual es favorable para la compatibilidad con iOS.
+    impact_on_tests: "Verificar en tests de iOS/WebKit que el mismo elemento <video> se reutiliza (no se destruye y recrea) durante la transición de next episode."
+
+  - id: NEPI-LEARN-011
+    title: "La clase CSS del botón usa $baseColor de la theming variable del player"
+    discovery: "código fuente — nextEpisode.scss línea 2: $baseColor: '#color1#'"
+    detail: |
+      El placeholder '#color1#' es una variable de theming del player que se reemplaza en
+      build time con el color primario del UI config. En entornos de test sin theming
+      configurado, $baseColor queda como '#color1#' (string literal inválido para CSS),
+      lo que puede hacer que los botones focused y la barra de progreso del countdown
+      sean invisibles o tengan color incorrecto en visual regression tests.
+    impact_on_tests: "Los tests visuales deben configurar un player con UI config que tenga color1 definido. Las snapshots baseline existentes asumen un color específico — verificar en CI que el color es consistente."

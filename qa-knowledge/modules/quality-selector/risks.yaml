@@ -1,0 +1,122 @@
+version: "1.0"
+module: quality-selector
+last_updated: "2026-06-08"
+
+risks:
+  - id: QUAL-RISK-001
+    severity: high
+    title: "ABR agresivo en red inestable provoca oscilación de calidad (quality flickering)"
+    description: >
+      En redes con bandwidth muy variable, el algoritmo de ABR puede conmutar de nivel
+      repetidamente (subir/bajar) en periodos cortos, degradando la QoE percibida. hls.js
+      usa estimación dual-exponencial de throughput; dash.js usa DYNAMIC/BOLA. Ambos pueden
+      oscilar si la red fluctúa cerca de un umbral de bitrate.
+    affected_files:
+      - "src/player/handler/hls/handler.js"
+      - "src/player/handler/dash/handler.js"
+    trigger: "Bandwidth real oscilando alrededor del bitrate de un nivel; red móvil/congestionada."
+    mitigation: >
+      El player delega en los algoritmos de ABR de hls.js/dash.js (incluyen histéresis interna).
+      capLevelToPlayerSize=true en HLS limita el nivel máximo al tamaño del reproductor, reduciendo
+      switches inútiles a niveles más altos que el viewport.
+    industry_note: >
+      La industria considera el flickering un anti-patrón de QoE; players como Shaka/dash.js
+      añaden buffer-based stickiness. Un selector manual existe precisamente para que el usuario
+      pueda fijar la calidad cuando el flickering molesta.
+    test_priority: SHOULD
+
+  - id: QUAL-RISK-002
+    severity: high
+    title: "Stall/rebuffer al fijar manualmente un nivel de mayor bitrate sin bandwidth"
+    description: >
+      Si el usuario fija manualmente un nivel de alta calidad cuyo bitrate excede el bandwidth
+      disponible, ABR queda deshabilitado y el player no puede degradar para compensar → stall
+      indefinido. En HLS el set usa nextLevel/loadLevel (no destructivo) por lo que el switch
+      ocurre tras el buffer actual; en DASH el switch se aplica vía setRepresentationForTypeByIndex.
+    affected_files:
+      - "src/player/handler/hls/handler.js"
+      - "src/player/handler/dash/handler.js"
+    trigger: "player.level = N (nivel alto) con bandwidth < bitrate[N]."
+    mitigation: >
+      Ninguna automática: con ABR deshabilitado el player respeta la elección del usuario.
+      La UI debería ofrecer volver a Auto (level=-1). El evento buffering/stalled permite al
+      integrador detectar el problema.
+    industry_note: >
+      Patrón conocido: la selección manual de calidad anula el ABR. La práctica recomendada es
+      mostrar advertencia o volver a Auto si el rebuffer persiste tras un umbral.
+    test_priority: SHOULD
+
+  - id: QUAL-RISK-003
+    severity: medium
+    title: "bandwidth/bitrate no disponibles antes del primer segmento (null)"
+    description: >
+      player.bandwidth devuelve null en HLS hasta que hls.bandwidthEstimate converge (varios
+      segmentos) y en DASH hasta que getAverageThroughput retorna un valor. player.bitrate es
+      null en DASH si level === -1 o el índice está fuera de rango. Un consumidor que asume
+      número puede romperse (NaN, división, reportes de analytics inválidos).
+    affected_files:
+      - "src/player/handler/hls/handler.js"
+      - "src/player/handler/dash/handler.js"
+    trigger: "Lectura de bandwidth/bitrate inmediatamente tras ready, antes de descargar segmentos."
+    mitigation: "Los getters retornan null explícito (no NaN ni undefined) cuando no hay dato; el consumidor debe manejar null."
+    industry_note: "No existe evento público de 'bandwidth listo'; testear requiere esperar reproducción real (varios segundos)."
+    test_priority: MUST
+
+  - id: QUAL-RISK-004
+    severity: medium
+    title: "Comportamiento divergente HLS vs DASH para índices inválidos"
+    description: >
+      HLS lanza Error('Invalid level') ante un índice >= levels.length; DASH ignora
+      silenciosamente (no-op). Un integrador que escribe código común para ambos puede recibir
+      una excepción no esperada en HLS o un fallo silencioso en DASH.
+    affected_files:
+      - "src/player/handler/hls/handler.js"
+      - "src/player/handler/dash/handler.js"
+    trigger: "player.level = N con N >= player.levels.length (no -1)."
+    mitigation: "Validar el índice contra levels.length antes de asignar. No hay normalización unificada en el player."
+    industry_note: "La API unificada del player no normaliza este caso entre protocolos — es un gap de consistencia."
+    test_priority: MUST
+
+  - id: QUAL-RISK-005
+    severity: medium
+    title: "Mapeo representación↔nivel en DASH depende de (height,width,bitrate)"
+    description: >
+      El DashHandler identifica el nivel actual buscando en levels una representación con igual
+      height, width y bitrate. Si dos representaciones comparten esos tres valores (p.ej. dos
+      tracks de audio o video con mismo bitrate) o si dash.js reporta valores ligeramente
+      distintos, get('level') puede devolver -1 (no encontrado) o un índice incorrecto.
+    affected_files:
+      - "src/player/handler/dash/handler.js"
+    trigger: "MPD con representaciones de bitrate/resolución duplicados o sin height (audio-only)."
+    mitigation: "El código hace fallback a -1 cuando no encuentra coincidencia; el label usa bitrate si falta height."
+    industry_note: "dash.js v5 recomienda usar el id de la representación (setRepresentationForTypeById), no índices ni matching por atributos."
+    test_priority: SHOULD
+
+  - id: QUAL-RISK-006
+    severity: medium
+    title: "ABR no testeable de forma determinista sin throttling de red controlado"
+    description: >
+      Validar que ABR conmuta de nivel requiere degradar/restaurar el bandwidth de forma
+      controlada. Sin CDP network throttling los tests son no deterministas (dependen del CDN
+      y de la red de CI) y propensos a flakiness o falsos negativos.
+    affected_files:
+      - "tests/integration/hls-abr.spec.ts"
+      - "tests/integration/dash-abr.spec.ts"
+      - "helpers/qoe-metrics.ts"
+    trigger: "Cualquier test de ABR (degradación/recovery) sin simular condiciones de red."
+    mitigation: "Usar createCDPSession + setNetworkThrottle (solo Chromium). Streams locales (localhost:9001) para determinismo."
+    industry_note: "Es estándar en QA de streaming usar CDP/proxy para simular bandwidth; testear ABR contra CDN real es un anti-patrón."
+    test_priority: MUST
+
+  - id: QUAL-RISK-007
+    severity: low
+    title: "get('level') interceptado por el ad manager durante ads lineales"
+    description: >
+      controls.get('level') consulta primero al ad manager si hay ads. Durante un ad linear,
+      el nivel reportado puede ser el del ad (o no significativo) y no el del contenido principal.
+    affected_files:
+      - "src/controls/index.js"
+    trigger: "Lectura de player.level mientras isPlayingAd() === true."
+    mitigation: "El ad manager retorna null para props que no maneja, cayendo al handler real; pero el comportamiento durante ads no está garantizado."
+    industry_note: "QoE/analytics debe segmentar métricas de calidad entre ad y contenido."
+    test_priority: COULD

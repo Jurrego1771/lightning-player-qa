@@ -53,7 +53,7 @@ test.describe('Player API — property contracts', { tag: ['@contract', '@proper
   test.fixme('loop: setLoop(true) no se refleja en getLoop()', async ({ isolatedPlayer: player }) => {
     // fast-check encontró: counterexample=[true]. setLoop(false) funciona, setLoop(true) no.
     // El player.loop parece ser getter-only (no setter) en v1.0.75.
-    // Confirmar con /sync-knowledge si loop es config-only (no runtime-settable).
+    // Confirmar con qa-knowledge-writer si loop es config-only (no runtime-settable).
     await player.goto({ type: 'media', id: MockContentIds.vod, autoplay: false })
     await player.waitForEvent('ready', 20_000)
 

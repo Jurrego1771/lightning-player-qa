@@ -1,0 +1,160 @@
+version: "1.0"
+module: platform-config
+last_updated: "2026-06-08"
+
+user_stories:
+  - id: US-PLAT-001
+    persona: Viewer
+    narrative:
+      as: "espectador que abre una página con un embed del player"
+      want: "que el contenido cargue automáticamente con la configuración correcta (calidad, idioma, ads, DRM)"
+      so_that: "puedo reproducir el video sin configurar nada manualmente"
+    business_value: HIGH
+    risk_area:
+      - "platform-api-availability"
+      - "config-resolution"
+    related_features:
+      - "playback-core"
+      - "hls"
+      - "dash"
+    acceptance:
+      - "PLAT-AC-001"
+      - "PLAT-AC-002"
+    notes: "Flujo feliz. Si la plataforma cae, ningún player inicializa (PLAT-RISK-001)."
+
+  - id: US-PLAT-002
+    persona: Integrator
+    narrative:
+      as: "integrador que embebe el player con data-type y data-id"
+      want: "recibir un evento 'error' claro y fatal cuando la config no se puede resolver"
+      so_that: "puedo mostrar mi propia UI de error en vez de un player colgado"
+    business_value: HIGH
+    risk_area:
+      - "error-handling"
+      - "config-resolution"
+    related_features:
+      - "events"
+      - "api-bootstrap"
+    acceptance:
+      - "PLAT-AC-003"
+      - "PLAT-AC-004"
+      - "PLAT-AC-005"
+    notes: "Cubre type inválido, 403/404 y JSON malformado. Relacionado con PLAT-DEF-001/002 (sin timeout, error críptico)."
+
+  - id: US-PLAT-003
+    persona: Viewer
+    narrative:
+      as: "espectador en una región o con un token restringido"
+      want: "ver un mensaje claro de por qué el contenido no está disponible"
+      so_that: "entiendo que es una restricción de acceso y no un fallo del player"
+    business_value: MEDIUM
+    risk_area:
+      - "access-restriction"
+      - "geo-blocking"
+    related_features:
+      - "events"
+    acceptance:
+      - "PLAT-AC-004"
+    notes: "El 403 preserva data='ACCESS_DENIED' y metadata.title/description (BR-PLAT-IND-004)."
+
+  - id: US-PLAT-004
+    persona: Integrator
+    narrative:
+      as: "integrador de contenido protegido con DRM"
+      want: "que la config de DRM del backend se detecte y propague automáticamente"
+      so_that: "el contenido protegido reproduce con el license server correcto sin que yo configure nada extra"
+    business_value: HIGH
+    risk_area:
+      - "drm-detection"
+      - "format-selection"
+    related_features:
+      - "drm"
+      - "hls"
+      - "dash"
+    acceptance:
+      - "PLAT-AC-006"
+    notes: "src se pone null, drm._candidateUrls construidas, hlsVariant forzado a normal (PLAT-LEARN-005)."
+
+  - id: US-PLAT-005
+    persona: Operator
+    narrative:
+      as: "operador de monetización que configura ads en la plataforma"
+      want: "que las reglas de ads (VMAP, Google DAI, MediaTailor) configuradas en backend lleguen al player"
+      so_that: "los ads se sirven sin reconfigurar el embed por cada contenido"
+    business_value: HIGH
+    risk_area:
+      - "ads-normalization"
+      - "ssai"
+    related_features:
+      - "ads-manager"
+      - "ads-dai"
+      - "subtitles"
+    acceptance:
+      - "PLAT-AC-007"
+      - "PLAT-AC-008"
+      - "PLAT-AC-009"
+    notes: "adsMap→ads.map; googleDAI precede a mediaTailorDAI y elimina subtítulos (BR-PLAT-008)."
+
+  - id: US-PLAT-006
+    persona: Integrator
+    narrative:
+      as: "integrador que fuerza un formato con data-format=dash"
+      want: "un error explícito si el formato solicitado no está disponible para ese contenido"
+      so_that: "detecto el problema de packaging en vez de un fallo silencioso de reproducción"
+    business_value: MEDIUM
+    risk_area:
+      - "format-negotiation"
+    related_features:
+      - "dash"
+      - "hls"
+    acceptance:
+      - "PLAT-AC-010"
+    notes: "FORMAT_NOT_AVAILABLE cuando se pide dash sin mpd o hls sin hls en video (PLAT-RISK-007)."
+
+  - id: US-PLAT-007
+    persona: Viewer
+    narrative:
+      as: "espectador que vuelve a un contenido que dejó a medias"
+      want: "que la reproducción retome desde donde la dejé"
+      so_that: "no tengo que buscar manualmente el punto donde quedé"
+    business_value: MEDIUM
+    risk_area:
+      - "resume-position"
+      - "local-storage"
+    related_features:
+      - "playback-core"
+    acceptance:
+      - "PLAT-AC-014"
+    notes: "Resume desde localStorage con TTL 1h (resumePlaying.js); startPos explícito tiene precedencia."
+
+  - id: US-PLAT-008
+    persona: Viewer
+    narrative:
+      as: "espectador de un live stream con DVR de audio"
+      want: "poder retroceder en la ventana DVR y escuchar desde el punto seleccionado"
+      so_that: "no me pierdo contenido que ya se transmitió en vivo"
+    business_value: MEDIUM
+    risk_area:
+      - "dvr-manifest-rewrite"
+    related_features:
+      - "playback-core"
+      - "hls"
+    acceptance:
+      - "PLAT-AC-013"
+    notes: "Reescritura literal de 'live.m3u8' → 'playlist_dvr_range-...' (frágil, PLAT-DEF-004)."
+
+  - id: US-PLAT-009
+    persona: Integrator
+    narrative:
+      as: "integrador que sirve el embed desde un dominio whitelisteado"
+      want: "que el fetch del config con credenciales funcione bajo el contrato CORS correcto"
+      so_that: "la sesión del usuario (federación, resume, customer) se respeta sin errores de CORS"
+    business_value: MEDIUM
+    risk_area:
+      - "cors"
+      - "credentials"
+    related_features:
+      - "api-bootstrap"
+    acceptance:
+      - "PLAT-AC-012"
+    notes: "withCredentials:true exige origin reflejado, no wildcard (BR-PLAT-IND-001, PLAT-RISK-002)."

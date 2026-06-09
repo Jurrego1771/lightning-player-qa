@@ -1,0 +1,124 @@
+version: "1.0"
+module: plugins
+last_updated: "2026-06-08"
+
+user_stories:
+  - id: US-PLUG-001
+    persona: Viewer
+    narrative:
+      as: "espectador que quiere ver el contenido sin demoras"
+      want: "que el video arranque aunque un servicio de analytics esté caído"
+      so_that: "un fallo de un módulo opcional no me deje con la pantalla negra"
+    business_value: HIGH
+    risk_area:
+      - "error-isolation"
+      - "playback-blocking"
+    related_features:
+      - "playback-core"
+      - "youbora"
+    acceptance:
+      - "PLUG-AC-002"
+      - "PLUG-AC-004"
+    notes: "Cubre el riesgo más crítico: plugin caído bloqueando o no el playback."
+
+  - id: US-PLUG-002
+    persona: Integrator
+    narrative:
+      as: "integrador que configura el player"
+      want: "habilitar/deshabilitar trackers (Youbora, Comscore, GA) por configuración"
+      so_that: "solo se carguen y ejecuten los módulos que mi propiedad necesita"
+    business_value: HIGH
+    risk_area:
+      - "config-activation"
+      - "lazy-loading"
+    related_features:
+      - "youbora"
+      - "platform-config"
+    acceptance:
+      - "PLUG-AC-001"
+      - "PLUG-AC-007"
+    notes: "Activación condicional y carga lazy; valores de flag canónicos."
+
+  - id: US-PLUG-003
+    persona: Operator
+    narrative:
+      as: "operador de la plataforma preocupado por la privacidad"
+      want: "que Do-Not-Track suprima la recolección de métricas"
+      so_that: "cumplamos con expectativas de privacidad del usuario"
+    business_value: MEDIUM
+    risk_area:
+      - "privacy-compliance"
+    related_features:
+      - "youbora"
+      - "analytics"
+    acceptance:
+      - "PLUG-AC-007"
+    notes: "DNT solo afecta StreamMetrics y GoogleTracker — documentar alcance real (DEF-005)."
+
+  - id: US-PLUG-004
+    persona: Viewer
+    narrative:
+      as: "espectador de contenido protegido con DRM"
+      want: "que el player resuelva la licencia/manifest correcto antes de iniciar"
+      so_that: "el contenido protegido reproduzca sin errores de descifrado"
+    business_value: HIGH
+    risk_area:
+      - "drm-src-resolution"
+      - "race-condition"
+    related_features:
+      - "drm"
+      - "playback-core"
+    acceptance:
+      - "PLUG-AC-003"
+      - "PLUG-AC-013"
+    notes: "El gating de readiness permite al plugin DRM resolver el src antes de montar el video."
+
+  - id: US-PLUG-005
+    persona: Operator
+    narrative:
+      as: "operador que monetiza con server-side ad insertion"
+      want: "que solo un sistema de DAI se active a la vez"
+      so_that: "no haya doble inserción de anuncios ni conflicto de manifest"
+    business_value: HIGH
+    risk_area:
+      - "ad-insertion-conflict"
+    related_features:
+      - "ads-dai"
+      - "ads-sgai"
+    acceptance:
+      - "PLUG-AC-008"
+      - "PLUG-AC-012"
+    notes: "Google DAI tiene prioridad sobre MediaTailor; SGAI requiere config completa."
+
+  - id: US-PLUG-006
+    persona: Integrator
+    narrative:
+      as: "integrador con sesiones de reproducción largas y cambios de contenido"
+      want: "que el player no acumule memoria al cambiar de contenido o destruirse"
+      so_that: "una sesión prolongada (next episode, playlist) no degrade el rendimiento"
+    business_value: MEDIUM
+    risk_area:
+      - "memory-leak"
+      - "lifecycle-cleanup"
+    related_features:
+      - "playback-core"
+      - "metadata"
+    acceptance:
+      - "PLUG-AC-011"
+      - "PLUG-AC-010"
+    notes: "Cleanup vía restart(true); set de plugins congelado en carga inicial."
+
+  - id: US-PLUG-007
+    persona: Operator
+    narrative:
+      as: "operador de un feed de reels"
+      want: "que cada instancia de reels gestione sus propios plugins"
+      so_that: "el feed no cargue plugins globales innecesarios ni mezcle estado entre clips"
+    business_value: MEDIUM
+    risk_area:
+      - "reels-isolation"
+    related_features:
+      - "reels"
+    acceptance:
+      - "PLUG-AC-005"
+    notes: "load() retorna {} en reels; aislamiento por instancia."

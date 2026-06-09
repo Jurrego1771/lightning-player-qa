@@ -1,0 +1,113 @@
+version: "1.0"
+module: plugins
+last_updated: "2026-06-08"
+
+learnings:
+  - id: PLUG-LEARN-001
+    title: "Los plugins gatean el arranque del video, no solo añaden features"
+    discovery: "código fuente: src/player/base.js líneas 45-66 (RenderElement) + src/context/index.jsx líneas 30-32"
+    detail: >
+      pluginsReady() no es un mero indicador de analytics: el elemento <video>/handler NO se monta
+      hasta que retorna true, y exige getIsReady()===true en TODOS los componentes registrados. Esto
+      convierte a los plugins en parte del critical path de reproducción. Un plugin lento o colgado
+      impacta directamente el TTFF.
+    impact_on_tests: >
+      Los tests no deben asumir que los plugins son 'fire-and-forget'. Hay que verificar que el video
+      arranca y medir cuánto retrasa cada plugin el primer frame. Test de regresión de TTFF con/sin
+      plugins habilitados.
+
+  - id: PLUG-LEARN-002
+    title: "El gating de readiness se basa en un registro global mutable, no en React state"
+    discovery: "código fuente: src/helper/components/register.js + get.js + context/index.jsx (_setData '_rnd')"
+    detail: >
+      pluginsReady() lee getComponents() (objeto global _components) y consulta getIsReady() en vivo.
+      Para forzar el recálculo, cada plugin hace setData('_rnd', Math.random()) que dispara un re-render
+      vía un nuevo closure de pluginsReady en el state. Es un patrón de 'imperative ready signaling'
+      acoplado a un singleton mutable.
+    impact_on_tests: >
+      No se puede testear el estado de readiness leyendo props/state de React; hay que observar el
+      comportamiento (¿se montó el video?) o instrumentar el evento interno pluginsReady. Cuidado con
+      contaminación entre tests por el singleton _components si no se resetea entre instancias.
+
+  - id: PLUG-LEARN-003
+    title: "isReady() que rechaza NO bloquea, pero isReady() que cuelga SÍ"
+    discovery: "código fuente: src/plugins/baseComponent.js líneas 64-80 (_onMount)"
+    detail: >
+      _onMount hace Promise.resolve(this.isReady()).catch(()=>{}).finally(setReady). El catch atrapa
+      rechazos y el finally siempre marca _isReady=true. PERO si isReady() devuelve una promesa que
+      nunca se asienta (CDN sin timeout), el finally nunca corre y el plugin queda permanentemente
+      'not ready', colgando el playback. No hay timeout en la clase base.
+    impact_on_tests: >
+      Test MUST: plugin que rechaza -> playback arranca. Test MUST distinto: plugin que cuelga (promesa
+      eterna) -> documentar comportamiento real (¿cuelga el player?). Este es el edge case más peligroso.
+
+  - id: PLUG-LEARN-004
+    title: "El set de plugins se congela en la carga inicial — no reacciona a cambios de contenido"
+    discovery: "código fuente: comentario en src/plugins/index.js líneas 18-22"
+    detail: >
+      load(options) decide qué plugins montar UNA sola vez con la config y el contenido inicial. Leer
+      options.metadata.* dentro de load() para decisiones por-contenido es un bug latente: en next
+      episode / playlist el contenido cambia pero el set de plugins no. Los plugins deben suscribirse
+      a cambios internamente.
+    impact_on_tests: >
+      Test de next-episode / playlist: verificar que cambiar de contenido no requiere recargar plugins
+      y que los plugins siguen funcionando con el nuevo contenido (no leen metadata stale).
+
+  - id: PLUG-LEARN-005
+    title: "El plugin DRM puede avanzar el state por fuera del flujo de props del padre"
+    discovery: "código fuente: comentario en src/context/index.jsx líneas 70-81"
+    detail: >
+      El plugin DRM llama setData para actualizar drm (vkeySystem, src resuelto) sin que el padre
+      re-renderice. getDerivedStateFromProps tiene un guard explícito para que ...fromProps no pise el
+      valor avanzado por el plugin cuando pluginAdvancedDrm && propsHasCandidates && !stateHasCandidates.
+    impact_on_tests: >
+      Test de regresión de la race: cargar DRM, verificar que el src resuelto por el plugin persiste y
+      no es revertido por un re-render del padre con los _candidateUrls originales.
+
+  - id: PLUG-LEARN-006
+    title: "Industria: el modelo Lightning es 'plugins declarativos internos', no un SDK de terceros"
+    discovery: "investigación web: videojs.org/guides/plugins, flowplayer docs, cloudinary video player API"
+    detail: >
+      A diferencia de Video.js (videojs.registerPlugin) o Flowplayer (extensiones JS por instancia),
+      Lightning NO expone una API pública para que terceros registren plugins. Los plugins son built-in,
+      listados en index.js y activados por config. Esto reduce la superficie de ataque pero limita la
+      extensibilidad de integradores.
+    impact_on_tests: >
+      No tiene sentido testear un API de registro de plugins de terceros (no existe). Los tests deben
+      cubrir la activación condicional vía config, no un hook de extensión público.
+
+  - id: PLUG-LEARN-007
+    title: "Industria: patrón deprecated videojs.plugin() vs registerPlugin() no aplica aquí, pero el dispose centralizado sí es buena práctica ausente"
+    discovery: "investigación web: docs.videojs.com/plugin, github videojs Deprecation Warning #7770"
+    detail: >
+      Video.js deprecó videojs.plugin() en favor de registerPlugin() y provee dispose() centralizado
+      que limpia listeners y referencias automáticamente al destruir el player. Lightning no tiene un
+      dispose centralizado garantizado: delega cleanup a restart(true) de cada plugin. Esto es un riesgo
+      de memory leak si algún plugin no implementa restart correctamente.
+    impact_on_tests: >
+      Test de memory leak: montar/desmontar player N veces con todos los plugins activos y verificar que
+      no crecen listeners en internalEmitter ni nodos/observers. Validar que restart(true) se invoca al
+      desmontar.
+
+  - id: PLUG-LEARN-008
+    title: "Industria: fallo de chunk lazy debe degradar con gracia, no romper"
+    discovery: "investigación web: freecodecamp 'type-safe lazy secure plugin architecture in React', vidstack docs"
+    detail: >
+      La práctica de plugin architectures en React recomienda ErrorBoundary alrededor de cada plugin
+      lazy y verificación de integridad de chunks (hash/firma). Lightning monta los plugins en un único
+      Suspense con fallback vacío y sin ErrorBoundary explícito por plugin; un fallo de chunk se silencia.
+    impact_on_tests: >
+      Test de resiliencia: simular fallo de descarga de un chunk de plugin (network block) y verificar
+      que el resto del player y los demás plugins siguen funcionando.
+
+  - id: PLUG-LEARN-009
+    title: "DNT desactiva analytics de forma transversal a varios plugins"
+    discovery: "código fuente: src/plugins/index.js líneas 37, 57-59, 69-71"
+    detail: >
+      shouldTrack = !dnt controla StreamMetrics y GoogleTracker. Youbora/Comscore/Konodrac dependen de
+      sus propios flags enabled y NO están gobernados por dnt en index.js. Esto significa que dnt no
+      es un kill-switch universal de analytics — solo afecta StreamMetrics y Google.
+    impact_on_tests: >
+      Test de privacidad: con dnt=true verificar específicamente que StreamMetrics y GoogleTracker no
+      cargan; documentar que Youbora/Comscore pueden seguir activos según sus flags (posible hallazgo
+      de compliance).

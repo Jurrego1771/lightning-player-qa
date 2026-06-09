@@ -1,0 +1,103 @@
+version: "1.0"
+module: ads-dai
+last_updated: "2026-06-08"
+
+existing_tests:
+
+  - spec_file: "tests/integration/ads-dai-vpmute-sync.spec.ts"
+    description: "Suite completa de tests de sincronización de vpmute en Google DAI. Cubre: vpmute=0 en init cuando unmuted, vpmute=1 cuando muted, replaceAdTagParameters con vpmute=1 al mutear, vpmute=0 al desmutear, secuencia mute→unmute→mute, cambio de volumen sin mute no dispara vpmute, listener isolation tras reinit (CCGAP-1-DAI), destroy ordering resilience (CCGAP-3)."
+    ac_coverage:
+      - "DAI-AC-008"
+      - "DAI-AC-009"
+
+  - spec_file: "tests/integration/google-dai-dash.spec.ts"
+    description: "Tests de Google DAI con formato DASH. Verifica que el plugin selecciona streamFormat=dash cuando se pasa assetKeyDash, que adsStarted se emite con ads en el stream, fallback a HLS cuando assetKeyDash no está disponible. Marcado con test.fixme() por requerir credenciales DAI reales."
+    ac_coverage:
+      - "DAI-AC-001"
+      - "DAI-AC-004"
+
+  - spec_file: "tests/integration/google-dai-dash-drm.spec.ts"
+    description: "Tests de Google DAI con DASH + DRM. Cubre: DRMPlugin resuelve antes de dashjs init (deferred manifest), player llega a playing con contenido protegido, coordinación entre googleDAI plugin y DRMPlugin sin error de init. Todos marcados con test.fixme() por requerir credenciales DAI+DRM reales y Widevine CDM."
+    ac_coverage:
+      - "DAI-AC-012"
+
+  - spec_file: "tests/integration/ad-beacons-mediatailordai.spec.ts"
+    description: "Tests de MediaTailor DAI. Cubre: session init con mock SSAI server, fallback cuando la API de sesión falla, beacon de impresión al detectar un avail, evento adsStarted al detectar ad, sesión SSAI real (skippeado sin env var)."
+    ac_coverage:
+      - "DAI-AC-013"
+      - "DAI-AC-014"
+      - "DAI-AC-015"
+
+coverage_gaps:
+
+  - id: GAP-DAI-001
+    priority: MUST
+    ac_ref: "DAI-AC-001"
+    title: "Stream request HLS exitoso — el player inicia reproducción con stream DAI"
+    suggested_spec: "tests/integration/google-dai-hls.spec.ts"
+    notes: "No existe un test de smoke del flujo HLS básico de Google DAI. Los tests actuales (google-dai-dash.spec.ts) cubren DASH pero no HLS. Necesita mock del SDK DAI retornando una URL HLS válida y verificar que el player llega a 'playing'."
+    industry_note: "HLS es el formato más común en producción para DAI live. Crítico tener cobertura base."
+
+  - id: GAP-DAI-002
+    priority: MUST
+    ac_ref: "DAI-AC-002"
+    title: "Fallback al backup stream cuando el SDK DAI falla en carga"
+    suggested_spec: "tests/integration/google-dai-hls.spec.ts"
+    notes: "Existe coverage parcial en google-dai-dash.spec.ts (mock SDK falla), pero no hay un test explícito que verifique que setData({ src: backup }) se llama con la URL correcta cuando el SDK DAI no carga. El test debe interceptar la CDN del SDK y verificar el fallback."
+    industry_note: "El fallback es la defensa más crítica contra outages del SDK DAI."
+
+  - id: GAP-DAI-003
+    priority: MUST
+    ac_ref: "DAI-AC-005"
+    title: "Beacons de cuartiles de Google DAI (firstQuartile, midpoint, thirdQuartile, complete)"
+    suggested_spec: "tests/integration/google-dai-beacons.spec.ts"
+    notes: "No existen tests de beacons para Google DAI (a diferencia de MediaTailor que sí los tiene). Requiere mockear el SDK DAI para simular los eventos FIRST_QUARTILE, MIDPOINT, THIRD_QUARTILE, COMPLETE y verificar que internalEmitter los propaga."
+    industry_note: "Los beacons de cuartiles son requisito de medición MRC para DAI accreditado."
+
+  - id: GAP-DAI-004
+    priority: MUST
+    ac_ref: "DAI-AC-006"
+    title: "controls.addOverride y removeOverride se llaman correctamente en ad break"
+    suggested_spec: "tests/integration/google-dai-ad-break.spec.ts"
+    notes: "No hay tests que verifiquen que los controles del player se deshabilitan durante un ad break DAI y se re-habilitan al terminar. Esto es crítico para la UX — si removeOverride no se llama, el player queda con controles bloqueados."
+    industry_note: "Un ad break DAI que deja los controles bloqueados es un defecto de alta prioridad de UX."
+
+  - id: GAP-DAI-005
+    priority: MUST
+    ac_ref: "DAI-AC-007"
+    title: "adInfo contiene todos los campos requeridos en adsStarted"
+    suggested_spec: "tests/integration/google-dai-beacons.spec.ts"
+    notes: "No hay tests que verifiquen el shape completo de adInfo (duration, id, podIndex, isLinear, skipOffset, totalAds). Necesario para garantizar que los analytics (Youbora) que consumen adInfo reciben datos correctos."
+    industry_note: "adInfo es el contrato de datos entre el módulo DAI y analytics/youbora."
+
+  - id: GAP-DAI-006
+    priority: SHOULD
+    ac_ref: "DAI-AC-010"
+    title: "Seek dentro de ad break VOD redirige al inicio del break"
+    suggested_spec: "tests/integration/google-dai-vod-seek.spec.ts"
+    notes: "El comportamiento de #handleSeeked no está testeado. Requiere un mock del SDK DAI con cuepoints controlados. La dificultad es que el cuepoint redirect es interno — observable via currentTime del player."
+    industry_note: "Comportamiento requerido por Google DAI para VOD — los breaks deben reproducirse completos."
+
+  - id: GAP-DAI-007
+    priority: SHOULD
+    ac_ref: "DAI-AC-005"
+    title: "Subtítulos se mantienen después de cargar stream DAI"
+    suggested_spec: "tests/integration/google-dai-subtitles.spec.ts"
+    notes: "Cubre el defecto DAI-DEF-001. Verifica que la pista de subtítulos activa antes del load del stream DAI se mantiene (o al menos se detecta la regresión cuando no se mantiene). Actualmente el defecto hace que los subtítulos se pierdan."
+    industry_note: "Crítico para accesibilidad. La pérdida de subtítulos durante DAI es un defecto de accesibilidad AA."
+
+  - id: GAP-DAI-008
+    priority: SHOULD
+    ac_ref: "DAI-AC-011"
+    title: "Live DAI usa proxy CDN por defecto y skipCdn usa URL directa"
+    suggested_spec: "tests/integration/google-dai-hls.spec.ts"
+    notes: "Verificar que para live sin skipCdn, el src resultante contiene adInsertionGoogleStreamId como query param (no la URL DAI directa). Y que con skipCdn=true, el src es la URL DAI directa."
+    industry_note: "Diferencia operacional importante para el CDN de Mediastream."
+
+  - id: GAP-DAI-009
+    priority: COULD
+    ac_ref: "DAI-AC-003"
+    title: "SDK DAI no disponible (CDN bloqueada) activa fallback sin bloquear el player"
+    suggested_spec: "tests/integration/google-dai-hls.spec.ts"
+    notes: "Más difícil de testear — requiere bloquear imasdk.googleapis.com completamente y verificar que el player no queda bloqueado esperando. El timeout de importExternal debe eventualmente disparar el error."
+    industry_note: "Escenario común con ad blockers agresivos."

@@ -6,38 +6,33 @@ type: project
 
 # Decisiones Técnicas — Lightning Player QA
 
-## 2026-04-08 — DASH no se testea con ABR (no hay dash.js en el player)
+## 2026-06-08 — DASH usa dash.js 5.1.1 (decisión anterior era incorrecta)
 
-**Decisión:** Los tests de ABR (quality switching, bandwidth, levels) aplican solo a HLS.
-Para DASH, solo testear que el contenido inicia y reproduce — no ABR.
+**Decisión:** DASH SÍ usa dash.js 5.1.1 (`import { MediaPlayer } from 'dashjs'`). ABR funciona para DASH igual que para HLS. Hay tests existentes en `tests/integration/dash-abr.spec.ts`.
 
-**Why:** El player no tiene dash.js. DASH usa playback HTML5 nativo del browser.
-Las propiedades `level`, `levels`, `bandwidth`, `bitrate`, `nextLevel` no funcionan para DASH.
-Verificado desde el código fuente el 2026-04-08.
+**Why:** Verificado desde `src/player/handler/dash/handler.js` el 2026-06-08. La decisión anterior del 2026-04-08 fue incorrecta — el DashHandler instancia `dashjs.MediaPlayer().create()` explícitamente.
 
-**How to apply:** Antes de cualquier test que use propiedades HLS-only, verificar
-`player.sourceType === 'hls'`. Los streams DASH en `Streams.dash.*` solo se usan
-para tests básicos de canplay/playing.
+**How to apply:** Tests de ABR aplican a DASH con la misma lógica que HLS. Las propiedades `level`, `levels`, `bandwidth` funcionan para DASH via dash.js. Remover cualquier guard `player.sourceType === 'hls'` que excluya DASH de tests ABR.
 
 ---
 
-## 2026-04-08 — Sistema de memoria vivo + skill de sincronización
+## 2026-04-08 — Sistema de memoria vivo + agente de conocimiento
 
 **Decisión:** Usar tres capas de conocimiento que se actualizan activamente:
 1. `CLAUDE.md` — guía de sesión (nivel de usuario)
 2. `.claude/memory/*.md` — conocimiento técnico profundo (nivel de implementación)
-3. `/sync-knowledge` skill — mecanismo de actualización cuando el player cambia
+3. `qa-knowledge-writer` agent — genera y actualiza los 9 archivos canónicos por módulo con investigación de código + internet
 
 **Why:** El QA tiene que mantenerse sincronizado con un SUT (player) que evoluciona
 independientemente. Sin un mecanismo activo de sincronización, los tests pueden
 validar comportamientos que el player ya cambió, generando falsos positivos.
 
-El skill `/sync-knowledge` actúa como un "diff reader" — lee el código fuente del player,
-lo compara con lo documentado, y propone actualizaciones. No es un agente autónomo —
-requiere invocación manual — pero provee el scaffolding para escalar a agente con cron.
+`qa-knowledge-writer` lee el código fuente del módulo, investiga la industria en internet
+y genera documentación estructurada en `qa-knowledge/modules/{module}/`.
 
 **How to apply:**
-- Correr `/sync-knowledge` cuando el player publique una nueva versión
+- Invocar `qa-knowledge-writer` cuando el player publique una nueva versión (modo UPDATE)
+- Invocar cuando se documenta un módulo nuevo (modo CREATE)
 - Correr `/session-review` al final de cada sesión de trabajo
 - Los archivos de memoria son la fuente de verdad — si hay conflicto entre `CLAUDE.md`
   y `player_system.md`, confiar en `player_system.md` (verificado desde código fuente)

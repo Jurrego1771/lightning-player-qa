@@ -1,0 +1,113 @@
+version: "1.0"
+module: plugins
+last_updated: "2026-06-08"
+
+risks:
+  - id: PLUG-RISK-001
+    severity: high
+    title: "Plugin asíncrono que nunca reporta ready bloquea el playback"
+    description: >
+      RenderElement no monta el <video> hasta que pluginsReady() === true, y pluginsReady()
+      exige que TODOS los componentes registrados retornen getIsReady() === true. Si un plugin
+      (p.ej. DRM o DAI) entra en un estado donde isReady() nunca resuelve ni rechaza, el player
+      queda colgado sin reproducir y sin error visible.
+    affected_files: ["src/player/base.js", "src/context/index.jsx", "src/plugins/baseComponent.js"]
+    trigger: "Plugin con isReady() que cuelga (SDK CDN sin respuesta sin timeout, promesa pendiente)"
+    mitigation: >
+      _onMount envuelve isReady() en Promise.resolve(...).catch(()=>{}).finally(setReady). El catch
+      cubre rechazos, pero NO cubre una promesa que nunca se resuelve. La mitigación depende de que
+      cada plugin implemente su propio timeout interno.
+    industry_note: >
+      Flutter video_player y angular youtube-player documentan exactamente este patrón: 'si el player
+      se intercambia durante la inicialización, listeners pendientes mantienen referencias y cuelgan'.
+      La práctica recomendada es un timeout de inicialización con fallback.
+    test_priority: MUST
+
+  - id: PLUG-RISK-002
+    severity: high
+    title: "Fallo de carga de chunk lazy (CDN) silenciado por Suspense"
+    description: >
+      Los plugins se cargan con React.lazy(() => import(...)). PluginLoader los monta dentro de un
+      Suspense con fallback <Fragment /> vacío. Si el chunk falla en descargarse (CDN caído, network
+      error), el error de carga puede no propagarse a un ErrorBoundary visible, dejando el plugin
+      ausente de forma silenciosa.
+    affected_files: ["src/api/player.jsx", "src/plugins/index.js"]
+    trigger: "Chunk JS del plugin no descargable (404, timeout, bloqueo de adblocker)"
+    mitigation: >
+      Diseño tolerante: la ausencia de un plugin de analytics no rompe la reproducción. Pero no hay
+      ErrorBoundary explícito ni reintento de carga de chunk visible en el código de plugins.
+    industry_note: >
+      Producción recomienda verificar hashes/firmas de chunks y servirlos desde CDN versionado;
+      el player usa URLs CDN por ambiente (constants.cjs) sin verificación de integridad documentada.
+    test_priority: MUST
+
+  - id: PLUG-RISK-003
+    severity: high
+    title: "Race condition entre resolución de src del plugin DRM/DAI y getDerivedStateFromProps"
+    description: >
+      El plugin DRM setea drm.vkeySystem / src vía setData sin re-render del padre. El comentario en
+      context/index.jsx ('Plugin setData can update drm without a parent re-render; ...fromProps must
+      not overwrite that') indica una salvaguarda explícita para evitar que fromProps pise el valor
+      avanzado por el plugin. Un cambio en este orden puede revertir el src resuelto.
+    affected_files: ["src/context/index.jsx", "src/player/drm/plugin.jsx"]
+    trigger: "Plugin resuelve drm antes de que el padre complete su ciclo de getDerivedStateFromProps"
+    mitigation: >
+      Guard explícito en getDerivedStateFromProps: si pluginAdvancedDrm && propsHasCandidates &&
+      !stateHasCandidates conserva el state del plugin (next.drm = state.drm).
+    industry_note: "Race conditions de disposal/init son la categoría #1 de bugs reportados en plugins de video."
+    test_priority: MUST
+
+  - id: PLUG-RISK-004
+    severity: medium
+    title: "Memory leak por plugin no destruido correctamente"
+    description: >
+      MediastreamBaseComponent marca __destroyed e invoca restart(true) en componentWillUnmount, pero
+      la limpieza efectiva de listeners/SDK depende de la implementación de restart() en cada plugin.
+      Un plugin que registra listeners en internalEmitter sin removerlos en restart(true) fuga memoria
+      en sesiones largas o al cambiar de contenido repetidamente.
+    affected_files: ["src/plugins/baseComponent.js"]
+    trigger: "Cambio de contenido / destrucción del player con plugins que no limpian sus listeners"
+    mitigation: "Guard __destroyed en setState diferidos; restart(true) como hook de cleanup (no garantizado por base)"
+    industry_note: >
+      Video.js dispose() limpia automáticamente listeners y referencias del plugin; el modelo de
+      Lightning delega esto a restart(true), sin un dispose centralizado garantizado.
+    test_priority: SHOULD
+
+  - id: PLUG-RISK-005
+    severity: medium
+    title: "Plugins no se actualizan ante cambios de contenido (metadata stale)"
+    description: >
+      Comentario explícito en index.js: 'Plugins are loaded when player options and initial content
+      are available, but they don't update when content changes, so you can't use any
+      options.metadata.* here if you expect them to work properly'. Plugins que dependan de metadata
+      por-contenido deben escuchar cambios internamente, no leer options.metadata.* al cargar.
+    affected_files: ["src/plugins/index.js"]
+    trigger: "Cambio de contenido (next episode, playlist) tras la carga inicial de plugins"
+    mitigation: "Plugins deben suscribirse a eventos de cambio de contenido; el set de plugins se decide solo una vez"
+    industry_note: "Patrón conocido: separar 'qué plugins se cargan' (estático) de 'qué datos consumen' (reactivo)."
+    test_priority: SHOULD
+
+  - id: PLUG-RISK-006
+    severity: medium
+    title: "Doble inserción de ads si DAI y MediaTailor se activan juntos"
+    description: >
+      Google DAI y MediaTailor DAI son mutuamente excluyentes por diseño (Google tiene prioridad en
+      loadConfig). Si una config inválida activa ambos, se montarían dos plugins de ad insertion,
+      provocando doble inserción o conflicto de manifest.
+    affected_files: ["src/plugins/index.js"]
+    trigger: "Config con googleDAI.backup + mediaTailorDAI.enabled simultáneos sin que loadConfig los excluya"
+    mitigation: "Comentario en código: 'loadConfig does not set mediaTailorDAI when googleDAI is set'"
+    test_priority: SHOULD
+
+  - id: PLUG-RISK-007
+    severity: low
+    title: "Detección de flags por truthiness frágil (~indexOf)"
+    description: >
+      Los flags (dnt, detectAdblocker, liveReactions, *.enabled) se evalúan con
+      ~[1,'1',true,'true'].indexOf(value). Valores como 0/'0'/'false' se tratan como falsy (correcto),
+      pero cualquier otro valor truthy inesperado (ej. 'yes', 2) se trata como falsy, lo que puede
+      silenciosamente no activar un plugin que el integrador creía habilitado.
+    affected_files: ["src/plugins/index.js"]
+    trigger: "Integrador pasa un valor no canónico al flag de habilitación"
+    mitigation: "Documentar valores aceptados (1/'1'/true/'true'); validación de config en loadConfig"
+    test_priority: COULD

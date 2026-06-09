@@ -1,0 +1,157 @@
+version: "1.0"
+module: youbora
+last_updated: "2026-06-08"
+
+user_stories:
+  - id: US-YBRA-001
+    persona: Operator
+    narrative:
+      as: "operador de la plataforma OTT que monitorea la calidad del servicio"
+      want: "que cada reproducción abra una View en la NPAW Suite con join time, rebuffering y bitrate"
+      so_that: "pueda medir QoE, detectar degradaciones de CDN y reducir churn"
+    business_value: HIGH
+    risk_area:
+      - "métricas QoE incompletas o ausentes"
+      - "subreporte de Views"
+    related_features:
+      - "playback-core"
+      - "quality-selector"
+    acceptance:
+      - "YBRA-AC-004"
+      - "YBRA-AC-008"
+      - "YBRA-AC-009"
+      - "YBRA-AC-010"
+    notes: "join time, rebuffering ratio y bitrate son las métricas QoE estrella (BR-YBRA-IND-001)."
+
+  - id: US-YBRA-002
+    persona: Operator
+    narrative:
+      as: "operador que investiga fallos de reproducción reportados por usuarios"
+      want: "que los errores de reproducción se reporten a NPAW con código y mensaje"
+      so_that: "pueda diagnosticar errores de arranque e in-stream sin depender de tickets del usuario"
+    business_value: HIGH
+    risk_area:
+      - "errores de arranque no reportados (adapter null)"
+      - "EBVS no medible"
+    related_features:
+      - "playback-core"
+      - "drm"
+      - "hls"
+    acceptance:
+      - "YBRA-AC-019"
+      - "YBRA-AC-020"
+      - "YBRA-AC-018"
+    notes: >
+      DEGRADADO: startup errors (YBRA-DEF-001) y EBVS (YBRA-DEF-007) no funcionan hoy. Alto valor
+      pero bloqueado por bugs del player documentados.
+
+  - id: US-YBRA-003
+    persona: Integrator
+    narrative:
+      as: "integrador que embebe Lightning Player en su sitio"
+      want: "activar Youbora poniendo enabled=true y mi account_code en el player config"
+      so_that: "obtenga analítica de video sin escribir código de tracking"
+    business_value: HIGH
+    risk_area:
+      - "activación condicional"
+      - "propagación de account_code"
+    related_features:
+      - "platform-config"
+      - "plugins"
+    acceptance:
+      - "YBRA-AC-001"
+      - "YBRA-AC-002"
+      - "YBRA-AC-003"
+    notes: "Config-driven, sin API pública en el player. account_code obligatorio (BR-YBRA-001)."
+
+  - id: US-YBRA-004
+    persona: Integrator
+    narrative:
+      as: "integrador que reproduce series con reproducción automática del siguiente episodio"
+      want: "que cada episodio abra su propia View con metadata correcta"
+      so_that: "las analíticas por episodio sean precisas y los viewCodes no se mezclen"
+    business_value: MEDIUM
+    risk_area:
+      - "reinicio de sesión en cambio de contenido"
+      - "race setTimeout(0) / re-emisión de _playing"
+    related_features:
+      - "metadata"
+      - "playback-core"
+    acceptance:
+      - "YBRA-AC-015"
+      - "YBRA-AC-016"
+    notes: "Funciona con streams reales distintos; falla con mocks de mismo stream (YBRA-DEF-004)."
+
+  - id: US-YBRA-005
+    persona: Operator
+    narrative:
+      as: "operador que monetiza con anuncios (CSAI vía IMA)"
+      want: "que el ciclo de vida de los ads se reporte separado del contenido"
+      so_that: "pueda medir impresiones, quartiles, skips y errores de ads sin contaminar el QoE de contenido"
+    business_value: HIGH
+    risk_area:
+      - "separación content/ads (_inAdBreak)"
+      - "breakNumber/position en VMAP"
+    related_features:
+      - "ads-manager"
+      - "ads-ima"
+    acceptance:
+      - "YBRA-AC-011"
+      - "YBRA-AC-012"
+      - "YBRA-AC-013"
+      - "YBRA-AC-014"
+    notes: "Ad adapter separado (BR-YBRA-011). Varias métricas avanzadas de ads en test.fixme."
+
+  - id: US-YBRA-006
+    persona: Viewer
+    narrative:
+      as: "espectador que solo quiere ver el video"
+      want: "que la analítica nunca interrumpa ni degrade mi reproducción"
+      so_that: "pueda ver el contenido aunque tenga un ad blocker o NPAW esté caído"
+    business_value: HIGH
+    risk_area:
+      - "fail-safe de analítica"
+      - "ad blocker / CDN del SDK caído"
+    related_features:
+      - "playback-core"
+    acceptance:
+      - "YBRA-AC-002"
+      - "YBRA-AC-001"
+    notes: "init() en try/catch; carga lazy; no-op sin config (BR-YBRA-008, BR-YBRA-IND-002)."
+
+  - id: US-YBRA-007
+    persona: Viewer
+    narrative:
+      as: "espectador con Do-Not-Track activado o usando el modo reels"
+      want: "que no se me rastree cuando expreso DNT o estoy en una vista que no lo requiere"
+      so_that: "se respete mi privacidad conforme a GDPR/CCPA"
+    business_value: MEDIUM
+    risk_area:
+      - "cumplimiento Do-Not-Track"
+      - "guards de plugins/index.js"
+    related_features:
+      - "plugins"
+      - "platform-config"
+    acceptance:
+      - "YBRA-AC-001"
+    notes: >
+      dnt=1 y view='reels' impiden montar cualquier plugin (BR-YBRA-003). Gap de cobertura
+      GAP-YBRA-004: no hay test automatizado para dnt=1.
+
+  - id: US-YBRA-008
+    persona: Operator
+    narrative:
+      as: "operador que segmenta audiencia por tipo de usuario"
+      want: "que user.type y user.name lleguen a NPAW desde customer_extras"
+      so_that: "pueda comparar QoE de usuarios premium vs free"
+    business_value: MEDIUM
+    risk_area:
+      - "metadata de usuario opcional (issue-706)"
+    related_features:
+      - "platform-config"
+      - "metadata"
+    acceptance:
+      - "YBRA-AC-004"
+    notes: >
+      userType salió FAILED en Caracol TV cuando customer_extras no estaba configurado (YBRA-DEF-005).
+      Test NPAW-2.17a verifica el camino con customer_extras.type configurado.

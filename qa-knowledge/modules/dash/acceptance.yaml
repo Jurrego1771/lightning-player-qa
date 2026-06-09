@@ -1,0 +1,230 @@
+version: "1.0"
+module: dash
+last_updated: "2026-06-08"
+
+acceptance_criteria:
+
+  - id: DASH-AC-001
+    priority: MUST
+    scenario: "Stream DASH VOD inicia reproducción sin error"
+    given: "Player configurado con un content ID que devuelve src.mpd válido"
+    when: "El player inicializa con autoplay=true"
+    then:
+      - "El evento 'ready' se emite antes de 'playing'"
+      - "El evento 'playing' se emite en menos de 45s"
+      - "No se emite evento 'error' con fatal=true"
+      - "currentTime avanza con el tiempo"
+    covered_by:
+      - "tests/e2e/dash-playback.spec.ts"
+
+  - id: DASH-AC-002
+    priority: MUST
+    scenario: "Handler del player es DASH cuando el stream es MPD"
+    given: "Player con stream cuya URL contiene extensión .mpd"
+    when: "El player inicializa"
+    then:
+      - "player.handler retorna 'html5/mse+dash' o contiene 'dash'"
+      - "No se inicializa el handler HLS"
+    covered_by:
+      - "tests/e2e/dash-playback.spec.ts"
+      - "tests/integration/dash-handler-select.spec.ts"
+
+  - id: DASH-AC-003
+    priority: MUST
+    scenario: "Auto-detect por URL .mpd selecciona DashHandler"
+    given: "Player con src cuya URL termina en .mpd (sin parámetro format explícito)"
+    when: "El player inicializa"
+    then:
+      - "player.handler contiene 'dash'"
+      - "No se produce doble inicialización (ready no se emite más de 2 veces)"
+    covered_by:
+      - "tests/integration/dash-handler-select.spec.ts"
+      - "tests/e2e/dash-auto-detect.spec.ts"
+
+  - id: DASH-AC-004
+    priority: MUST
+    scenario: "format=dash explícito fuerza DashHandler"
+    given: "Player con content ID que tiene src.mpd, llamado con format='dash'"
+    when: "El player inicializa"
+    then:
+      - "player.handler contiene 'dash'"
+    covered_by:
+      - "tests/integration/dash-handler-select.spec.ts"
+
+  - id: DASH-AC-005
+    priority: MUST
+    scenario: "Seek en DASH VOD funciona y actualiza currentTime"
+    given: "Player reproduciendo DASH VOD con al menos 30s de contenido"
+    when: "Se asigna player.currentTime = T (dentro de la duración)"
+    then:
+      - "Se emite evento 'seeking'"
+      - "Se emite evento 'seeked'"
+      - "currentTime está dentro de ±3s del target"
+      - "El player continúa reproduciendo (assertIsPlaying)"
+    covered_by:
+      - "tests/e2e/dash-playback.spec.ts"
+
+  - id: DASH-AC-006
+    priority: MUST
+    scenario: "ABR automático dash.js emite levelchanged al inicio"
+    given: "Player reproduciendo DASH VOD con múltiples representaciones"
+    when: "El player selecciona la representación inicial"
+    then:
+      - "Se emite 'levelchanged' o 'levelchange'"
+      - "player.level retorna un índice >= 0"
+      - "player.levels retorna un array con al menos 1 elemento"
+    covered_by:
+      - "tests/integration/dash-abr.spec.ts"
+
+  - id: DASH-AC-007
+    priority: MUST
+    scenario: "Fijación manual de representación via player.level"
+    given: "Player reproduciendo DASH VOD con múltiples representaciones"
+    when: "Se asigna player.level = N donde N es un índice válido"
+    then:
+      - "Se emite 'levelchange' con el índice N"
+      - "dash.js llama setRepresentationForTypeByIndex con N"
+      - "player.autoLevelEnabled retorna false"
+    covered_by: []
+    notes: "Diferencia con HLS: en DASH el cambio es asíncrono (setTimeout 0) para evitar conflicto con QUALITY_CHANGE_REQUESTED"
+
+  - id: DASH-AC-008
+    priority: MUST
+    scenario: "Restore ABR automático con player.level = -1"
+    given: "Player DASH con level fijado manualmente"
+    when: "Se asigna player.level = -1"
+    then:
+      - "Se emite 'levelchange' con -1"
+      - "dash.js habilita autoSwitchBitrate: true"
+      - "player.autoLevelEnabled retorna true"
+    covered_by: []
+
+  - id: DASH-AC-009
+    priority: MUST
+    scenario: "Error de segmento DASH: error se emite y player no se congela"
+    given: "Player cargando stream DASH"
+    when: "Un segmento retorna 404 o falla la descarga"
+    then:
+      - "Se emite evento 'error' con tipo NetworkError"
+      - "Si el error no es fatal, el player intenta recovery (buffering → canplay)"
+      - "Si el error es fatal, error.fatal === true"
+    covered_by: []
+
+  - id: DASH-AC-010
+    priority: MUST
+    scenario: "destroy() limpia MediaPlayer dash.js sin memory leaks"
+    given: "Player DASH reproduciendo"
+    when: "Se llama player.destroy()"
+    then:
+      - "El elemento <video> se elimina del DOM"
+      - "No quedan listeners activos de dash.js"
+      - "Si System73 estaba activo, su wrapper recibe destroy()"
+    covered_by:
+      - "tests/e2e/dash-playback.spec.ts"
+
+  - id: DASH-AC-011
+    priority: MUST
+    scenario: "DVR DASH: isDVR retorna true para stream con ventana DVR"
+    given: "Player con stream DASH type=dvr con timeShiftBufferDepth > 0 en el MPD"
+    when: "El player llega a 'playing'"
+    then:
+      - "player.isDVR() retorna true"
+      - "player.dvrWindow retorna { start, size } con size > 0"
+    covered_by:
+      - "tests/e2e/dash-dvr.spec.ts"
+    notes: "BLOQUEADO — ContentIds.dashDvr apunta a stream sin DVR real. test.fixme activo"
+
+  - id: DASH-AC-012
+    priority: MUST
+    scenario: "DVR DASH: seek dentro de la ventana DVR no provoca error fatal"
+    given: "Player reproduciendo DASH DVR con dvrWindow.size > 30s"
+    when: "Se hace seek a un offset dentro de la ventana (0 <= offset <= size)"
+    then:
+      - "Se emiten 'seeking' → 'seeked'"
+      - "El player retoma reproducción"
+      - "No se emite 'error' con fatal=true"
+    covered_by:
+      - "tests/e2e/dash-dvr.spec.ts"
+    notes: "BLOQUEADO — tests en test.fixme hasta que plataforma provea stream con DVR real"
+
+  - id: DASH-AC-013
+    priority: SHOULD
+    scenario: "System73 P2P wrapper se activa cuando peering.system73.enabled=true"
+    given: "Player con metadata.peering.system73 = { enabled: true, key, dash: sdkUrl }"
+    when: "El player inicializa"
+    then:
+      - "getSystem73DashSDK() lazy-carga el SDK desde sdkUrl"
+      - "wrapper.wrapPlayer(player) se llama antes de player.initialize()"
+      - "El player reproduce normalmente con el wrapper activo"
+    covered_by:
+      - "tests/integration/system73-dash.spec.ts"
+
+  - id: DASH-AC-014
+    priority: SHOULD
+    scenario: "Fallo del SDK System73 no bloquea reproducción DASH"
+    given: "Player con system73 habilitado pero el SDK URL retorna error"
+    when: "El player inicializa"
+    then:
+      - "getSystem73DashSDK() retorna null"
+      - "El player continúa sin wrapper P2P"
+      - "Se emite 'playing' normalmente"
+    covered_by:
+      - "tests/integration/system73-dash.spec.ts"
+
+  - id: DASH-AC-015
+    priority: SHOULD
+    scenario: "Stale-src guard previene wrapper en player recargado"
+    given: "Player iniciando DASH con System73 + SDK lento (async)"
+    when: "Se llama player.load() con nuevo src antes de que el SDK resuelva"
+    then:
+      - "El handler detecta que this.state.src !== src original"
+      - "No aplica el wrapper al nuevo MediaPlayer"
+      - "El player reproduce el nuevo contenido sin error"
+    covered_by:
+      - "tests/integration/system73-dash.spec.ts"
+
+  - id: DASH-AC-016
+    priority: SHOULD
+    scenario: "Regresión HLS: URL .m3u8 no selecciona DashHandler"
+    given: "Player con src cuya URL es un .m3u8"
+    when: "El player inicializa"
+    then:
+      - "player.handler contiene 'hls' o 'native'"
+      - "No se instancia MediaPlayer() de dash.js"
+    covered_by:
+      - "tests/integration/dash-handler-select.spec.ts"
+
+  - id: DASH-AC-017
+    priority: SHOULD
+    scenario: "Google DAI DASH: player acepta stream MPD con anuncios SSAI"
+    given: "Player configurado con ads.dai y streamFormat=dash"
+    when: "El plugin DAI provee una URL .mpd"
+    then:
+      - "El player selecciona DashHandler para reproducir el stream con anuncios"
+      - "Los eventos de ads se emiten normalmente"
+    covered_by:
+      - "tests/integration/google-dai-dash.spec.ts"
+    notes: "test.fixme activo — requiere credenciales DAI en .env"
+
+  - id: DASH-AC-018
+    priority: COULD
+    scenario: "DASH bajo bandwidth degradado: dashjs baja representación"
+    given: "Player reproduciendo DASH VOD en Chromium con CDP disponible"
+    when: "Se throttlea la red a ~500Kbps"
+    then:
+      - "dash.js emite QUALITY_CHANGE_REQUESTED"
+      - "Se emite 'levelchanged'"
+      - "El player continúa reproduciendo (no error fatal)"
+    covered_by:
+      - "tests/integration/dash-abr.spec.ts"
+
+  - id: DASH-AC-019
+    priority: COULD
+    scenario: "DRM Widevine con DASH: license request llega al license server"
+    given: "Player con stream DASH + Widevine configurado"
+    when: "dash.js detecta la protección en el MPD"
+    then:
+      - "Se realiza request al license server configurado"
+      - "El stream se desencripta y reproduce"
+    covered_by:
+      - "tests/e2e/drm-widevine-dash.spec.ts"

@@ -1,0 +1,88 @@
+version: "1.0"
+module: next-episode
+last_updated: "2026-06-08"
+
+internal:
+  - id: playback-core
+    reason: "Se suscribe al evento 'ended' para disparar el auto-load, y lee currentTime/duration para calcular los thresholds de timing"
+    coupling: high
+    files:
+      - "src/view/none/hooks/useNextEpisodeEvents.js"
+      - "src/view/video/components/nextEpisode/index.jsx"
+      - "src/view/video/hooks/useNextEpisodeTiming.js"
+    note: "Cualquier cambio en el evento 'ended' o en los hooks useDuration/useCurrentTime afecta directamente el timing del módulo"
+
+  - id: controls-api
+    reason: "Registra un override en el sistema de controles para bloquear play/pause/seek mientras la UI es visible (previene seek accidental durante el countdown)"
+    coupling: high
+    files:
+      - "src/view/video/hooks/useNextEpisodeControls.js"
+      - "src/view/video/atoms/nextEpisodeControls.js"
+    note: "Si controls.addOverride/removeOverride cambia su contrato, el override dejará de funcionar silenciosamente (retorna null en lugar de false)"
+
+  - id: events
+    reason: "Usa internalEmitter para recibir eventos externos del integrador (nextEpisodeConfirmed, nextEpisodePlayNext, nextEpisodeKeepWatching) y para emitir events públicos (nextEpisodeIncoming, nextEpisodeLoadRequested)"
+    coupling: high
+    files:
+      - "src/view/none/hooks/useNextEpisodeEvents.js"
+      - "src/view/video/hooks/useNextEpisodeEvents.js"
+      - "src/view/video/components/nextEpisode/index.jsx"
+
+  - id: metadata
+    reason: "Lee metadata.next, metadata.nextEpisodeId, metadata.nextEpisodeTime y metadata.nextEpisodeOverride del contexto del player para determinar si hay siguiente episodio y cuándo mostrar la UI"
+    coupling: high
+    files:
+      - "src/view/none/hooks/useNextEpisodeEvents.js"
+      - "src/view/video/hooks/useNextEpisodeTiming.js"
+    note: "metadata.nextEpisodeOverride es el mecanismo de 'requiere confirmación' — si está definido (cualquier valor truthy), la UI no aparece hasta recibir nextEpisodeConfirmed"
+
+  - id: api-bootstrap
+    reason: "La carga del siguiente episodio se realiza a través de api.load(loadData) — el método core de transición de contenido del player"
+    coupling: high
+    files:
+      - "src/view/none/hooks/useNextEpisodeLoader.js"
+      - "src/view/video/hooks/useNextEpisodeLoader.js"
+    note: "Diferencia de defaults: headless usa type='media', video view usa type='episode'. Ambas pasan el objeto confirmedNextEpisode completo cuando está disponible"
+
+  - id: state
+    reason: "Usa el atom Jotai nextEpisodeVisibleAtom para coordinar la visibilidad de la UI con el sistema de controles (hideControlsForNextEpisodeAtom oculta la barra de controles)"
+    coupling: medium
+    files:
+      - "src/view/video/atoms/nextEpisodeControls.js"
+      - "src/view/video/hooks/useNextEpisodeControls.js"
+      - "src/view/video/components/nextEpisode/index.jsx"
+
+  - id: platform-config
+    reason: "Lee el atom isTVAtom para activar el skin especial de TV (clases CSS aumentadas, área de touch mayor)"
+    coupling: low
+    files:
+      - "src/view/video/components/nextEpisode/index.jsx"
+    note: "Solo afecta dimensiones CSS; si isTVAtom falla, la UI se muestra con el skin normal sin error"
+
+  - id: subtitles
+    reason: "Sin dependencia directa de código, pero en la práctica la UI de next episode aparece sobre las pistas de subtítulos — relevante para QA de superposición visual"
+    coupling: low
+    files: []
+    note: "Posible conflicto z-index si los subtítulos tienen z-index > 100 (el overlay es z-index: 100 en nextEpisode.scss)"
+
+external:
+  - id: react
+    package: "react@18.3.1"
+    version: "18.3.1"
+    reason: "Hooks (useState, useEffect, useCallback, useMemo, useRef) y renderizado del componente JSX"
+    risk: low
+    note: "Las actualizaciones de estado React son asíncronas — el timing del countdown depende del ciclo de render. Tests deben usar expect.poll() en lugar de asserts directos post-acción"
+
+  - id: jotai
+    package: "jotai@2.8.0"
+    version: "2.8.0"
+    reason: "Atom nextEpisodeVisibleAtom para coordinar estado entre hooks y componentes sin prop drilling"
+    risk: low
+    note: "Si jotai falla o el atom se resetea inesperadamente, el override de controles puede quedar activo indefinidamente"
+
+  - id: i18n
+    package: "internal i18n (useTranslation hook)"
+    version: "internal"
+    reason: "Claves nextEpisode.watchCredits y nextEpisode.nextEpisode — si el bundle de traducción no está listo (ready=false), el componente retorna null y no renderiza"
+    risk: medium
+    note: "El guard 'if (!ready) return null' en el componente significa que la UI puede no aparecer en entornos donde las traducciones cargan lento o fallan"

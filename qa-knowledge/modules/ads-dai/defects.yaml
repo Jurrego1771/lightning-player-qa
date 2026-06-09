@@ -1,0 +1,65 @@
+version: "1.0"
+module: ads-dai
+last_updated: "2026-06-08"
+
+defects:
+
+  - id: DAI-DEF-001
+    status: known_limitation
+    severity: high
+    title: "setData con DAI stream URL no preserva la configuración de subtítulos"
+    description: "Cuando GoogleDAIManager recibe el evento LOADED y llama setData({ src: url, ...stripDrmForPlayerState(drm) }), el objeto spread solo incluye DRM state (sin _candidateUrls). La configuración de subtítulos (pista activa, preferencia de idioma) del estado anterior del player no se incluye en el setData call, por lo que se resetea al cargar el stream DAI."
+    workaround: "Ninguno automático. El usuario debe reactivar los subtítulos manualmente después del load del stream DAI."
+    source_comment: "src/ads/googleDAI/plugin.jsx:588-599 (onLoaded handler) — stripDrmForPlayerState solo preserva drm.vkeySystem y similares"
+    industry_known: false
+    regression_risk: medium
+
+  - id: DAI-DEF-002
+    status: known_workaround
+    severity: high
+    title: "Race condition entre manager.reset() y internalEmitter.off(_volumechange) en destroy()"
+    description: "En destroy(), manager.reset() se llama antes de internalEmitter.off(_volumechange). Si un evento _volumechange llega en esa ventana de tiempo (entre reset() y off()), el handler #_onVolumeChange intenta llamar this.#manager.replaceAdTagParameters() sobre un manager ya reseteado. El SDK puede lanzar una excepción."
+    workaround: "try/catch en #_onVolumeChange que silencia el error. El comportamiento observable es que no hay crash, pero el último estado de vpmute puede no haberse propagado al servidor DAI."
+    source_comment: "src/ads/googleDAI/plugin.jsx:179-187 (#_onVolumeChange) — try/catch vacío"
+    industry_known: false
+    regression_risk: high
+
+  - id: DAI-DEF-003
+    status: known_limitation
+    severity: medium
+    title: "cuePoints siempre retorna [] en la API pública de GoogleDAIManager"
+    description: "La propiedad get cuePoints() en GoogleDAIManager siempre retorna un array vacío. Los cuepoints internos (#cuePoints) se populan correctamente via evento CUEPOINTS_CHANGED pero no se exponen externamente. Cualquier consumidor que lea manager.cuePoints obtendrá []."
+    workaround: "Los cuepoints internos funcionan correctamente para el redirect de seeks en VOD. La limitación solo afecta a código externo que intente leer la posición de los breaks."
+    source_comment: "src/ads/googleDAI/plugin.jsx:439-441 (get cuePoints)"
+    industry_known: false
+    regression_risk: low
+
+  - id: DAI-DEF-004
+    status: known_limitation
+    severity: medium
+    title: "No se distingue entre errores 4xx y 5xx para la lógica de fallback"
+    description: "Cuando el SDK DAI emite un evento ERROR, GoogleDAIManager llama destroy() y el componente GoogleDAI hace fallback al backup stream sin importar la causa del error. Según las best practices de Google, un error 4xx (config incorrecta) no debería hacer fallback — debería notificar al operador que corrija la configuración."
+    workaround: "Ninguno. El fallback ocurre en todos los casos de error del SDK."
+    source_comment: "src/ads/googleDAI/plugin.jsx:321-325 (case EventTypes.ERROR)"
+    industry_known: true
+    regression_risk: low
+
+  - id: DAI-DEF-005
+    status: known_limitation
+    severity: medium
+    title: "MediaTailor DAI no tiene soporte para VOD"
+    description: "MediaTailorDAIGuard bloquea explícitamente la activación del plugin para cualquier stream que no sea live o dvr. Un stream VOD configurado con ads.mediaTailorDAI.enabled=true simplemente no tendrá ads — sin error, sin warning en consola de producción."
+    workaround: "Para VOD con SSAI, usar Google DAI (ads.googleDAI) en lugar de MediaTailor DAI."
+    source_comment: "src/ads/mediaTailorDAI/plugin.jsx:12-13 (MediaTailorDAIGuard: isLiveOrDvr check)"
+    industry_known: false
+    regression_risk: low
+
+  - id: DAI-DEF-006
+    status: open
+    severity: high
+    title: "SDK DAI se carga sin lock de versión — actualizaciones breaking no se detectan"
+    description: "El SDK se carga desde 'https://imasdk.googleapis.com/js/sdkloader/ima3_dai.js' que siempre sirve la versión más reciente. Google ha removido APIs en versiones recientes (v3.697.0: ViewMode, v3.724.0: setCookiesEnabled). No hay mecanismo para detectar cuando el SDK se actualiza ni para bloquear una versión problemática."
+    workaround: "Monitoreo manual de la página de release notes del SDK. No hay fix automático."
+    source_comment: "src/ads/googleDAI/plugin.jsx:19 (IMA_DAI_URL constante)"
+    industry_known: true
+    regression_risk: high

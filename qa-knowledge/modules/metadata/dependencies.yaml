@@ -1,0 +1,82 @@
+version: "1.0"
+module: metadata
+last_updated: "2026-06-08"
+
+internal:
+  - id: platform-config
+    reason: "Fuente primaria de la metadata estática (title, subtitle, poster, type, id, season, show) leída desde context.view / context.viewMetadata / context.metadata."
+    coupling: high
+    files:
+      - "src/metadata/exposeMetadata.js"
+
+  - id: events
+    reason: "Todo el flujo se propaga por internalEmitter (metadatachanged, metadata, programdatetime) y por bindings de mediaSession (playing, pause, timeupdate, durationchange, adsStarted...). QA observa vía msp:*."
+    coupling: high
+    files:
+      - "src/metadata/exposeMetadata.js"
+      - "src/metadata/mediaSession.js"
+
+  - id: controls-api
+    reason: "mediaSession.js usa getComponent('api') para play/pause/currentTime/duration/ad.skip — los action handlers del SO operan sobre el API público del player."
+    coupling: high
+    files:
+      - "src/metadata/mediaSession.js"
+
+  - id: playback-core
+    reason: "Provee duration, currentTime, playbackRate, paused y type que alimentan setPositionState y el cálculo de live vs VoD."
+    coupling: medium
+    files:
+      - "src/metadata/mediaSession.js"
+
+  - id: hls
+    reason: "Origen de programdatetime (PROGRAM-DATE-TIME) e ID3/emsg timed metadata en live. El flag view.useID3Sync gobierna el matching ICY de now-playing en radios."
+    coupling: medium
+    files:
+      - "src/metadata/exposeMetadata.js"
+
+  - id: ads-manager
+    reason: "mediaSession consume _adsPlaying/_adsSkippable del context y los eventos adsStarted/adsResumed/adsPaused para neutralizar posición y exponer skipad."
+    coupling: medium
+    files:
+      - "src/metadata/mediaSession.js"
+
+  - id: subtitles
+    reason: "Módulo dependiente de metadata (depended_by según context legacy); consume el contexto de contenido normalizado."
+    coupling: low
+    files: []
+
+external:
+  - id: firebase-app
+    package: "firebase/app"
+    version: "Firebase JS SDK v9+ (modular)"
+    reason: "Inicializa la app nombrada 'msp_meta' para acceder a Firestore now-playing (radios)."
+    risk: medium
+    note: "App nombrada evita colisión con otras instancias Firebase del host. Si initializeApp falla, now-playing no carga pero el player debe seguir funcionando."
+
+  - id: firebase-firestore
+    package: "firebase/firestore"
+    version: "Firebase JS SDK v9+ (modular)"
+    reason: "Lectura en tiempo real de la canción actual y last songs vía onSnapshot, con cursores/paginación."
+    risk: high
+    note: "onSnapshot mantiene listeners en vivo; fugas de suscripción o reconexiones tras background pueden disparar updates tardíos. Requiere índices Firestore para where+orderBy; un índice faltante hace fallar la query silenciosamente."
+
+  - id: media-session-api
+    package: "navigator.mediaSession (W3C Media Session API)"
+    version: "W3C Media Session Level 1"
+    reason: "Exponer metadata y controles al SO (lock screen, notificación, auriculares, Android Auto/CarPlay)."
+    risk: medium
+    note: "Disponibilidad variable: no existe en algunos WebViews/headless. iOS Safari históricamente truncaba/pixelaba artwork (corregido en 16.4/iOS 18). setPositionState lanza si position>duration o valores inconsistentes — el código lo envuelve en try/catch."
+
+  - id: media-metadata-api
+    package: "window.MediaMetadata (W3C)"
+    version: "W3C Media Session Level 1"
+    reason: "Construir el objeto de metadata (title/artist/artwork) que el SO muestra."
+    risk: low
+    note: "Solo se instancia dentro de useMediaSessionInner cuando hasMediaSession es true; ausente en entornos sin la API."
+
+  - id: lodash
+    package: "lodash"
+    version: "^4"
+    reason: "isEqual para deduplicar metadatachanged; omit/fp para excluir goPrevItem/goNextItem del payload público."
+    risk: low
+    note: "isEqual es deep-equal: objetos grandes de metadata se comparan en cada render (debounce 100ms mitiga frecuencia)."

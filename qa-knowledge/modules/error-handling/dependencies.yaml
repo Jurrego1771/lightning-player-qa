@@ -1,0 +1,122 @@
+version: "1.0"
+module: error-handling
+last_updated: "2026-06-08"
+
+internal:
+  - id: playback-core
+    reason: >
+      Los handlers de reproducción (native) son productores primarios de errores. native.js mapea
+      HTMLMediaElement.error.code === 4 a MediaError fatal. El estado 'error' del player y el reset de
+      readiness viven en controls/index.js, acoplados al ciclo de vida de error.
+    coupling: high
+    files:
+      - "src/player/handler/native.js"
+      - "src/player/base.js"
+      - "src/controls/index.js"
+
+  - id: hls
+    reason: >
+      hls/handler.js traduce Hls.ErrorTypes (NETWORK/MEDIA/KEY_SYSTEM) a PlayerError y ejecuta el
+      recovery automático (hls.startLoad, hls.recoverMediaError). Es la fuente más rica de lógica de
+      error/recovery del player.
+    coupling: high
+    files:
+      - "src/player/handler/hls/handler.js"
+
+  - id: dash
+    reason: >
+      dash/handler.js traduce eventos ERROR/PLAYBACK_ERROR de dash.js a NetworkError/MediaError según
+      presencia de request/url y deriva fatal de error.fatal.
+    coupling: high
+    files:
+      - "src/player/handler/dash/handler.js"
+
+  - id: drm
+    reason: >
+      El plugin DRM emite PlayerInitError('DRM not supported', { data: 'DRM_NOT_SUPPORTED' }, fatal).
+      Los errores KEY_SYSTEM/EME de hls.js también pasan por el handler HLS como fatales (excepto
+      KEY_SYSTEM_NO_ACCESS que entra a buffering).
+    coupling: high
+    files:
+      - "src/player/drm/plugin.jsx"
+      - "src/player/handler/hls/handler.js"
+
+  - id: platform-config
+    reason: >
+      loadConfig.js lanza PlayerInitError fatal pre-reproducción: config 403 (con data.status), tipo
+      inválido, formato no disponible (FORMAT_NOT_AVAILABLE). Estos errores ocurren antes de ready.
+    coupling: high
+    files:
+      - "src/platform/loadConfig.js"
+
+  - id: events
+    reason: >
+      internalEmitter/externalEmitter transportan Events._error. Solo eventos del enum Events se
+      re-emiten externamente; el error se propaga cross-frame por postMessage('msp:error') y en debug
+      va a console.error.
+    coupling: high
+    files:
+      - "src/events/index.js"
+
+  - id: ads-manager
+    reason: >
+      Jerarquía AdError separada (codes.js, error.js, vpaid-error.js). Acoplamiento bajo a propósito:
+      un AdError nunca debe marcar el contenido como fatal. Relevante para verificar aislamiento.
+    coupling: low
+    files:
+      - "src/ads/manager/error/codes.js"
+      - "src/ads/manager/error/error.js"
+      - "src/ads/manager/error/vpaid-error.js"
+      - "src/ads/manager/render/handler.js"
+
+  - id: youbora
+    reason: >
+      youbora/tracker.js consume el evento error para beacons /error. Defecto YBRA-DEF-001: errores
+      fatales pre-ready no se reportan porque el adapter NPAW aún no está inicializado.
+    coupling: medium
+    files:
+      - "src/analytics/youbora/tracker.js"
+
+external:
+  - id: hls.js
+    package: "hls.js"
+    version: "^1.x (verificar en package.json del player)"
+    reason: >
+      Provee ErrorTypes/ErrorDetails y los métodos de recovery recoverMediaError(), startLoad(),
+      swapAudioCodec(). El player delega el retry/backoff de segmentos al budget interno de hls.js.
+    risk: high
+    note: >
+      La industria advierte que reintentar startLoad() inmediatamente puede causar loop loading
+      infinito. Para 403/404/manifests inválidos hls.js recomienda escalar a error user-facing en
+      vez de reintentar. El player marca manifests como fatales (correcto) pero reintenta otros
+      network errors con startLoad sin guard de loop visible — ver ERR-RISK-002.
+
+  - id: dash.js
+    package: "dashjs"
+    version: "^4.x (verificar en package.json del player)"
+    reason: "Provee eventos ERROR/PLAYBACK_ERROR. El player infiere red vs media por request/url."
+    risk: medium
+    note: >
+      La heurística request/url para clasificar red vs media es frágil: estructuras de error de
+      dash.js cambian entre versiones mayores y pueden romper la clasificación NetworkError/MediaError.
+
+  - id: HTMLMediaElement
+    package: "(navegador / W3C HTML Media)"
+    version: "W3C HTML Living Standard"
+    reason: >
+      Fuente de MediaError.code (1=ABORTED, 2=NETWORK, 3=DECODE, 4=SRC_NOT_SUPPORTED) en reproducción
+      native. El player solo mapea explícitamente code === 4 a fatal.
+    risk: medium
+    note: >
+      Codes 1/2/3 se emiten tal cual sin normalizar a la taxonomía PlayerError (sin type/fatal),
+      generando objetos de error heterogéneos para suscriptores. Ver ERR-RISK-003.
+
+  - id: EME / Widevine / FairPlay / PlayReady
+    package: "(navegador — Encrypted Media Extensions)"
+    version: "W3C EME"
+    reason: "KEY_SYSTEM errors de EME surgen vía hls.js (KEY_SYSTEM_ERROR) o el plugin DRM."
+    risk: high
+    note: >
+      KEY_SYSTEM_NO_ACCESS se trata como buffering silencioso (sin error visible) — puede dejar al
+      usuario sin feedback si el dispositivo nunca obtiene acceso. Mensajes de error DRM tienden a ser
+      crípticos en toda la industria (ver ERR-RISK-004).

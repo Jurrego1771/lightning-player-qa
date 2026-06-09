@@ -1,0 +1,219 @@
+version: "1.0"
+module: youbora
+last_updated: "2026-06-08"
+
+# IDs canónicos YBRA-AC-*. Los ACs originales del legacy NPAW (1.1..A.x) se preservan
+# como referencia de protocolo NPAW en business-rules.md y tests.yaml.
+# Única señal observable: beacons HTTP a *.youboranqs01.com / *.youbora.com.
+
+acceptance_criteria:
+  # ── Activación condicional ────────────────────────────────────────────────
+  - id: YBRA-AC-001
+    priority: MUST
+    scenario: "tracking.youbora ausente no activa el plugin"
+    given: "El player config NO contiene metadata.player.tracking.youbora"
+    when: "El player carga y reproduce contenido (contentFirstPlay)"
+    then:
+      - "No se monta el componente YouboraTracker (plugins/index.js no lo incluye)"
+      - "No se emite ningún beacon hacia *.youboranqs01.com ni *.youbora.com"
+      - "La reproducción continúa normal"
+
+  - id: YBRA-AC-002
+    priority: MUST
+    scenario: "enabled=true pero account_code ausente o vacío no genera beacons"
+    given: "metadata.player.tracking.youbora.enabled=true sin account_code (o account_code='')"
+    when: "El player carga contenido reproducible"
+    then:
+      - "El componente se monta pero tracker.init() retorna en `if (!accountCode) return` (tracker.js:72)"
+      - "No se instancia NpawPlugin → 0 beacons de sesión"
+      - "La reproducción no se ve afectada (sin crash, sin errores de consola youbora/npaw)"
+
+  - id: YBRA-AC-003
+    priority: MUST
+    scenario: "enabled=false desactiva el plugin aunque account_code esté presente"
+    given: "metadata.player.tracking.youbora = { enabled: false, account_code: '<valido>' }"
+    when: "El player carga y reproduce contenido"
+    then:
+      - "plugins/index.js no monta YouboraTracker (isYouboraEnabled es false)"
+      - "0 beacons NPAW"
+
+  # ── Sesión de contenido (lifecycle) ───────────────────────────────────────
+  - id: YBRA-AC-004
+    priority: MUST
+    scenario: "La primera reproducción abre una View (fireStart + fireJoin)"
+    given: "Youbora activa con account_code válido"
+    when: "Ocurre contentFirstPlay (o primer playing fuera de ad break)"
+    then:
+      - "_started pasa a true (tracker.js onFirstPlay/onPlaying)"
+      - "Se emiten beacons de inicio de sesión: /start y /joinTime"
+      - "/joinTime reporta joinDuration (ms) y playhead coherente"
+      - "El parámetro mediaResource lleva la URL real del stream y permite detección de CDN"
+
+  - id: YBRA-AC-005
+    priority: MUST
+    scenario: "Pausa y reanudación generan beacons /pause y /resume sin reiniciar sesión"
+    given: "Sesión Youbora activa (_started=true) durante reproducción de contenido"
+    when: "El usuario pausa (player.pause) y luego reanuda (player.play)"
+    then:
+      - "onPause → firePause() emite /pause (una sola vez; guard _paused previene duplicados)"
+      - "onPlaying con _paused=true → fireResume() emite /resume"
+      - "No se emite /stop ni /start adicional — la View no se reinicia"
+      - "pauseDuration en /resume es coherente con el tiempo pausado"
+
+  - id: YBRA-AC-006
+    priority: SHOULD
+    scenario: "Doble pausa solo emite un firePause"
+    given: "Sesión activa ya pausada (_paused=true)"
+    when: "Se llama pause() de nuevo sin reanudar"
+    then:
+      - "El guard `if (... || this._paused) return` (tracker.js:164) impide un segundo firePause()"
+      - "Solo existe 1 beacon /pause"
+
+  - id: YBRA-AC-007
+    priority: MUST
+    scenario: "Seek emite beacons de seek sin cierre espurio de View"
+    given: "Sesión activa con currentTime > 0"
+    when: "El usuario hace seek a otra posición"
+    then:
+      - "onSeeking → fireSeekBegin(), onSeeked → fireSeekEnd()"
+      - "Se emiten beacons adicionales tras el seek"
+      - "La View NO se cierra (sin /stop) — sin regresión NPAW-4.2"
+
+  - id: YBRA-AC-008
+    priority: SHOULD
+    scenario: "Buffering durante reproducción reporta buffer underrun"
+    given: "Sesión activa y red restringida que provoca rebuffering"
+    when: "El player entra en buffering (Events._buffering) y luego recupera (Events._canplay)"
+    then:
+      - "onBuffering → fireBufferBegin(); onCanPlay → fireBufferEnd()"
+      - "Se reporta /bufferUnderrun con bufferDuration (ms) cuando termina el buffering"
+      - "El guard _inAdBreak evita reportar buffering de ads como buffering de contenido"
+
+  - id: YBRA-AC-009
+    priority: MUST
+    scenario: "El fin de la reproducción cierra la View (/stop)"
+    given: "Sesión activa (_started=true)"
+    when: "El contenido llega a ended"
+    then:
+      - "onEnded → fireStop(), _started pasa a false"
+      - "Se emite /stop y cesan los /ping de esa View"
+
+  # ── Bitrate / ping / rendition ────────────────────────────────────────────
+  - id: YBRA-AC-010
+    priority: MUST
+    scenario: "Pings periódicos reportan playhead y rendition coherentes"
+    given: "Sesión activa reproduciendo"
+    when: "Transcurre el tiempo de reproducción"
+    then:
+      - "Se envían /ping (intervalo de cuenta NPAW, típico ~5s) hasta el /stop de la View"
+      - "playhead aumenta mientras avanza el contenido y permanece constante en pause/buffer/ad break"
+      - "Al cambiar rendition, getRendition() reporta 'WxH@Nkbps' (o WxH, o Nkbps) en entities"
+      - "bitrate y totalBytes NO se envían simultáneamente; si el handler no expone bitrate se reporta -1"
+
+  # ── Ads ────────────────────────────────────────────────────────────────────
+  - id: YBRA-AC-011
+    priority: MUST
+    scenario: "El ad break no contamina el tracking de contenido (_inAdBreak guard)"
+    given: "Pre-roll/mid-roll activo con Youbora habilitado"
+    when: "Se emiten adsContentPauseRequested y adsContentResumeRequested"
+    then:
+      - "_inAdBreak=true silencia los handlers de contenido (playing, pause, seek, buffer)"
+      - "En pre-roll sin sesión previa, se abre la View de contenido (fireStart+fireJoin) y firePause antes del ad"
+      - "adsContentResumeRequested → _inAdBreak=false y fireResume() de contenido"
+      - "El playhead de contenido permanece congelado durante el break (_contentPlayheadAtBreak)"
+
+  - id: YBRA-AC-012
+    priority: MUST
+    scenario: "El ciclo de vida del ad emite beacons en el ad adapter separado"
+    given: "Contenido con pre-roll VAST y Youbora activa"
+    when: "El ad break se reproduce completo"
+    then:
+      - "Secuencia mínima: fireBreakStart → fireStart(ad) → fireJoin(ad) → fireStop(ad) → fireBreakStop"
+      - "Los quartiles (fireQuartile 1/2/3) se emiten en firstQuartile/midpoint/thirdQuartile"
+      - "Las métricas de ads viajan en el ad adapter, NO mezcladas con las de contenido"
+
+  - id: YBRA-AC-013
+    priority: SHOULD
+    scenario: "Skip de un anuncio skippable reporta fireSkip"
+    given: "Ad break con un anuncio skippable en reproducción"
+    when: "El usuario salta el anuncio (Events._adsSkipped)"
+    then:
+      - "onAdsSkipped → fireSkip() del ad adapter"
+      - "getIsSkippable() refleja skipOffset !== -1"
+
+  - id: YBRA-AC-014
+    priority: SHOULD
+    scenario: "Error de ad reporta fireError sin romper el contenido"
+    given: "Ad adapter registrado"
+    when: "Se emite Events._adsError"
+    then:
+      - "onAdsError → fireError(code, msg) del ad adapter"
+      - "La reproducción del contenido continúa o reanuda según el flujo de ads"
+
+  # ── Gestión de sesión por load()/destroy() ────────────────────────────────
+  - id: YBRA-AC-015
+    priority: MUST
+    scenario: "load() con contenido distinto reinicia la sesión Youbora"
+    given: "Sesión activa para un contenido"
+    when: "Se llama player.load() con id/type/accountCode distintos"
+    then:
+      - "index.jsx detecta needsRestart → tracker.restart(next)"
+      - "restart() ejecuta _cleanup() (fireStop de la View previa) y difiere init con setTimeout(0)"
+      - "La nueva carga emite /start + /joinTime para el nuevo contenido con metadata nueva"
+      - "El viewCode (code) de la nueva View es distinto al de la anterior"
+
+  - id: YBRA-AC-016
+    priority: SHOULD
+    scenario: "load()/cambio con mismo id/type/account_code no reinicia la sesión"
+    given: "Sesión activa y mismo id/type/accountCode tras el cambio de contexto"
+    when: "El contexto se actualiza sin cambiar identidad de contenido"
+    then:
+      - "index.jsx llama tracker.updateOptions() (no restart)"
+      - "Se hace setVideoOptions() con la metadata actualizada, manteniendo la View activa"
+      - "No aparece un /stop adicional ni se reinicia la View"
+
+  - id: YBRA-AC-017
+    priority: MUST
+    scenario: "destroy() antes de contentFirstPlay no abre View de sesión"
+    given: "Player listo (ready) pero sin reproducción iniciada (_started=false)"
+    when: "Se llama player.destroy()"
+    then:
+      - "El SDK puede haber emitido /init y /ping al instanciar NpawPlugin, pero"
+      - "NO existen beacons /start ni /joinTime (requieren contentFirstPlay)"
+      - "El teardown (_cleanup → fireStop, removeAdapter, removeAdsAdapter) no lanza excepción"
+
+  - id: YBRA-AC-018
+    priority: SHOULD
+    scenario: "EBVS — salir antes de joinTime cierra View como Exit Before Video Start"
+    given: "Contenido seleccionado, /init o /start enviado, pero el video aún no arranca"
+    when: "Se cierra/destruye el player antes de que se envíe /joinTime"
+    then:
+      - "Se envía /stop sin /joinTime previo → la View se contabiliza como EBVS en la NPAW Suite"
+      - "No se reportan beacons de reproducción posteriores en esa View"
+    notes: >
+      DEFECTO CONOCIDO YBRA-DEF-007: EBVS es actualmente IMPOSIBLE de producir porque fireStart()
+      llama fireJoin() en la misma función (tracker.js:135-136). /start y /joinTime siempre viajan
+      juntos. Test NPAW-3.2 marcado test.fixme. Fix requiere disociar fireJoin() al primer frame.
+
+  # ── Errores ─────────────────────────────────────────────────────────────
+  - id: YBRA-AC-019
+    priority: MUST
+    scenario: "Error fatal in-stream (con adapter ya creado) reporta /error y /stop"
+    given: "Sesión activa con _adapter creado (post contentFirstPlay)"
+    when: "El player emite Events._error con fatal=true (p.ej. chunks HLS bloqueados mid-playback)"
+    then:
+      - "onError → fireFatalError(code, msg) (tracker.js:229) emite /error con errorCode y mensaje"
+      - "La View se cierra con /stop; sin bucle infinito de errores"
+
+  - id: YBRA-AC-020
+    priority: SHOULD
+    scenario: "Una nueva View se crea tras recuperación de error"
+    given: "Una View tuvo error y se cerró"
+    when: "Se reproduce otro contenido sin recargar la página"
+    then:
+      - "Se abre una nueva View con /start (regardless de pre-roll ads)"
+      - "El nuevo contentFirstPlay dispara fireStart+fireJoin del nuevo contenido"
+    notes: >
+      DEFECTO CONOCIDO YBRA-DEF-001: si el error ocurre ANTES de ready/contentFirstPlay,
+      _adapter es null y el guard `if (!this._adapter) return` (tracker.js:225) impide
+      cualquier /error. Tests NPAW-8.1 y NPAW-8.6 marcados test.fixme.

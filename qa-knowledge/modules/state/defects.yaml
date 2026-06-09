@@ -1,0 +1,92 @@
+version: "1.0"
+module: state
+last_updated: "2026-06-08"
+
+defects:
+  - id: STATE-DEF-001
+    status: known_limitation
+    severity: medium
+    title: "player.loop = true no funciona en runtime (setter ignorado)"
+    description: >
+      loop está definido como readOnlyProp en BasePlayer._exposeMethods(). El setter
+      expuesto via Object.defineProperty es un no-op vacío (set: () => {}). Asignar
+      player.loop = true en runtime no tiene efecto — loop solo puede configurarse
+      en la config inicial del player (options.loop).
+    workaround: "Configurar loop: true en las opciones iniciales de loadMSPlayer(). No hay forma de cambiar loop dinámicamente."
+    source_comment: "src/player/base.js línea 460 — loop en readOnlyProps; src/controls/methods.js línea 12 — default setter vacío"
+    industry_known: false
+    regression_risk: low
+
+  - id: STATE-DEF-002
+    status: known_workaround
+    severity: high
+    title: "durationAtom puede quedar stuck en NaN post-ads si durationchange fue silenciado durante el ad"
+    description: >
+      Cuando isAdsPlayingAtom === true, durationAtom ignora los eventos _durationchange.
+      Si el manifest HLS de contenido carga durante el ad y emite durationchange, ese
+      evento se pierde. El fix en el código re-ejecuta el atomEffect cuando isAdsPlayingAtom
+      cambia de true a false, pero en el edge case de un ad muy corto (< 200ms), el cambio
+      de atoms puede hacer que el re-trigger no capture el durationchange del contenido.
+    workaround: "Usar expect.poll() con timeout ≥ 3000ms para player.duration post-ads. El atomEffect se re-ejecuta y normalmente captura el valor correcto en el segundo ciclo."
+    source_comment: "src/view/video/atoms/duration.js líneas 13-16 — comentario: 'fixes the race condition where _durationchange fires during ads (when the content HLS stream loads its segments), gets silenced, and then never fires again — leaving duration stuck at NaN after ads end'"
+    industry_known: true
+    regression_risk: high
+
+  - id: STATE-DEF-003
+    status: known_limitation
+    severity: high
+    title: "player.status de múltiples instancias contamina el prototipo — última instancia gana"
+    description: >
+      Object.defineProperty en LightningPlayer.prototype para exponer player.status,
+      player.currentTime, etc. es un singleton de prototipo. Si hay dos instancias activas,
+      la segunda sobreescribe los getters de la primera. Ambas instancias devuelven el estado
+      de la segunda instancia. Es un bug de diseño arquitectónico, no un bug de implementación.
+    workaround: "Aislar cada instancia en un iframe separado. No usar múltiples instancias en la misma página para obtener estados independientes."
+    source_comment: "src/controls/methods.js línea 11 — Object.defineProperty(LightningPlayer.prototype, ...) + comentario: 'there is no way to have two instances of the player in the same page with two different handlers for the same exposed method'"
+    industry_known: false
+    regression_risk: medium
+
+  - id: STATE-DEF-004
+    status: known_workaround
+    severity: medium
+    title: "currentTime null durante ventana de inicialización DVR"
+    description: >
+      En streams DVR, currentTimeAtom retorna null cuando el raw currentTime > 86400*2
+      y dvrWindowStart no está inicializado. Esto ocurre en los primeros segundos de
+      carga de un stream DVR antes del primer seek. Durante esta ventana, player.currentTime
+      devuelve null, lo que puede causar errores en código que asume que currentTime
+      es siempre un número.
+    workaround: "Verificar Number.isFinite(player.currentTime) antes de usar el valor. En tests DVR, usar expect.poll() hasta que currentTime sea un número finito positivo."
+    source_comment: "src/view/video/atoms/currentTime.js líneas 31-34 — comentario: 'DVR mode but window start not set yet; raw is absolute time — don't overwrite currentTimeBase'"
+    industry_known: false
+    regression_risk: medium
+
+  - id: STATE-DEF-005
+    status: open
+    severity: low
+    title: "player.muted no está documentado como propiedad de la API pública en player_system.md"
+    description: >
+      La propiedad player.muted existe y funciona (BasePlayer._exposeMethods() expone
+      propiedades del handler, que incluye muted del HTML5 element). Sin embargo, no
+      aparece en la tabla de propiedades de la API pública en player_system.md. Tests
+      de contrato la verifican indirectamente via setMuted/isMuted en el fixture,
+      pero no está documentada oficialmente.
+    workaround: "Usar player.muted = true/false y player.muted para get. Funciona en la práctica aunque no esté en la documentación oficial."
+    source_comment: "src/player/base.js — muted no está en readOnlyProps ni en props pero se accede via handler.get('muted')"
+    industry_known: false
+    regression_risk: low
+
+  - id: STATE-DEF-006
+    status: known_workaround
+    severity: medium
+    title: "setData() con key desconocido no lanza error — silently ignored"
+    description: >
+      ContextProvider._setData() no valida si la key existe en el estado inicial.
+      Llamar setData('unknownKey', value) no produce error — agrega la key al estado
+      del componente. Esto puede llevar a que el contexto acumule keys no esperadas,
+      lo que podría causar renders innecesarios o comportamientos inesperados en
+      getDerivedStateFromProps si una prop colisiona con una key interna.
+    workaround: "Solo usar setData() con keys conocidas del contexto. No usar para pasar datos arbitrarios a componentes."
+    source_comment: "src/context/index.jsx líneas 38-56 — _setData: no hay validación de key"
+    industry_known: false
+    regression_risk: low

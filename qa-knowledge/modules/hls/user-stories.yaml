@@ -1,0 +1,177 @@
+version: "1.0"
+module: hls
+last_updated: "2026-06-08"
+
+user_stories:
+  - id: US-HLS-001
+    persona: Viewer
+    narrative:
+      as: "espectador viendo contenido bajo demanda"
+      want: "que el video inicie rápidamente al abrir el player"
+      so_that: "puedo empezar a ver sin esperar más de 10 segundos"
+    business_value: HIGH
+    risk_area:
+      - "startup latency"
+      - "manifest loading"
+      - "segment buffering"
+    related_features:
+      - "playback-core"
+      - "platform-config"
+    acceptance:
+      - HLS-AC-001
+    notes: "Startup time <3s con streams locales es el baseline. Con CDN y red real, el objetivo es <10s. Afecta directamente la tasa de abandono (1s extra = ~5% abandono según estudios Akamai)."
+
+  - id: US-HLS-002
+    persona: Viewer
+    narrative:
+      as: "espectador en una red móvil con señal variable"
+      want: "que el video se adapte automáticamente a mi bandwidth disponible"
+      so_that: "puedo seguir viendo sin interrupciones frecuentes aunque la calidad baje"
+    business_value: HIGH
+    risk_area:
+      - "ABR algorithm"
+      - "network instability"
+      - "level switching"
+    related_features:
+      - "quality-selector"
+    acceptance:
+      - HLS-AC-002
+      - HLS-AC-010
+    notes: "ABR es la feature más importante de HLS para experiencia en mobile. El EWMA de hls.js necesita 2-3 segmentos (4-6s) para reaccionar a cambios de red — esto es latencia inherente del algoritmo."
+
+  - id: US-HLS-003
+    persona: Viewer
+    narrative:
+      as: "espectador en un stream de alta calidad con buena conexión"
+      want: "poder fijar la calidad manualmente al máximo disponible"
+      so_that: "el player no baje la calidad automáticamente aunque detecte poco bandwidth"
+    business_value: MEDIUM
+    risk_area:
+      - "level override"
+      - "manual ABR control"
+    related_features:
+      - "quality-selector"
+    acceptance:
+      - HLS-AC-003
+      - HLS-AC-004
+      - HLS-AC-009
+    notes: "Control manual de calidad es esperado en players premium. player.level = N deshabilita ABR hasta que el usuario o el player asigne player.level = -1."
+
+  - id: US-HLS-004
+    persona: Viewer
+    narrative:
+      as: "espectador de un stream live de noticias"
+      want: "poder rebobinar para ver lo que me perdí (DVR)"
+      so_that: "puedo retroceder hasta 30 minutos sin perder la transmisión en vivo"
+    business_value: HIGH
+    risk_area:
+      - "DVR window"
+      - "live seekable range"
+      - "programdatetime"
+    related_features:
+      - "playback-core"
+    acceptance:
+      - HLS-AC-006
+    notes: "DVR requiere configuración correcta del servidor HLS (PLAYLIST_TYPE=EVENT o sliding window). El player expone la ventana via seekable.start/end. player.duration retorna Infinity para live — no usarlo para calcular la ventana DVR."
+
+  - id: US-HLS-005
+    persona: Viewer
+    narrative:
+      as: "espectador que pierde conexión temporalmente durante un live stream"
+      want: "que el player se recupere automáticamente y retome la transmisión en vivo"
+      so_that: "no me quedo viendo un pantalla congelada ni tengo que recargar la página"
+    business_value: HIGH
+    risk_area:
+      - "live stall recovery"
+      - "buffer flush"
+      - "network interruption"
+    related_features:
+      - "playback-core"
+    acceptance:
+      - HLS-AC-016
+    notes: "El player hace flush del buffer acumulado y resetea currentTime=0 al recuperar un live stream tras stall. Es un comportamiento brusco pero correcto — sin flush, hls.js intentaría bufferar todo el tiempo perdido antes de retomar el live edge."
+
+  - id: US-HLS-006
+    persona: Viewer
+    narrative:
+      as: "espectador con Apple TV o receptor AirPlay"
+      want: "que el botón AirPlay sea visible y funcional en el player"
+      so_that: "puedo enviar el video a mi televisor con un clic"
+    business_value: MEDIUM
+    risk_area:
+      - "AirPlay compatibility"
+      - "ManagedMediaSource"
+      - "Safari 17.1+"
+    related_features:
+      - "airplay"
+    acceptance:
+      - HLS-AC-012
+    notes: "Safari 17.1+ con ManagedMediaSource puede hacer desaparecer el botón AirPlay. El handler mitiga esto con preferManagedMediaSource=!isAirPlaySupported(). Verificar en dispositivos físicos — simuladores pueden no reproducir el bug."
+
+  - id: US-HLS-007
+    persona: Integrator
+    narrative:
+      as: "integrador que implementa el player en su plataforma OTT"
+      want: "que los errores de streaming (segmentos no disponibles, manifest inválido) se reporten claramente via eventos"
+      so_that: "puedo mostrar un mensaje de error apropiado al usuario y registrar el fallo en mi sistema de analytics"
+    business_value: HIGH
+    risk_area:
+      - "error handling"
+      - "fatal error detection"
+      - "retry logic"
+    related_features:
+      - "events"
+    acceptance:
+      - HLS-AC-005
+      - HLS-AC-008
+    notes: "El player emite 'error' con instancias de NetworkError, MediaError, o PlayerError. Errores fatales (fatal=true) requieren acción del usuario o la plataforma. Errores no fatales son recuperables y el player los maneja internamente."
+
+  - id: US-HLS-008
+    persona: Integrator
+    narrative:
+      as: "integrador que usa contenido HLS con FairPlay DRM para proteger contenido premium"
+      want: "que el player configure automáticamente hls.js con la licencia FairPlay de mi plataforma"
+      so_that: "el contenido protegido se reproduce en Safari sin configuración adicional del integrador"
+    business_value: MEDIUM
+    risk_area:
+      - "FairPlay DRM"
+      - "EME API"
+      - "Safari-only"
+    related_features:
+      - "drm"
+    acceptance:
+      - HLS-AC-015
+    notes: "FairPlay via EME solo funciona en Safari. El handler acepta la config DRM desde la plataforma y la inyecta en HLSConfig. El integrador solo necesita proveer serverURL (y opcionalmente certificate y token) en la respuesta de la API de contenido."
+
+  - id: US-HLS-009
+    persona: Operator
+    narrative:
+      as: "operador de plataforma OTT que quiere optimizar el consumo de bandwidth del CDN"
+      want: "que el player envíe datos CMCD en cada request de segmento"
+      so_that: "el CDN puede tomar decisiones de caching y routing informadas basándose en el contexto del cliente"
+    business_value: LOW
+    risk_area:
+      - "CMCD reporting"
+      - "CDN optimization"
+    related_features:
+      - "platform-config"
+    acceptance:
+      - HLS-AC-011
+    notes: "CMCD (Common Media Client Data / SVTA CTA-5004) es un estándar emergente en OTT. El player lo soporta cuando context.id y context.metadata.MDSTRMPID están disponibles. Requiere que el CDN soporte CMCD en su lógica de routing."
+
+  - id: US-HLS-010
+    persona: Operator
+    narrative:
+      as: "operador que usa System73 para reducción de costos CDN via P2P"
+      want: "que el SDK System73 se integre con el player sin afectar la experiencia del usuario si falla"
+      so_that: "puedo habilitar P2P como feature optativa sin riesgo de romper el playback"
+    business_value: LOW
+    risk_area:
+      - "System73 P2P"
+      - "graceful degradation"
+      - "external SDK"
+    related_features:
+      - "playback-core"
+    acceptance:
+      - HLS-AC-013
+    notes: "El SDK System73 es lazy-loaded y tiene manejo de errores propio. Si el CDN de System73 falla, el player continúa sin P2P. Degradación suave sin impacto en el usuario final."

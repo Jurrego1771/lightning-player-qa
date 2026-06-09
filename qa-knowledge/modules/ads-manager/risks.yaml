@@ -1,0 +1,119 @@
+version: "1.0"
+module: ads-manager
+last_updated: "2026-06-08"
+
+risks:
+  - id: ADMGR-RISK-001
+    severity: high
+    title: "AdsManager destruido antes de AllAdsCompleted — contenido bloqueado"
+    description: "Si AdsManager.destroy() se llama mientras hay un ad break activo (por reset de source o navegación), el ContentResumeRequested puede no emitirse. El player quedaría con el contenido pausado indefinidamente."
+    affected_files:
+      - "src/ads/manager/render/index.js"
+      - "src/ads/manager/render/handler.js"
+      - "src/ads/manager/manager/index.js"
+    trigger: "Cambio de source (nuevo ads.map) mientras un ad está reproduciéndose. Navegación SPA mientras un ad break está activo."
+    mitigation: "AdsManagerWithBoundary trackea adsState.current.pauseRequested y fuerza ContentResumeRequested en el handleError del ErrorBoundary. Sin embargo, este path solo cubre errores React, no resets explícitos por cambio de source."
+    industry_note: "Conocido en implementaciones IMA: si el player no maneja contentResumeRequested en todos los paths de teardown, el usuario queda con pantalla en negro. La industria recomienda siempre emitir contentResumeRequested en destroy()."
+    test_priority: MUST
+
+  - id: ADMGR-RISK-002
+    severity: high
+    title: "Race condition entre midroll cue point y seek del usuario"
+    description: "AdsManager sondea contentPlayer.currentTime cada 200ms para detectar cuándo se alcanza un cue point. Si el usuario hace seek hacia adelante pasando múltiples cue points mientras el ad break no ha comenzado, #waitForNextAdBreak puede disparar múltiples ad breaks consecutivos."
+    affected_files:
+      - "src/ads/manager/manager/index.js"
+    trigger: "Usuario hace seek rápido sobre uno o más mid-rolls antes de que el AdsManager procese el cue point anterior."
+    mitigation: "El AdsManager tiene #waitingForNextAdBreak flag para evitar re-entradas, y #running flag para evitar iniciar múltiples schedules. Sin embargo, el polling de 200ms introduce una ventana de race condition cuando el seek es muy rápido."
+    industry_note: "Problema documentado en Google IMA SDK: 'if you use ad rules, you may run into a problem with click-and-drag seeking where after a user drags to seek through video past multiple midroll pods, they may see 2 or more of those pods play back to back'. La solución recomendada es guardar el tiempo de seek y reportarlo como currentTime durante el seek."
+    test_priority: MUST
+
+  - id: ADMGR-RISK-003
+    severity: high
+    title: "VPAID en modo inseguro — XSS y control del player"
+    description: "La config adsInsecureVpaidMode=true permite cargar creatives VPAID que ejecutan JS arbitrario con acceso al DOM del player. VPAID es un vector de seguridad conocido ya que da control completo del video element al creative."
+    affected_files:
+      - "src/ads/manager/render/index.js"
+      - "src/ads/manager/manager/creatives/linear.js"
+    trigger: "ads.map con VAST que incluye MediaFile de tipo application/x-javascript (VPAID). adsInsecureVpaidMode=true en la config del player."
+    mitigation: "adsInsecureVpaidMode=false por defecto. Solo se habilita explícitamente."
+    industry_note: "VPAID está oficialmente deprecated por IAB Tech Lab (2024-2025). La industria recomienda migrar a SIMID + OMID. Google Ad Manager solo soporta VPAID en settings legacy de desktop."
+    test_priority: SHOULD
+
+  - id: ADMGR-RISK-004
+    severity: high
+    title: "Autoplay bloqueado — ad no inicia y contenido queda bloqueado"
+    description: "AdsHandler.#loadAds() llama playerHandler.play() para inicializar el AdDisplayContainer (requiere user gesture). Si el browser bloquea el autoplay (NotAllowedError), el handler retorna false silenciosamente y el ad no carga. En ciertos paths, el contenido tampoco reanuda."
+    affected_files:
+      - "src/ads/manager/render/handler.js"
+    trigger: "Player con autoplay=true en navegador que bloquea autoplay sin interacción. Primer load de página sin interacción previa."
+    mitigation: "El error NotAllowedError es capturado y se retorna sin crash. Sin embargo, la lógica de fallback a contenido no es siempre garantizada — depende del path de ejecución."
+    industry_note: "Error code AUTOPLAY_DISALLOWED (1205) en el IMA SDK. La industria recomienda inicializar el AdDisplayContainer solo dentro de user gesture handlers."
+    test_priority: MUST
+
+  - id: ADMGR-RISK-005
+    severity: medium
+    title: "VAST load timeout (5000ms) — request lento bloquea inicio del contenido"
+    description: "vastLoadTimeout default es 5000ms. En conexiones lentas o servidores de ads lentos, la request puede tardar hasta 5 segundos antes de que el player pueda empezar a reproducir. El usuario percibe latencia de inicio no atribuible al stream."
+    affected_files:
+      - "src/ads/manager/request/index.js"
+      - "src/ads/manager/loader/index.js"
+    trigger: "Servidor de ads con alta latencia. Red 3G. CDN de ads geográficamente lejano."
+    mitigation: "El timeout es configurable via vastLoadTimeout en AdsRequest. El default de 5000ms es el recomendado por Google IMA SDK."
+    industry_note: "VAST error 301 (VAST_REDIRECT_TIMEOUT) se reporta cuando el timeout se alcanza en un Wrapper. La industria recomienda 5s para wrapper individual. VMAP puede tener múltiples wrappers encadenados, multiplicando la latencia potencial."
+    test_priority: SHOULD
+
+  - id: ADMGR-RISK-006
+    severity: medium
+    title: "AllAdsCompleted no se emite si post-roll VMAP falla tras el último midroll"
+    description: "Cuando #endSchedule() llama #loadAd(schedule[0]) para el siguiente break y ese break es el post-roll (-1), si contentComplete no fue llamado aún (race condition entre ended event y loadAd), el post-roll puede quedarse esperando y AllAdsCompleted nunca se emite."
+    affected_files:
+      - "src/ads/manager/manager/index.js"
+      - "src/ads/manager/loader/index.js"
+    trigger: "VMAP con pre+mid+post. Último midroll completa. Post-roll VAST falla o endpoint lento. AllAdsCompleted de IMA SDK no se dispara."
+    mitigation: "AdsManagerWithBoundary trackea allCompleted state y el ErrorBoundary puede forzar el emit si hay un error React."
+    industry_note: "Problema documentado en Google IMA SDK groups: 'IMA HTML5 SDK - ALL_ADS_COMPLETED not fired' cuando post-roll VAST falla. La recomendación es añadir un timeout de safety para emit AllAdsCompleted."
+    test_priority: SHOULD
+
+  - id: ADMGR-RISK-007
+    severity: medium
+    title: "Wrapper chain excesiva — VAST_WRAPPER_LIMIT_REACHED (302)"
+    description: "Si el endpoint VAST retorna un Wrapper que apunta a otro Wrapper (daisy chain circular o muy profunda), el loader puede hacer fetch de múltiples URLs antes de detectar el límite. Cada fetch suma al tiempo total de carga y puede exceder el vastLoadTimeout."
+    affected_files:
+      - "src/ads/manager/loader/vast.js"
+    trigger: "Ad networks que usan daisy chaining de Wrappers. Circular Wrapper references."
+    mitigation: "El VastLoader implementa un límite de Wrappers. Error 302 (WRAPPER_LIMIT_REACHED) se emite si se supera."
+    industry_note: "Problema conocido en exchanges de ads: SSP → DSP → ad network → creative puede involucrar 4-5 niveles de Wrappers. La industria limita a 5 niveles máximo (recomendación IAB)."
+    test_priority: SHOULD
+
+  - id: ADMGR-RISK-008
+    severity: medium
+    title: "skip() implementado parcialmente — AdsHandler.skippable siempre false"
+    description: "AdsHandler.get skippable retorna siempre false con un TODO comment: 'Implement custom platform skippable logic'. Aunque AdsManager internamente gestiona el skipTimeOffset y emite SkippableStateChanged, la propiedad pública handler.skippable no refleja el estado real."
+    affected_files:
+      - "src/ads/manager/render/handler.js"
+    trigger: "Consumer del AdsHandler consulta handler.skippable para mostrar botón de skip personalizado."
+    mitigation: "player.ad.info.skippable sí refleja el estado real (calculado en adInfo getter). El skip funciona via player.ad.skip() o handler.skip()."
+    industry_note: "No es un bug de funcionalidad (el skip funciona), sino una inconsistencia en la API pública que puede llevar a UIs mal informadas."
+    test_priority: SHOULD
+
+  - id: ADMGR-RISK-009
+    severity: low
+    title: "OMID bundleado — versión puede quedar desactualizada"
+    description: "El OMID SDK está bundleado localmente en src/ads/manager/tracker/omid/external/. Al ser archivos .cjs copiados, no se actualiza con npm install. Si IAB lanza una nueva versión del OMID spec incompatible, la verificación OMID puede fallar silenciosamente."
+    affected_files:
+      - "src/ads/manager/tracker/omid/external/"
+    trigger: "Cambio de spec en OMID v2. Ad network que requiere OMID >= versión específica."
+    mitigation: "OmidTracker falla silenciosamente — si ready() rechaza, el ad continúa sin OMID tracking. No afecta la reproducción."
+    industry_note: "La versión bundleada es omid-session-client-v1.cjs. El OMID v1 es el estándar actual (2026) pero la industria está migrando hacia integración via npm para facilitar actualizaciones."
+    test_priority: COULD
+
+  - id: ADMGR-RISK-010
+    severity: low
+    title: "resume() en live stream sin DVR — src puede ser reemplazado incorrectamente"
+    description: "En #onContentResumeRequested, si isCustomPlaybackUsed() y el src cambió, se intenta restaurar el src del elemento video. Para live stream sin DVR, el código comenta 'TODO: DVR resume position?' — el comportamiento puede ser incorrecto al intentar reanudar desde un offset de un stream live."
+    affected_files:
+      - "src/ads/manager/render/handler.js"
+    trigger: "Ad break durante un live stream. Custom playback mode activo. Src del elemento cambia durante el ad."
+    mitigation: "Para live sin DVR, se setea this.#element.src = this.#resumeSource sin hash time. El stream live reanuda desde el punto live actual, no desde un offset pasado."
+    industry_note: "El manejo de resume en live streams es un edge case complejo. La industria recomienda para live: simplemente reconnectar al stream live sin intentar restaurar un timestamp."
+    test_priority: COULD

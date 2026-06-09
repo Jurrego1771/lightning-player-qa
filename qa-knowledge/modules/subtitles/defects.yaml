@@ -1,0 +1,71 @@
+version: "1.0"
+module: subtitles
+last_updated: "2026-06-08"
+
+defects:
+
+  - id: SUB-DEF-001
+    status: known_workaround
+    severity: medium
+    title: "ASS mode mutation no dispara re-render de Jotai sin revision atom"
+    description: >
+      TextTrack.mode es mutado in-place. Jotai no detecta el cambio porque
+      el objeto trackAtom no cambia de referencia. La UI de closed caption
+      quedaba stale (mostrando estado incorrecto).
+    workaround: >
+      subtitleUiRevisionAtom: contador que se incrementa con bumpSubtitleUiRevision()
+      cada vez que se muta mode. Fuerza re-ejecución de activeSubtitleAtom y
+      selectedSubtitleAtom.
+    source_comment: "subtitle.js líneas 22-24: 'TextTrack.mode se muta in-place...'"
+    regression_risk: medium
+
+  - id: SUB-DEF-002
+    status: known_workaround
+    severity: medium
+    title: "EZTitles exporta ASS con formato no-estándar"
+    description: >
+      EZTitles (software profesional de subtitulado) exporta .ass con:
+      - Campo 'Marked' en lugar de 'Layer'
+      - 'Effects' (plural) en lugar de 'Effect'
+      - \n minúscula en lugar de \N estándar
+      ass-html5 no puede parsear este formato sin normalización.
+    workaround: >
+      normalizeAssFormat() en assSubtitle.jsx detecta archivos EZTitles por
+      'EZTitles' en el contenido o 'Format: Marked,' y aplica regex replacements.
+    source_comment: "assSubtitle.jsx líneas 23-36"
+    regression_risk: high
+
+  - id: SUB-DEF-003
+    status: known_limitation
+    severity: low
+    title: "ASS subtitles no funcionan con Google DAI"
+    description: >
+      loadConfig.js elimina config.subtitles cuando DAI está activo para evitar
+      conflictos con la inserción de anuncios. Consecuencia: subtítulos externos
+      (incluyendo ASS) no están disponibles con DAI. Solo funciona VTT en manifiesto.
+    workaround: "Ninguno. Limitación de diseño documentada en loadConfig.js línea 452-459."
+    source_comment: "loadConfig.js: 'ASS subtitles will not work at all, only VTT subtitles'"
+    regression_risk: low
+
+  - id: SUB-DEF-004
+    status: open
+    severity: low
+    title: "PlayResX/Y sin dimensiones de video al montar temprano"
+    description: >
+      Si AssSubtitle se monta antes de que el video tenga dimensiones (videoWidth/videoHeight = 0),
+      el fallback usa DEFAULT_WIDTH=640 / DEFAULT_HEIGHT=360. En streams con aspect ratio
+      diferente a 16:9 los subtítulos quedan desposicionados.
+    workaround: "Ninguno implementado."
+    regression_risk: low
+
+  - id: SUB-DEF-005
+    status: known_limitation
+    severity: low
+    title: "Múltiples pistas en modo showing fuerza disabled en current track"
+    description: >
+      textTracks.js maneja el caso donde activeTracks.length > 1 poniendo
+      ref.current.textTracks.current.mode = 'disabled'. Esto puede causar
+      un parpadeo si dos pistas se activan en el mismo tick.
+    workaround: "La lógica es correctiva, no preventiva."
+    source_comment: "textTracks.js líneas 171-173"
+    regression_risk: low

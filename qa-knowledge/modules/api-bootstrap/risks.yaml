@@ -1,0 +1,126 @@
+version: "1.0"
+module: api-bootstrap
+last_updated: "2026-06-08"
+
+risks:
+  - id: BOOT-RISK-001
+    severity: high
+    title: "Fallo en platform API durante bootstrap deja el player en estado de error sin retry"
+    description: "Si el GET a embed.mdstrm.com/{type}/{id}.json falla (404, 5xx, timeout, CORS), _loadConfig() atrapa el error y setea err.fatal=true en el config object. El player se monta en estado de error. No hay lógica de retry implementada. Un usuario con conectividad intermitente ve el error permanente sin posibilidad de reintentar automáticamente."
+    affected_files:
+      - "src/api/api.js"
+      - "src/platform/loadConfig.js"
+    trigger: "CDN/API de plataforma inaccesible, contenido 404, error de red transitorio"
+    mitigation: "El integrador puede llamar a player.loadConfig() para reintentar manualmente. El player no crashea — queda en estado estable."
+    industry_note: "Bitmovin y JW Player tampoco tienen retry automático en init — el patrón estándar es exponer un error event con los datos del fallo para que el integrador decida si reintentar."
+    test_priority: MUST
+
+  - id: BOOT-RISK-002
+    severity: high
+    title: "Doble llamada a loadConfig() en la instancia lanza error por guard de _loadingConfig"
+    description: "player.loadConfig() tiene un guard: si _loadingConfig=true, lanza 'Loading config while already loading'. Esto es correcto behavior, pero si el integrador llama loadConfig() dos veces rápido (ej: usuario cambia de canal), la segunda llamada falla silenciosamente (lanzada y no capturada)."
+    affected_files:
+      - "src/api/player.jsx"
+    trigger: "Llamada a loadConfig() mientras una anterior está en curso"
+    mitigation: "Guard explícito — lanza Error descriptivo. El integrador debe esperar la Promise anterior."
+    industry_note: "Patrón común en players de producción: serializar loads via queue o rechazar rápido. Lightning rechaza rápido."
+    test_priority: SHOULD
+
+  - id: BOOT-RISK-003
+    severity: high
+    title: "Script cargado en HEAD sin data-container causa error pero no en todos los browsers"
+    description: "getContainer() rechaza con Error si script.parentNode.nodeName === 'HEAD'. Sin embargo, el check solo funciona si document.currentScript está disponible (browsers modernos). En browsers legacy o scripts async, getScript() puede retornar el script tag incorrecto, haciendo que el check no aplique."
+    affected_files:
+      - "src/api/api.js"
+    trigger: "Script tag ubicado en <head> sin data-container attribute, especialmente en browsers legacy"
+    mitigation: "Documentar claramente que el script debe ir en el body. El error message es descriptivo."
+    industry_note: "document.currentScript no funciona en scripts async/deferred — problema conocido en la industria."
+    test_priority: MUST
+
+  - id: BOOT-RISK-004
+    severity: high
+    title: "destroy() concurrente lanza error por guard de _destroying"
+    description: "Si destroy() es llamado mientras otra llamada a destroy() está en curso, lanza 'Destroying while already destroying'. El error es logueado a console pero también re-lanzado, lo que puede causar unhandled Promise rejections si el integrador no maneja el resultado de destroy()."
+    affected_files:
+      - "src/api/player.jsx"
+    trigger: "Llamada concurrente a destroy() (ej: usuario cierra modal mientras el player está haciendo unmount)"
+    mitigation: "Guard en finally block asegura que _destroying se resetea. La segunda llamada falla rápido."
+    industry_note: "Video.js reportó memory leaks con destroy() paralelo (issue #6537). Lightning tiene guard pero el throw puede ser problemático."
+    test_priority: SHOULD
+
+  - id: BOOT-RISK-005
+    severity: high
+    title: "eval() en parse de data-* attributes crea superficie de ataque XSS"
+    description: "Los valores de data-* que comienzan con '$' son evaluados con eval() en un scope aislado. Si un atacante puede inyectar un script tag con data-volume='$maliciousCode', puede ejecutar código arbitrario. El scope aislado (IIFE) mitiga el acceso a variables minificadas, pero no previene ejecución de código."
+    affected_files:
+      - "src/api/api.js"
+    trigger: "Script tag generado dinámicamente con valores de data-* controlados por el usuario"
+    mitigation: "El scope aislado limita el alcance. El uso de '$' prefix es opt-in y debe estar en código del integrador."
+    industry_note: "El uso de eval() en SDKs de player es un patrón deprecated por la industria. Riesgo real solo si el integrador genera el script tag dinámicamente desde input de usuario."
+    test_priority: COULD
+
+  - id: BOOT-RISK-006
+    severity: medium
+    title: "loadMSPlayer() expone instancia anterior si destroy() falla"
+    description: "En loadMSPlayer(), si _player.destroy() lanza una excepción, el código continúa (no hay try/catch explícito). _player es seteado a null antes del init(), pero si destroy() es async y falla, puede haber una condición de race donde la instancia anterior no está completamente limpiada."
+    affected_files:
+      - "src/api/api.js"
+    trigger: "destroy() fallando (ej: Chromecast session colgada) mientras loadMSPlayer() es llamado nuevamente"
+    mitigation: "destroy() logea el error pero no interrumpe el flujo. La instancia anterior queda en estado indeterminado."
+    industry_note: "Patrón recomendado por Bitmovin: await destroy() antes de crear nueva instancia."
+    test_priority: SHOULD
+
+  - id: BOOT-RISK-007
+    severity: medium
+    title: "CORS en CDN de api.js puede bloquear la carga en embeds cross-origin"
+    description: "api.js es servido desde player.cdn.mdstrm.com. Si el browser del usuario tiene restricciones de CORS o el integrador usa CSP, el script puede fallar en cargarse. El error es silencioso desde la perspectiva del player (el script nunca se ejecuta)."
+    affected_files:
+      - "src/api/api.js"
+    trigger: "CSP restrictiva del host, CORS misconfiguration en el CDN, embeds en dominios no allowlisteados"
+    mitigation: "Política CORS del CDN configurada para permitir todos los orígenes (wildcard). CSP es responsabilidad del integrador."
+    industry_note: "Problema común en embeds de terceros. La industria recomienda Subresource Integrity (SRI) + documentar los dominios requeridos en la CSP."
+    test_priority: SHOULD
+
+  - id: BOOT-RISK-008
+    severity: medium
+    title: "Config key desconocidas se pasan silenciosamente al player sin validación"
+    description: "Los atributos data-* desconocidos son convertidos a camelCase y pasados al config object sin validación de schema. Typos en config keys (ej: data-autplay en vez de data-autoplay) son ignorados silenciosamente — no hay error, el player simplemente no tiene el comportamiento esperado."
+    affected_files:
+      - "src/api/api.js"
+    trigger: "Typos en data-* attributes o config options de loadMSPlayer()"
+    mitigation: "Ninguna — forward compatible by design. Las keys desconocidas pasan al config para extensibilidad."
+    industry_note: "JW Player tampoco valida keys desconocidas. Bitmovin tiene TypeScript types que detectan typos en compile time."
+    test_priority: SHOULD
+
+  - id: BOOT-RISK-009
+    severity: medium
+    title: "Memory leak si destroy() nunca es llamado en SPAs con routing dinámico"
+    description: "En Single Page Applications donde el componente parent se desmonta (ej: React Router navegación), si el integrador no llama player.destroy() antes del unmount, el React root del player y todos los event listeners quedan en memoria. El GC no puede limpiar el árbol React porque el div del player sigue referenciado."
+    affected_files:
+      - "src/api/player.jsx"
+    trigger: "Navegación SPA sin llamar destroy() en cleanup del componente parent"
+    mitigation: "Ninguna automática — responsabilidad del integrador llamar destroy() en el cleanup (componentWillUnmount, useEffect cleanup)."
+    industry_note: "Problema documentado en Video.js (#6537) y hls.js (#1220). El patrón estándar de la industria es: siempre llamar dispose/destroy en el cleanup del framework host."
+    test_priority: MUST
+
+  - id: BOOT-RISK-010
+    severity: low
+    title: "data-loaded con string que no es función loguea error pero no falla el bootstrap"
+    description: "Si data-loaded='someVar' y window.someVar no es una función, se loguea console.error('loaded attribute is not a function') pero el bootstrap continúa. El integrador puede no notar el error si no tiene la consola abierta."
+    affected_files:
+      - "src/api/api.js"
+    trigger: "data-loaded attribute con valor que no resuelve a función"
+    mitigation: "console.error es suficiente para developers. El player se inicializa de todas formas."
+    industry_note: "Patrón defensivo estándar — no crashear en callbacks opcionales inválidos."
+    test_priority: COULD
+
+  - id: BOOT-RISK-011
+    severity: low
+    title: "type=reels salta el fetch de platform config — sin ads ni DRM para reels"
+    description: "En _loadConfig(), si viewType === 'reels', se omite el fetch de content config. Esto significa que los reels no tienen ads de plataforma, DRM ni subtitles a menos que sean pasados directamente en la config inicial."
+    affected_files:
+      - "src/api/api.js"
+    trigger: "Inicialización con view.type='reels' o view='reels'"
+    mitigation: "Diseño intencional — reels usa config directa del script tag."
+    industry_note: "Patrón de shorts/reels en la industria: contenido pre-cargado sin roundtrip a plataforma para máxima velocidad de inicio."
+    test_priority: COULD

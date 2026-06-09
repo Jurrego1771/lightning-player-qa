@@ -1,0 +1,223 @@
+version: "1.0"
+module: playback-core
+last_updated: "2026-06-08"
+
+user_stories:
+  - id: US-PLAY-001
+    persona: Viewer
+    narrative:
+      as: "espectador que abre el player en una página web"
+      want: "que el video inicie la reproducción rápidamente sin necesidad de hacer click"
+      so_that: "pueda consumir el contenido de forma inmediata sin fricción"
+    business_value: HIGH
+    risk_area:
+      - "autoplay policy"
+      - "TTFF (Time To First Frame)"
+    related_features:
+      - "playback-core"
+      - "hls"
+      - "platform-config"
+    acceptance:
+      - "PLAY-AC-010"
+      - "PLAY-AC-001"
+    notes: "Autoplay con audio puede ser bloqueado por el browser. Muted autoplay siempre permitido. La solución estándar es iniciar muted con botón de unmute."
+
+  - id: US-PLAY-002
+    persona: Viewer
+    narrative:
+      as: "espectador viendo un video"
+      want: "poder pausar y reanudar la reproducción en cualquier momento"
+      so_that: "pueda gestionar mi tiempo de visualización sin perder mi posición en el contenido"
+    business_value: HIGH
+    risk_area:
+      - "estado de reproducción"
+      - "sincronización de eventos"
+    related_features:
+      - "playback-core"
+      - "controls-api"
+    acceptance:
+      - "PLAY-AC-003"
+      - "PLAY-AC-004"
+    notes: "La transición playing→pause→playing debe ser fluida y el currentTime debe mantenerse."
+
+  - id: US-PLAY-003
+    persona: Viewer
+    narrative:
+      as: "espectador viendo un video largo"
+      want: "poder saltar a cualquier parte del contenido usando el barra de progreso"
+      so_that: "pueda encontrar rápidamente la parte que me interesa sin esperar la descarga completa"
+    business_value: HIGH
+    risk_area:
+      - "seek accuracy"
+      - "buffering tras seek"
+      - "seeking en zona no buffereada"
+    related_features:
+      - "playback-core"
+      - "hls"
+      - "controls-api"
+    acceptance:
+      - "PLAY-AC-005"
+    notes: "BUG-PLAY-DEF-001: seek a posición 0 no emite 'seeking'. Tests deben usar target > 0."
+
+  - id: US-PLAY-004
+    persona: Viewer
+    narrative:
+      as: "espectador que ha terminado de ver un video"
+      want: "recibir una señal clara de que el contenido finalizó"
+      so_that: "la interfaz pueda mostrarme el siguiente contenido o reiniciar el video"
+    business_value: HIGH
+    risk_area:
+      - "evento ended"
+      - "estado post-ended"
+      - "integración next-episode"
+    related_features:
+      - "playback-core"
+      - "next-episode"
+    acceptance:
+      - "PLAY-AC-006"
+    notes: "ended event es deduplicado por el flag _alreadyEmittedEnded. Después de ended, player.paused === true."
+
+  - id: US-PLAY-005
+    persona: Viewer
+    narrative:
+      as: "espectador con conexión de internet inestable"
+      want: "que el player se recupere automáticamente de interrupciones de red"
+      so_that: "pueda continuar viendo el contenido sin tener que recargar la página"
+    business_value: HIGH
+    risk_area:
+      - "error recovery"
+      - "network resilience"
+      - "buffering"
+    related_features:
+      - "playback-core"
+      - "hls"
+    acceptance:
+      - "PLAY-AC-007"
+      - "PLAY-AC-015"
+    notes: "NativeHandler implementa ping-reload (4s) para recuperarse de stalls. HLS handler tiene su propio stall detector."
+
+  - id: US-PLAY-006
+    persona: Integrator
+    narrative:
+      as: "desarrollador integrando el player en una SPA (Single Page Application)"
+      want: "poder destruir el player limpiamente cuando el usuario navega a otra ruta"
+      so_that: "no haya memory leaks ni comportamientos inesperados en la aplicación"
+    business_value: HIGH
+    risk_area:
+      - "memory leaks"
+      - "lifecycle management"
+      - "event listeners cleanup"
+    related_features:
+      - "playback-core"
+      - "events"
+    acceptance:
+      - "PLAY-AC-008"
+      - "PLAY-AC-016"
+    notes: "destroy() debe ser llamado explícitamente antes de remover el container del DOM. React.componentWillUnmount es una segunda línea de defensa."
+
+  - id: US-PLAY-007
+    persona: Integrator
+    narrative:
+      as: "desarrollador integrando el player en una plataforma de streaming"
+      want: "controlar si el video inicia automáticamente o espera interacción del usuario"
+      so_that: "pueda adaptar la experiencia al contexto (landing page vs. página de contenido)"
+    business_value: HIGH
+    risk_area:
+      - "autoplay policy"
+      - "configuración de inicialización"
+    related_features:
+      - "playback-core"
+      - "platform-config"
+    acceptance:
+      - "PLAY-AC-001"
+      - "PLAY-AC-010"
+    notes: "autoplay default es true — pasar autoplay: false explícitamente para desactivar. Muted autoplay es la única estrategia confiable para autoplay automático."
+
+  - id: US-PLAY-008
+    persona: Integrator
+    narrative:
+      as: "desarrollador que implementa controles de volumen personalizados"
+      want: "poder establecer el volumen del player mediante código y recibir confirmación del cambio"
+      so_that: "mis controles de UI reflejen siempre el estado real del audio"
+    business_value: MEDIUM
+    risk_area:
+      - "volumechange workaround"
+      - "estado de volumen"
+    related_features:
+      - "playback-core"
+      - "controls-api"
+    acceptance:
+      - "PLAY-AC-012"
+    notes: "PLAY-DEF-004: volumechange puede ser suprimido por workaround de Chrome. Usar expect.poll() para verificar volume, no solo el evento."
+
+  - id: US-PLAY-009
+    persona: Integrator
+    narrative:
+      as: "desarrollador que implementa carga dinámica de contenido sin recargar la página"
+      want: "poder cambiar el contenido del player usando load() y tener la misma experiencia de inicialización"
+      so_that: "el usuario pueda navegar entre contenidos en mi plataforma sin interrupciones visibles"
+    business_value: HIGH
+    risk_area:
+      - "estado residual tras load()"
+      - "secuencia de eventos post-load"
+      - "ads reset en nuevo contenido"
+    related_features:
+      - "playback-core"
+      - "ads-manager"
+      - "hls"
+    acceptance:
+      - "PLAY-AC-014"
+    notes: "load() debe resetear el estado del player y re-emitir loaded → ready. Los ads se resetean también. Esperar 'ready' antes de llamar play()."
+
+  - id: US-PLAY-010
+    persona: Integrator
+    narrative:
+      as: "desarrollador que implementa reproducción en loop para un fondo de video o contenido de pantalla"
+      want: "configurar el player para que repita el contenido indefinidamente"
+      so_that: "no tenga que implementar lógica custom de reinicio de video"
+    business_value: MEDIUM
+    risk_area:
+      - "loop con ended event"
+      - "estado de memoria en loop largo"
+    related_features:
+      - "playback-core"
+    acceptance:
+      - "PLAY-AC-013"
+    notes: "loop: false por default. Pasar loop: true en la config. Interacción con _alreadyEmittedEnded no verificada en tests."
+
+  - id: US-PLAY-011
+    persona: Operator
+    narrative:
+      as: "operador de plataforma que monitorea la calidad de reproducción"
+      want: "que el player emita eventos de error detallados cuando algo falla"
+      so_that: "el sistema de analytics pueda registrar y alertar sobre problemas de calidad de servicio"
+    business_value: HIGH
+    risk_area:
+      - "error reporting"
+      - "diagnóstico de fallos"
+      - "Youbora/analytics integration"
+    related_features:
+      - "playback-core"
+      - "youbora"
+      - "events"
+    acceptance:
+      - "PLAY-AC-007"
+    notes: "El evento error incluye { fatal, message, code }. player.status === 'error' después de error fatal. El sistema de analytics (Youbora) escucha estos eventos para reportar QoE."
+
+  - id: US-PLAY-012
+    persona: Operator
+    narrative:
+      as: "operador de plataforma que quiere validar que los contratos de API del player no han cambiado"
+      want: "que existan tests de contrato que fallen inmediatamente cuando el player team modifique la API pública"
+      so_that: "el equipo de QA sea notificado antes de que los cambios lleguen a producción"
+    business_value: HIGH
+    risk_area:
+      - "API stability"
+      - "breaking changes"
+    related_features:
+      - "playback-core"
+      - "events"
+    acceptance:
+      - "PLAY-AC-002"
+      - "PLAY-AC-003"
+    notes: "Cubierto por tests/contract/player-api.spec.ts. Corre primero en CI como proyecto 'contract'."
