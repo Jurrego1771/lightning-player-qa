@@ -1,0 +1,58 @@
+name: Update Visual Baselines (manual)
+
+# Genera/actualiza los baselines de screenshot EN el runner de CI (ubuntu-latest)
+# y los commitea de vuelta a la rama indicada. Es la forma correcta de capturar
+# baselines: en el mismo entorno donde el job `visual` los compara.
+#
+# Uso: Actions → "Update Visual Baselines (manual)" → Run workflow → elegir rama.
+# (workflow_dispatch requiere que este archivo exista en la rama por defecto.)
+# Tras correr, hacer `git pull` local para traer los PNG generados.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Rama sobre la que generar y commitear los baselines'
+        required: true
+        default: 'main'
+
+permissions:
+  contents: write
+
+jobs:
+  update-baselines:
+    name: Generar baselines linux
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref }}
+
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'npm' }
+      - run: npm ci
+
+      - run: npx playwright install chromium --with-deps
+      - run: sudo apt-get install -y ffmpeg
+      - run: npm run fixtures:generate
+
+      # --update-snapshots regenera/crea los *-chromium-linux.png faltantes.
+      # continue-on-error: un test que no llega al screenshot (p.ej. bug en el
+      # setup) no debe impedir commitear los baselines que sí se generaron.
+      - name: Update snapshots
+        continue-on-error: true
+        run: npx playwright test tests/visual/ --project=chromium --update-snapshots
+        env:
+          PLATFORM_API_TOKEN: ${{ secrets.PLATFORM_API_TOKEN }}
+
+      - name: Commit & push baselines
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add tests/visual/
+          if git diff --cached --quiet; then
+            echo "No hay cambios en baselines."
+          else
+            git commit -m "chore(visual): generar baselines linux en CI [skip ci]"
+            git push origin HEAD:${{ github.event.inputs.ref }}
+          fi
