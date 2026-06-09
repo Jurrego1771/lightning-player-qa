@@ -1,0 +1,143 @@
+version: "1.0"
+module: youbora
+last_updated: "2026-06-08"
+
+# Único spec: tests/integration/youbora.spec.ts (~3900 líneas, workers:1).
+# Observabilidad: intercepción de beacons HTTP a *.youboranqs01.com / *.youbora.com.
+# El handshake lma.npaw.com se mockea vía addInitScript (XHR mock) para evitar el race
+# 'queue stuck'. accountCode dummy (qa_dummy) — no hay verificación E2E contra NPAW Suite.
+
+existing_tests:
+  - spec_file: "tests/integration/youbora.spec.ts"
+    description: "Activation Guards — no beacons sin config / sin account_code / enabled=false / account_code vacío"
+    ac_coverage: ["YBRA-AC-001", "YBRA-AC-002", "YBRA-AC-003"]
+
+  - spec_file: "tests/integration/youbora.spec.ts"
+    description: "Content Tracking — /start tras contentFirstPlay; /pause tras player.pause(); double-pause un solo firePause"
+    ac_coverage: ["YBRA-AC-004", "YBRA-AC-005", "YBRA-AC-006"]
+
+  - spec_file: "tests/integration/youbora.spec.ts"
+    description: "NPAW-4.2/4.3 seek emite seek beacons sin cierre espurio de View"
+    ac_coverage: ["YBRA-AC-007"]
+
+  - spec_file: "tests/integration/youbora.spec.ts"
+    description: "NPAW-5.1 pause→resume emite /pause y /resume; NPAW-7.1 ended emite /stop"
+    ac_coverage: ["YBRA-AC-005", "YBRA-AC-009"]
+
+  - spec_file: "tests/integration/youbora.spec.ts"
+    description: "NPAW-6 Ping events — /ping periódicos, playhead, rendition; bitrate/rendition en entities"
+    ac_coverage: ["YBRA-AC-010"]
+
+  - spec_file: "tests/integration/youbora.spec.ts"
+    description: "Ad Integration — _inAdBreak enmascara contenido; ciclo de vida de ad emite beacons (Block A.1)"
+    ac_coverage: ["YBRA-AC-011", "YBRA-AC-012"]
+
+  - spec_file: "tests/integration/youbora.spec.ts"
+    description: "Block A.2-A.5 — ad metadata, interaction stats, ad errors (varios en test.fixme por param names inciertos)"
+    ac_coverage: ["YBRA-AC-012", "YBRA-AC-013", "YBRA-AC-014"]
+
+  - spec_file: "tests/integration/youbora.spec.ts"
+    description: "Session Management — load() con contenido nuevo reinicia sesión; mismo id no reinicia (updateOptions)"
+    ac_coverage: ["YBRA-AC-015", "YBRA-AC-016"]
+
+  - spec_file: "tests/integration/youbora.spec.ts"
+    description: "destroy() antes de contentFirstPlay no abre View; _pendingInit cleared on destroy (GAP-5, fixme en Linux CI)"
+    ac_coverage: ["YBRA-AC-017"]
+
+  - spec_file: "tests/integration/youbora.spec.ts"
+    description: "Error Reporting — /error tras error fatal in-stream (adapter creado); NPAW-8.3/8.4/8.5"
+    ac_coverage: ["YBRA-AC-019"]
+
+  - spec_file: "tests/integration/youbora.spec.ts"
+    description: "NPAW-1.6 replay tras ended abre nueva View; Next Episode chain (contenido real) abre nueva sesión"
+    ac_coverage: ["YBRA-AC-015", "YBRA-AC-020"]
+
+  - spec_file: "tests/integration/youbora.spec.ts"
+    description: "Config Robustness — null options no crashea; DVR/episode types activan plugin; user metadata (NPAW-2.17a)"
+    ac_coverage: ["YBRA-AC-002", "YBRA-AC-004"]
+
+  - spec_file: "tests/integration/youbora.spec.ts"
+    description: "NPAW-2 Metadata in /start — title, mediaResource, duration, live, player/plugin version, content id/type"
+    ac_coverage: ["YBRA-AC-004", "YBRA-AC-010"]
+
+coverage_gaps:
+  - id: GAP-YBRA-001
+    priority: MUST
+    ac_ref: YBRA-AC-019
+    title: "Startup error (pre-ready) NO emite /error — bug adapter null (YBRA-DEF-001)"
+    suggested_spec: "tests/integration/youbora.spec.ts (NPAW-8.1, NPAW-8.6)"
+    notes: "Tests existen pero en test.fixme(true). Reactivar cuando el player corrija el guard onError."
+    industry_note: >
+      Startup errors y EBVS son las métricas QoE que más correlacionan con churn; no reportarlas es
+      un gap material de observabilidad para el operador.
+
+  - id: GAP-YBRA-002
+    priority: MUST
+    ac_ref: YBRA-AC-018
+    title: "EBVS imposible de validar — fireStart llama fireJoin de inmediato (YBRA-DEF-007)"
+    suggested_spec: "tests/integration/youbora.spec.ts (NPAW-3.2)"
+    notes: "Test en test.fixme(true). Requiere fix del player para disociar fireJoin del primer frame."
+    industry_note: "EBVS mide frustración en el arranque; es directa función del join time (NPAW/Conviva)."
+
+  - id: GAP-YBRA-003
+    priority: SHOULD
+    ac_ref: YBRA-AC-008
+    title: "Buffer underrun bajo red restringida sin verificar bufferDuration > 0"
+    suggested_spec: "tests/integration/youbora.spec.ts"
+    notes: >
+      No hay test que fuerce buffering con throttling de red y verifique fireBufferBegin/End +
+      bufferDuration. NPAW-4.1 documentado pero observado con playhead=0 (YBRA-DEF-003). Usar
+      helpers/network-conditions.ts para throttle controlado.
+    industry_note: "Rebuffering ratio es métrica QoE núcleo; falta validación con red degradada real."
+
+  - id: GAP-YBRA-004
+    priority: SHOULD
+    ac_ref: YBRA-AC-001
+    title: "Rutas negativas dnt=1 y reels no cubiertas"
+    suggested_spec: "tests/integration/youbora.spec.ts"
+    notes: >
+      plugins/index.js NO carga ningún plugin si dnt=1 o view='reels'. No hay test que verifique que
+      con dnt=1 (Do Not Track) o en modo reels Youbora no emite beacons aunque enabled=true.
+    industry_note: "Cumplimiento de Do-Not-Track / privacidad es relevante para GDPR/CCPA."
+
+  - id: GAP-YBRA-005
+    priority: SHOULD
+    ac_ref: YBRA-AC-005
+    title: "Backgrounding / visibilitychange (NPAW-1.8) no automatizado"
+    suggested_spec: "tests/integration/youbora.spec.ts (NPAW-1.8)"
+    notes: >
+      test.fixme — el backgrounding OS-level no es reproducible en Playwright headless. Se puede
+      simular con document visibility API si el player escucha visibilitychange. El SDK está
+      configurado con background.settings.android/iOS = 'pause' (tracker.js:77-78).
+    industry_note: "PiP y backgrounding afectan join/watch time; comportamiento por plataforma varía."
+
+  - id: GAP-YBRA-006
+    priority: SHOULD
+    ac_ref: YBRA-AC-010
+    title: "Cambio de rendition (manual y ABR) sin verificar campo entities en /ping"
+    suggested_spec: "tests/integration/youbora.spec.ts (NPAW-6.5, NPAW-6.6)"
+    notes: >
+      NPAW-6.5/6.6 documentados como ACs pero la verificación del formato 'WxH@Nkbps' en entities
+      requiere inspección de POST body y throttling para forzar el cambio de calidad.
+    industry_note: "Distribución de bitrate es métrica QoE clave para evaluar políticas ABR."
+
+  - id: GAP-YBRA-007
+    priority: COULD
+    ac_ref: YBRA-AC-001
+    title: "Coexistencia con otros trackers (StreamMetrics, Comscore, Google) no validada"
+    suggested_spec: "tests/integration/youbora.spec.ts"
+    notes: >
+      StreamMetrics se monta siempre que shouldTrack; varios trackers conviven. Verificar que activar
+      Youbora no interfiere con otros y que el filtrado por dominio NPAW aísla sus beacons.
+    industry_note: "Multi-tracker es común en OTT (NPAW + Conviva/Comscore en paralelo)."
+
+  - id: GAP-YBRA-008
+    priority: COULD
+    ac_ref: YBRA-AC-013
+    title: "Métricas avanzadas de ads (viewability, fullscreen, insertionType) en test.fixme"
+    suggested_spec: "tests/integration/youbora.spec.ts (A.2.15, A.2.20, A.4.5, A.4.6)"
+    notes: >
+      Varios ACs de ads están en fixme por nombres de parámetro inciertos del SDK 7.3.28 o por
+      limitaciones de headless (visibility/fullscreen siempre 'visible'). Requieren inspección de
+      beacon log para confirmar nombres antes de assertear.
+    industry_note: "Ad viewability (>50% visible) es métrica de monetización para SSAI/CSAI."

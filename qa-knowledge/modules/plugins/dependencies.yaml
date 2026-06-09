@@ -1,0 +1,90 @@
+version: "1.0"
+module: plugins
+last_updated: "2026-06-08"
+
+internal:
+  - id: events
+    reason: "Plugins se suscriben a internalEmitter/externalEmitter y emiten Events._error; el evento pluginsReady es interno"
+    coupling: high
+    files: ["src/events/index.js", "src/plugins/baseComponent.js"]
+
+  - id: playback-core
+    reason: "pluginsReady() bloquea el montaje del elemento <video>; un plugin colgado retrasa o impide la reproducción"
+    coupling: high
+    files: ["src/player/base.js", "src/api/player.jsx"]
+
+  - id: context
+    reason: "El contexto provee pluginsReady() agregando getIsReady() de todos los componentes registrados; wrap() inyecta setData/pluginsReady"
+    coupling: high
+    files: ["src/context/index.jsx", "src/plugins/baseComponent.js"]
+
+  - id: youbora
+    reason: "Plugin de analytics principal; se monta condicionalmente según metadata.player.tracking.youbora.enabled"
+    coupling: medium
+    files: ["src/plugins/index.js", "src/analytics/youbora"]
+
+  - id: drm
+    reason: "Plugin DRM resuelve _candidateUrls -> src real y setea vkeySystem vía setData antes de montar el video"
+    coupling: high
+    files: ["src/plugins/index.js", "src/player/drm/plugin.jsx"]
+
+  - id: ads-dai
+    reason: "GoogleDAI / MediaTailorDAI montados como plugins; difieren src/manifest hasta inicializar el SDK de ads"
+    coupling: medium
+    files: ["src/plugins/index.js", "src/ads/googleDAI/plugin.jsx", "src/ads/mediaTailorDAI/plugin.jsx"]
+
+  - id: ads-sgai
+    reason: "GoogleSGAI montado como plugin cuando hay config sgai válida (networkCode + customAssetKey)"
+    coupling: medium
+    files: ["src/plugins/index.js", "src/ads/googleSGAI/plugin.jsx"]
+
+  - id: metadata
+    reason: "PlayingMetadata es un plugin siempre montado (salvo reels / fatal error)"
+    coupling: medium
+    files: ["src/plugins/index.js", "src/metadata/playingMetadata"]
+
+  - id: federation
+    reason: "Federation siempre montado como plugin; emite _federationLoaded"
+    coupling: medium
+    files: ["src/plugins/index.js", "src/federation"]
+
+  - id: platform-config
+    reason: "constants.cjs (plugin.analytics.*) resuelve las URLs de SDK por ambiente (dev/staging/prod)"
+    coupling: low
+    files: ["constants.cjs"]
+
+external:
+  - id: react
+    package: "react"
+    version: "ver package.json del player (React 18, createRoot)"
+    reason: "Plugins son componentes React.PureComponent / lazy(); PluginLoader usa Suspense"
+    risk: low
+    note: "El gating de plugins depende de React.Suspense + lazy(); un fallo de chunk lazy dispara el boundary de Suspense (fallback Fragment vacío)"
+
+  - id: youbora-sdk
+    package: "@npaw / youbora adapter (cargado vía chunk lazy)"
+    version: "según adapter NPAW del player"
+    reason: "SDK de analytics NPAW/Youbora inicializado por el plugin YouboraTracker"
+    risk: medium
+    note: "SDK de terceros vía CDN; su caída no debe bloquear pluginsReady (ver PLUG-AC-002)"
+
+  - id: comscore-sdk
+    package: "streamsense.js"
+    version: "CDN por ambiente (constants.cjs plugin.analytics.comscore)"
+    reason: "Tracker Comscore — streamsense"
+    risk: medium
+    note: "URL CDN hardcoded por ambiente; vulnerable a fallo CDN externo. dev/staging/prod tienen hosts distintos"
+
+  - id: google-ima-dai-sdk
+    package: "Google IMA / DAI SDK"
+    version: "SDK de Google cargado por el plugin GoogleDAI"
+    reason: "Server-side ad insertion (DAI) — difiere el src hasta IMA LOADED"
+    risk: high
+    note: "Si el SDK no carga, el plugin DAI puede dejar el src deferido sin resolver y bloquear playback si no hay timeout/fallback"
+
+  - id: google-cast-dai-sgai
+    package: "Google SGAI / DAI Pod serving"
+    version: "SDK serverguided"
+    reason: "Server-guided ad insertion"
+    risk: high
+    note: "Gap conocido de QA: tests/integration/sgai.spec.ts no existe; estados buffering + DVR sin testear (ver CLAUDE.md)"

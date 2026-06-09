@@ -1,0 +1,14 @@
+module: federation
+criticality: medium
+last_reviewed: "2026-06-05"
+paths: ["src/federation/"]
+depends_on: [events, plugins]
+depended_by: []
+breaks_if_changed:
+  - "Module Federation SDK no carga"
+  - "Microfrontend no recibe eventos del player"
+test_suites_required: []
+negative_cases:
+  - "SDK Federation CDN no disponible → player funciona normalmente sin federation"
+external_dependencies:
+  - "Federation SDK CDN (platform-static.cdn.mdstrm.com)"

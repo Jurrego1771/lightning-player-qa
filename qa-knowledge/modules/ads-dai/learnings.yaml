@@ -1,0 +1,65 @@
+version: "1.0"
+module: ads-dai
+last_updated: "2026-06-08"
+
+learnings:
+
+  - id: DAI-LEARN-001
+    title: "DAI reemplaza la URL del stream — no inyecta ads por separado como IMA"
+    discovery: "código fuente: src/ads/googleDAI/plugin.jsx líneas 576-599 (onLoaded handler)"
+    detail: "El resultado del stream request DAI es una nueva URL de stream (o un streamId para construirla). El player abandona el manifest original y carga esta nueva URL. Todos los ad breaks ya están integrados en el stream HLS/DASH resultante como segmentos normales. No hay switching entre streams — es un único stream continuo."
+    impact_on_tests: "Tests no deben asumir que adsStarted implica un stream separado. No hay evento de 'cambio de stream' visible. Los tests deben verificar que el src del player cambia al stream DAI después del LOADED event."
+
+  - id: DAI-LEARN-002
+    title: "Los timestamps en stream DAI son del stream compuesto, no del contenido original"
+    discovery: "código fuente + industria: problema bien documentado en SSAI"
+    detail: "Un stream DAI de 30 minutos de contenido con 3 breaks de 2 minutos cada uno tendrá duración total de ~36 minutos. El currentTime=5:00 no corresponde a los 5 minutos del contenido — puede corresponder a contenido o a un ad, dependiendo de dónde están los breaks. Para live DAI, el 'live edge' incluye el tiempo de los ads. Esto rompe cualquier lógica que asuma currentTime == tiempo de contenido."
+    impact_on_tests: "Tests de resume de posición, DVR scrubbing, y live edge deben considerar este offset. No testear currentTime exacto durante ads — el valor depende del stream específico."
+
+  - id: DAI-LEARN-003
+    title: "El seek dentro de un ad break VOD es interceptado y redirigido al inicio del break"
+    discovery: "código fuente: src/ads/googleDAI/plugin.jsx líneas 291-304 (#handleSeeked)"
+    detail: "#handleSeeked examina this.#cuePoints para encontrar breaks no reproducidos antes de currentTime. Si existe uno con played=false, hace seek al inicio de ese break (con ignoreNextSeek=true para evitar loop). Este comportamiento solo aplica para VOD (el listener seeked no se registra para live/DVR)."
+    impact_on_tests: "Para testear el comportamiento de seek en VOD DAI se necesita un stream con cuepoints controlados. El comportamiento varía entre live (seek libre) y VOD (seek restringido en breaks no vistos)."
+
+  - id: DAI-LEARN-004
+    title: "vpmute=0/1 en el stream request afecta el targeting del ad, no el volumen del player"
+    discovery: "código fuente: src/ads/googleDAI/plugin.jsx líneas 171-173, 179-186"
+    detail: "vpmute es un parámetro de targeting de Google Ad Manager — indica al servidor si el ad se reproducirá muted, permitiendo servir ads de video-first vs audio-first. No controla el volumen del player. El player captura el estado muted inicial antes del requestStream y envía vpmute='0' (unmuted) o vpmute='1' (muted). Cambios posteriores se envían via replaceAdTagParameters."
+    impact_on_tests: "Para tests de vpmute, observar los requests HTTP a dai.google.com (parámetro en URL o body). No intentar verificar el volumen del ad directamente — el ad usa el mismo <video> element que el contenido."
+
+  - id: DAI-LEARN-005
+    title: "La integración DRM+DAI requiere esperar resolución de candidateUrls antes de init"
+    discovery: "código fuente: src/ads/googleDAI/plugin.jsx líneas 487-493 (waitingDrmResolution)"
+    detail: "Para streams DASH+DRM, el plugin DAI tiene una condición de espera: si drm._candidateUrls existe pero _daiDeferredManifestUrl aún no está resuelto, el plugin no inicia (waitingDrmResolution=true). Esto evita que DAI solicite el stream antes de que DRM haya resuelto el formato correcto. Una vez que DRM resuelve, deferredManifest se usa como backupForSdk."
+    impact_on_tests: "Tests de DAI+DRM son los más complejos — requieren coordinar dos plugins. Los tests actuales (google-dai-dash-drm.spec.ts) usan test.fixme() porque requieren credenciales reales y Widevine CDM."
+
+  - id: DAI-LEARN-006
+    title: "MediaTailor DAI está restringido a live/DVR por guard explícito"
+    discovery: "código fuente: src/ads/mediaTailorDAI/plugin.jsx líneas 8-15 (MediaTailorDAIGuard)"
+    detail: "La condición shouldRun = isLiveOrDvr && enabled && id && baseSrc bloquea MediaTailor para VOD. Adicionalmente, type=dvr con start y end definidos (DVR real con rangos) también está excluido (skipRealDVR). El plugin solo es activo para live puro y DVR sin rangos de tiempo específicos."
+    impact_on_tests: "No escribir tests de MediaTailor DAI para type='media' (VOD) — simplemente no se activará. Tests válidos: live sin start/end."
+
+  - id: DAI-LEARN-007
+    title: "SSAI vs CSAI: por qué SSAI tiene mayor resistencia a ad blockers"
+    discovery: "investigación web: industria + documentación Google DAI"
+    detail: "En CSAI (IMA), los ads se descargan de dominios conocidos (doubleclick.net, imasdk.googleapis.com) que los ad blockers bloquean por URL pattern. En SSAI/DAI, los 'ads' son segmentos del mismo stream HLS/DASH que el contenido — mismo dominio, mismo CDN, indistinguibles a nivel de red del contenido premium. Los ad blockers no pueden bloquearlos sin bloquear el contenido. Esta es la razón principal por la que los publishers premium migraron de IMA a DAI."
+    impact_on_tests: "Los tests de DAI no necesitan simular ad blockers de la misma forma que IMA. En su lugar, el riesgo es que el SDK DAI (imasdk.googleapis.com) sea bloqueado antes de la init, lo que activa el fallback."
+
+  - id: DAI-LEARN-008
+    title: "Pod Serving es la dirección futura de Google DAI (Full Service está siendo reemplazado)"
+    discovery: "investigación web: https://blog.google/products/admanager/evolving-dai-future-streaming/"
+    detail: "Google está evolucionando DAI de 'Full Service' (donde Google hace todo incluyendo el manifest manipulation) hacia 'Pod Serving' (donde Google solo provee los ad pods y el publisher hace el stitching). En Pod Serving, el player recibe URLs de ad pods pre-armados y el manifest manipulator del publisher los inserta. La implementación actual del player usa Full Service (IMA DAI SDK con StreamManager)."
+    impact_on_tests: "El módulo actual usa Full Service. Pod Serving requeriría una integración diferente. Si el equipo migra a Pod Serving, la mayoría de los tests actuales de DAI necesitarían revisión. Documentar como gap futuro."
+
+  - id: DAI-LEARN-009
+    title: "Metadata ID3 TXXX en el stream HLS es cómo el SDK DAI sincroniza los eventos de ad"
+    discovery: "código fuente: src/ads/googleDAI/plugin.jsx líneas 268-289 (#handleCueChange)"
+    detail: "El SDK de Google DAI usa ID3 timed metadata embedida en el stream HLS para sincronizar los eventos de ad (cuándo empieza/termina un ad, cuartiles, etc.). El plugin registra un listener en texttrack con kind='metadata', espera cuechange events, y cuando la key de la cue es 'TXXX', pasa los datos a manager.onTimedMetadata(). Para DASH, el mecanismo es diferente (EMSG events)."
+    impact_on_tests: "Tests de beacons DAI deben mockear el SDK completo porque la sincronización real requiere un stream con ID3 tags válidos. No se puede simular la llegada de beacons sin un stream DAI real o un mock del StreamManager."
+
+  - id: DAI-LEARN-010
+    title: "Errores 4xx en stream request NO deben activar fallback — solo 5xx/429"
+    discovery: "investigación web: https://support.google.com/admanager/answer/7321214"
+    detail: "Las best practices de Google DAI distinguen entre tipos de error: errores 4xx (excepto 429) indican un error de configuración del publisher (assetKey inválido, apiKey incorrecta) y NO se debe hacer fallback — se debe corregir la config. Errores 429 y 5xx son errores transitorios del servidor donde el fallback al stream de backup SÍ es apropiado. La implementación actual del player hace fallback en cualquier ERROR event del SDK, sin distinguir el código HTTP."
+    impact_on_tests: "Documentar como limitación. Tests de fallback usan mocks del SDK (no respuestas HTTP reales), así que no pueden verificar esta distinción."

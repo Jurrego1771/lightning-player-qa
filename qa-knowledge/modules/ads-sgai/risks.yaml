@@ -1,0 +1,210 @@
+version: "1.0"
+module: ads-sgai
+last_updated: "2026-06-08"
+
+risks:
+
+  - id: SGAI-RISK-001
+    severity: high
+    title: "buffering state + DVR = loop infinito de ad breaks (BUG-SGAI-001)"
+    description: >
+      Cuando el player está en estado buffering (waiting/stalled en hls.js) y el fragmento
+      trigger de un cue point es procesado por handleFragmentChange(), el intento de
+      reproducir el ad pod puede entrar en conflicto con el estado de buffering del stream
+      de contenido. El resultado observado en producción es un loop infinito donde el player
+      alterna indefinidamente entre estado buffering y ad break state, requiriendo un reload
+      para resolverse.
+    affected_files:
+      - "src/ads/googleSGAI/services/SGAIService.js"
+      - "src/ads/googleSGAI/hooks/useGoogleSGAILifecycle.js"
+    trigger: >
+      Player DVR con SGAI, stream con buffering intermitente (CDN lento, condición de red),
+      cue point alcanzado durante un episodio de buffering.
+    mitigation: >
+      La ventana de gracia de 1200ms (FRAGMENT_TRIGGER_GRACE_MS) y los retries de 100ms
+      (FRAGMENT_TRIGGER_RETRY_MS) teóricamente dan tiempo para que el buffering se resuelva.
+      Sin embargo, no hay detección explícita del estado buffering en la lógica de
+      #attemptPendingCuePlayback() — el ad break puede dispararse aun cuando el video
+      element no está listo.
+    industry_note: >
+      Este es un edge case bien conocido en SGAI/HLS interstitials production. La industria
+      recomienda verificar el estado readyState del video element (>= HAVE_FUTURE_DATA)
+      antes de iniciar el ad pod. Apple HLS Interstitials spec también documenta este caso.
+    test_priority: MUST
+
+  - id: SGAI-RISK-002
+    severity: high
+    title: "DVR + SGAI — interacción sin cobertura de tests"
+    description: >
+      La combinación de streams DVR (seekable window deslizante) y SGAI no tiene tests
+      de integración funcionales. Los casos críticos: seek a posición anterior a un cue
+      point ya visto, seek durante un ad break activo, y el comportamiento del pLoader
+      custom cuando el manifest DVR se refresca con nuevos segmentos.
+    affected_files:
+      - "src/ads/googleSGAI/services/SGAIService.js"
+      - "src/ads/googleSGAI/services/startFragmentTracking.js"
+    trigger: >
+      Usuario con acceso DVR hace seek durante o después de que el player haya procesado
+      un cue point SGAI.
+    mitigation: >
+      La deduplicación de cues via processedCues Set previene re-disparo del mismo cue.
+      La lógica de skip en #attemptPendingCuePlayback (currentFragmentName !== segmentName)
+      teóricamente maneja seek post-trigger. Sin embargo, no hay test que verifique esto.
+    industry_note: >
+      Yospace demostró en NAB Show 2025 SGAI con DVR: "ads viewed when a viewer scrolls back
+      a live stream are replaced". Esto requiere coordinación entre el servidor de ad breaks
+      y la ventana DVR. El player actual no tiene esta lógica de reemplazo.
+    test_priority: MUST
+
+  - id: SGAI-RISK-003
+    severity: high
+    title: "pLoader global contamina multi-instancia"
+    description: >
+      El custom pLoader SGAI se inyecta via setData({pLoader: CustomLoader}) en el contexto
+      del player. En escenarios multi-instancia (dos players en la misma página), si ambos
+      tienen SGAI configurado o si uno lo configura y el otro no, el pLoader puede ser
+      compartido o sobreescrito entre instancias.
+    affected_files:
+      - "src/ads/googleSGAI/hooks/useGoogleSGAILifecycle.js"
+      - "src/ads/googleSGAI/services/HlsLoader.js"
+    trigger: >
+      Dos instancias del player en la misma página, al menos una con SGAI configurado.
+    mitigation: >
+      hasSetLoader.current flag por instancia previene re-inyección dentro de la misma
+      instancia. Sin embargo, si dos instancias comparten el mismo contexto React (configuración
+      de embed incorrecta), el pLoader puede ser sobreescrito por la segunda instancia.
+    industry_note: >
+      Multi-instancia con SGAI es un caso edge no bien documentado por Google. La
+      recomendación general es un StreamManager por instancia de video.
+    test_priority: SHOULD
+
+  - id: SGAI-RISK-004
+    severity: high
+    title: "Google IMA DAI SDK no versionado — breaking changes silenciosos"
+    description: >
+      El SDK se carga desde CDN sin versión pinneada. Google puede actualizar el SDK
+      en cualquier momento. Cambios en la API de StreamManager, PodStreamRequest, o en
+      los tipos de eventos pueden romper SGAI silenciosamente sin alertar al equipo.
+    affected_files:
+      - "src/ads/googleSGAI/services/SDKLoader.js"
+      - "src/ads/googleSGAI/services/SGAIService.js"
+    trigger: "Google despliega una actualización del SDK IMA DAI."
+    mitigation: >
+      Los try/catch en SGAIService y el manejo de errores en el hook degradan gracefully
+      cuando el SDK falla. El contenido continúa reproduciendo. Sin embargo, no hay
+      alertas automáticas de degradación de SGAI en producción.
+    industry_note: >
+      La práctica recomendada es usar la versión versionada del SDK
+      (imasdk.googleapis.com/js/sdkloader/ima3_dai.js vs /ima3_dai_VERSIONED.js).
+      Google recomienda usar la URL sin versión para recibir actualizaciones automáticas,
+      pero esto introduce el riesgo de breaking changes.
+    test_priority: SHOULD
+
+  - id: SGAI-RISK-005
+    severity: medium
+    title: "EXT-X-CUE-OUT duplicados en manifest — ad breaks múltiples no deseados"
+    description: >
+      En streams HLS live, el manifest se refresca periódicamente. Si el mismo cue point
+      (mismo segmento o mismo scte35 payload) aparece en múltiples refrescos del manifest,
+      ManifestParser lo detectará múltiples veces y handleCues() lo procesará múltiples
+      veces antes de que processedCues lo desduplique.
+    affected_files:
+      - "src/ads/googleSGAI/services/ManifestParser.js"
+      - "src/ads/googleSGAI/services/SGAIService.js"
+    trigger: >
+      Stream live con CDN que retiene el cue point en múltiples versiones del manifest
+      antes de que expire. También puede ocurrir con manifests con sliding window pequeña.
+    mitigation: >
+      processedCues Set desduplica por cueId = scte35 || segmentName. Si el encoder
+      genera SCTE-35 payloads únicos por break, la dedup funciona correctamente.
+      Si no hay SCTE-35 y el segmentName no es único (ej: segmentos sin timestamp),
+      la dedup puede fallar.
+    industry_note: >
+      AWS MediaPackage documenta este comportamiento: CUE-OUT markers permanecen en el
+      manifest durante el ad break. La deduplicación es responsabilidad del cliente.
+    test_priority: SHOULD
+
+  - id: SGAI-RISK-006
+    severity: medium
+    title: "programDateTime ausente en segmentos — timing del cue impreciso"
+    description: >
+      ManifestParser extrae programDateTime del nombre del segmento (formato CDN con
+      datetime: media_300_20260302T174013_11441.ts). Si el CDN no incluye datetime en el
+      nombre del segmento, programDateTime es null y AdBreakService usa Date.now() como
+      fallback, lo que puede causar timing impreciso del ad break.
+    affected_files:
+      - "src/ads/googleSGAI/services/ManifestParser.js"
+      - "src/ads/googleSGAI/services/SGAIService.js"
+    trigger: >
+      CDN que genera segmentos con nombres sin datetime (ej: media_seg001.ts).
+    mitigation: >
+      SGAIService.js línea ~488 tiene un log de advertencia y usa Date.now() / 1000
+      como fallback. El ad break puede dispararse en el momento equivocado relativo
+      al programa.
+    industry_note: >
+      La spec de SGAI recomienda usar EXT-X-PROGRAM-DATE-TIME para timing preciso.
+      La implementación actual depende de datetime en el nombre del segmento, lo que
+      es una convención específica de AWS Elemental — no universal.
+    test_priority: COULD
+
+  - id: SGAI-RISK-007
+    severity: medium
+    title: "controls override stale si cleanup falla durante unmount abrupto"
+    description: >
+      Si el componente React se desmonta abruptamente (ej: error en render, navegación
+      rápida del usuario) mientras hay un ad break activo, el controlsOverrideRef puede
+      quedar registrado en el componente de controles sin ser removido via removeOverride().
+    affected_files:
+      - "src/ads/googleSGAI/hooks/useGoogleSGAILifecycle.js"
+    trigger: >
+      Ad break activo + desmontaje abrupto del componente React (error boundary,
+      navegación del usuario, o player.destroy() con race condition).
+    mitigation: >
+      El cleanup del useEffect (return () => {...}) hace removeOverride() en el bloque
+      finally. Sin embargo, si el componente de controls no está disponible al momento
+      del cleanup, el override puede quedar sin remover.
+    industry_note: "Patrón conocido en React: side effects que mutan estado externo deben limpiarse en el cleanup del useEffect."
+    test_priority: SHOULD
+
+  - id: SGAI-RISK-008
+    severity: medium
+    title: "Race condition vpmute — STREAM_INITIALIZED llega después de updateMuteState()"
+    description: >
+      useGoogleSGAILifecycle llama sgaiService.updateMuteState() inmediatamente al
+      montar el hook (sincronizando el mute state inicial del player). Sin embargo,
+      streamManager es null hasta que STREAM_INITIALIZED es recibido del SDK (async,
+      puede tardar cientos de ms). El try/catch en updateMuteState() silencia el error,
+      haciendo que el vpmute inicial nunca se envíe si el manager no estaba listo.
+    affected_files:
+      - "src/ads/googleSGAI/services/SGAIService.js"
+      - "src/ads/googleSGAI/hooks/useGoogleSGAILifecycle.js"
+    trigger: >
+      Player inicializado con muted=true (o volume=0) + STREAM_INITIALIZED tarda más
+      de lo que tarda el hook en llamar updateMuteState().
+    mitigation: >
+      El try/catch previene crashes. Sin embargo, no hay retry de updateMuteState()
+      post-STREAM_INITIALIZED. El vpmute inicial puede quedar incorrecto.
+    industry_note: >
+      La práctica estándar es escuchar STREAM_INITIALIZED y sincronizar el estado
+      de mute en ese callback, no en el constructor del servicio.
+    test_priority: SHOULD
+
+  - id: SGAI-RISK-009
+    severity: low
+    title: "CSS classes sgai-format-* pueden quedar en DOM si cleanup es interrumpido"
+    description: >
+      resetDisplayMode() usa un setTimeout de 600ms para la transición de salida antes
+      de remover las clases CSS. Si el componente se desmonta durante ese timeout,
+      clearDisplayModeSync() cancela la animación y remueve las clases sincronamente.
+      Sin embargo, si el callback del timeout se ejecuta después de que el DOM fue
+      modificado por otro proceso, pueden quedar clases stale.
+    affected_files:
+      - "src/ads/googleSGAI/services/DisplayModeService.js"
+      - "src/ads/googleSGAI/hooks/useGoogleSGAILifecycle.js"
+    trigger: "Desmontaje del componente durante la animación de salida del ad break (600ms window)."
+    mitigation: >
+      cancelResetDisplayModeRef almacena la función de cancel del timeout. El cleanup
+      del useEffect lo invoca. Si el ref está disponible al momento del cleanup,
+      las clases se limpian correctamente.
+    industry_note: "Este patrón de cancel token es estándar en React para cleanup de efectos con timers."
+    test_priority: COULD

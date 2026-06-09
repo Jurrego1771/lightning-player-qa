@@ -1,0 +1,59 @@
+name: Lighthouse CI — Performance Regression
+
+# Corre en PRs hacia main y schedule semanal.
+# No bloquea merge — falla como warning para el equipo.
+# Complementa qoe-metrics.spec.ts (CDP metrics de streaming).
+# Lighthouse mide: carga inicial del harness, LCP, TBT, CLS.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'harness/**'
+      - 'fixtures/**'
+      - 'playwright.config.ts'
+  schedule:
+    - cron: '0 9 * * 1'  # Lunes 9 AM UTC (4 AM Colombia)
+  workflow_dispatch:
+
+env:
+  CI: true
+  PLAYER_ENV: dev
+
+jobs:
+  lighthouse:
+    name: Lighthouse Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - run: npm ci --ignore-scripts
+
+      - name: Install Playwright browsers (chromium only)
+        run: npx playwright install chromium --with-deps
+
+      - name: Start harness server
+        run: npx serve harness -p 3000 --cors &
+        shell: bash
+
+      - name: Wait for harness server
+        run: npx wait-on http://localhost:3000 --timeout 15000
+        shell: bash
+
+      - name: Run Lighthouse CI
+        run: npx lhci autorun
+        env:
+          LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_GITHUB_APP_TOKEN }}
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lighthouse-report-${{ github.run_number }}
+          path: .lighthouseci/
+          retention-days: 30

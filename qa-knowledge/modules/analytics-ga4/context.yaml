@@ -1,0 +1,20 @@
+module: analytics-ga4
+criticality: medium
+last_reviewed: "2026-06-05"
+
+paths:
+  - "src/analytics/ga4/"
+
+depends_on:
+  - events
+  - plugins
+
+depended_by: []
+
+breaks_if_changed:
+  - "Eventos GA4 no se envían"
+
+test_suites_required: []
+
+negative_cases:
+  - "gtag no disponible → silencioso, no afecta reproducción"

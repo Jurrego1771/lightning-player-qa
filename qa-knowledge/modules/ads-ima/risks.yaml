@@ -1,0 +1,149 @@
+version: "1.0"
+module: ads-ima
+last_updated: "2026-06-08"
+
+risks:
+
+  - id: IMA-RISK-001
+    severity: high
+    title: "IMA SDK sin version pinning — breaking change silencioso"
+    description: |
+      El SDK se carga en runtime desde CDN con URL fija (ima3.js) sin version pinning.
+      Google puede publicar una versión con cambios que rompa la integración sin que el
+      player lo detecte. El player puede funcionar en un entorno de pruebas pero fallar
+      en producción si Google actualiza el SDK entre deploys.
+    affected_files:
+      - "src/ads/googleIma/ima.js"
+      - "constants.cjs"
+    trigger: "Google publica una nueva versión del IMA SDK con API changes"
+    mitigation: "No hay mitigación activa. El player siempre carga la última versión."
+    industry_note: "Práctica común pero riesgosa. Algunos players cachean el SDK localmente o usan versiones explícitas via query param."
+    test_priority: MUST
+
+  - id: IMA-RISK-002
+    severity: high
+    title: "Content queda colgado si CONTENT_RESUME_REQUESTED no se emite"
+    description: |
+      Si el IMA SDK no emite CONTENT_RESUME_REQUESTED (por error de red durante el ad,
+      por una combinación edge case con VPAID, o por un bug del SDK), el player queda
+      pausado indefinidamente. El handler no tiene timeout de recuperación.
+      En el código (handler.js línea ~167) hay un fallback en Events._adsLog que intenta
+      hacer play si el player está pausado y no ha terminado — pero esto solo cubre el
+      caso de VAST LOG, no todos los casos de fallo.
+    affected_files:
+      - "src/ads/googleIma/handler.js"
+    trigger: "Error de red durante ad playback, VPAID interaction, o bug del SDK que omite CONTENT_RESUME_REQUESTED"
+    mitigation: "Fallback parcial en _adsLog handler. No hay timeout global."
+    industry_note: "El IMA SDK HTML5 tiene historial de casos donde CONTENT_RESUME_REQUESTED no se emite en ads cortos (<3s). Verificar BUG-IMA-001."
+    test_priority: MUST
+
+  - id: IMA-RISK-003
+    severity: high
+    title: "Ad blocker bloquea IMA SDK CDN — fallo de carga silencioso"
+    description: |
+      Ad blockers (uBlock Origin, AdBlock Plus) y algunos firewalls corporativos bloquean
+      imasdk.googleapis.com. Cuando esto ocurre, la promise de carga del SDK rechaza con
+      un error de red. El código en ima.js maneja esto correctamente (el catch emite
+      _adsAllAdsCompleted), pero si el contenido ya arrancó y hay un retry implícito, puede
+      haber inconsistencias en el estado.
+    affected_files:
+      - "src/ads/googleIma/ima.js"
+    trigger: "Ad blocker activo, firewall corporativo, o DNS que bloquea imasdk.googleapis.com"
+    mitigation: "AdsHandler detecta isReady=false y emite _adsAllAdsCompleted → content play"
+    industry_note: "Estimado 25-40% de usuarios en desktop tienen ad blockers. Todos los players deben manejar este caso."
+    test_priority: MUST
+
+  - id: IMA-RISK-004
+    severity: high
+    title: "autoplay policy: NotAllowedError puede dejar ads sin inicializar"
+    description: |
+      El handler hace play()+pause() inmediatamente para inicializar el IMA SDK (requerido
+      por Google). Si el browser lanza NotAllowedError (autoplay policy), el handler retorna
+      tempranamente sin inicializar ads. Esto es correcto para el caso de no-autoplay, pero
+      si el usuario posteriormente hace play(), el sistema de ads ya no se inicializa porque
+      this.loaded nunca se marcó como true y el flujo de play() verifica !this.loaded.
+    affected_files:
+      - "src/ads/googleIma/handler.js"
+    trigger: "Browser con autoplay policy estricta + usuario que hace play manual después de cargar el player"
+    mitigation: "Parcialmente mitigado: el flag #_firstPlay controla si fue el primer play manual."
+    industry_note: "Google documenta este pattern explícitamente. El player lo implementa pero hay un edge case con el primer play manual."
+    test_priority: MUST
+
+  - id: IMA-RISK-005
+    severity: medium
+    title: "VMAP: cuePoints vacíos hasta primer user interaction (con autoplay:false)"
+    description: |
+      Con autoplay:false, el AdsManager no se inicializa hasta que el usuario hace play.
+      player.ad.cuePoints retorna undefined/null hasta ese momento porque this.#_adsManager
+      es null. Si una UI externa consulta cuePoints antes del primer play para renderizar
+      ad markers en la progress bar, obtendrá un array vacío y no mostrará los markers.
+    affected_files:
+      - "src/ads/googleIma/handler.js"
+    trigger: "autoplay:false + consulta de cuePoints antes del primer play del usuario"
+    mitigation: "Documentado en player_system.md. La UI debe re-consultar cuePoints después de adsLoaded."
+    industry_note: "Comportamiento esperado del IMA SDK — AdsManager.getCuePoints() solo está disponible después de initialize()."
+    test_priority: SHOULD
+
+  - id: IMA-RISK-006
+    severity: medium
+    title: "VPAID en modo ENABLED con preloading puede fallar con múltiples ads"
+    description: |
+      El IMA SDK HTML5 tiene un bug conocido donde vpaidMode=ENABLED + enablePreloading=true
+      no reproduce todos los VPAID ads en un VMAP. El código actualmente usa enablePreloading=true
+      en AdsRenderingSettings y vpaidMode=ENABLED por defecto (INSECURE solo si insecureVpaidMode=true).
+      Esto puede causar que algunos ads en un VMAP no se reproduzcan.
+    affected_files:
+      - "src/ads/googleIma/adsLoader.js"
+    trigger: "VMAP con múltiples VPAID ads y preloading habilitado"
+    mitigation: "Config option adsInsecureVpaidMode=true puede usarse como workaround (cambiaría vpaidMode a INSECURE)"
+    industry_note: "Documentado en el grupo de IMA SDK: preloading+VPAID ENABLED es incompatible. VPAID está en proceso de deprecación — migrar a SIMID/VAST 4.x."
+    test_priority: SHOULD
+
+  - id: IMA-RISK-007
+    severity: medium
+    title: "Beacons de tracking podrían dispararse dos veces en retry de playback"
+    description: |
+      Si el player reinicia el ad por algún motivo (reset + re-initialize sin destruir
+      correctamente el AdsManager), los beacons de impression y quartiles podrían enviarse
+      dos veces al ad server. Esto infla los reportes de billing y puede resultar en
+      discrepancias entre el ad server y el player.
+    affected_files:
+      - "src/ads/googleIma/handler.js"
+      - "src/ads/googleIma/adsLoader.js"
+    trigger: "Reset del AdsManager sin llamar destroy() + re-initialize en la misma sesión"
+    mitigation: "reset() llama adsManager.destroy() correctamente. Pero si reset() se llama en un estado inconsistente..."
+    industry_note: "Double firing de beacons es uno de los problemas más críticos en ad tracking. Verificar con interceptor en CI."
+    test_priority: MUST
+
+  - id: IMA-RISK-008
+    severity: medium
+    title: "AdDisplayContainer.initialize() debe llamarse en user gesture (mobile)"
+    description: |
+      En mobile, adDisplayContainer.initialize() DEBE llamarse dentro de un user gesture
+      (touch/click handler). El código actual lo llama en AdsLoader.initialize(), que es
+      invocado desde AdsHandler.#_loadAds() → llamado desde AdsHandler.play(). Si play()
+      no es directamente iniciado por un user gesture (ej: después de un await async), el
+      AdDisplayContainer puede fallar en inicializarse en iOS/Android.
+    affected_files:
+      - "src/ads/googleIma/adsLoader.js"
+      - "src/ads/googleIma/handler.js"
+    trigger: "Mobile browser (iOS Safari, Android Chrome) con cadena async entre user gesture y initialize()"
+    mitigation: "El player intenta mantener la cadena sync. Pero múltiples awaits pueden romper el user gesture context."
+    industry_note: "Requisito estricto documentado por Google. Causa número 1 de 'ads no reproducen en mobile'."
+    test_priority: SHOULD
+
+  - id: IMA-RISK-009
+    severity: low
+    title: "VPAID deprecated — creatives VPAID pueden dejar de funcionar"
+    description: |
+      VPAID está siendo deprecado por la industria (IAB) en favor de SIMID y VAST 4.x.
+      El player soporta VPAID via insecureVpaidMode (INSECURE) o el default ENABLED.
+      Los ad servers pueden empezar a eliminar soporte de VPAID, dejando creatives vacíos
+      que triggeren adsError. No es un bug del player, pero QA debe conocer este riesgo.
+    affected_files:
+      - "src/ads/googleIma/adsLoader.js"
+      - "src/ads/googleIma/options.js"
+    trigger: "Ad server entrega creative VPAID cuando insecureVpaidMode=false (ENABLED mode)"
+    mitigation: "El player tiene config insecureVpaidMode para compatibilidad. Largo plazo: migrar a SIMID."
+    industry_note: "IAB Tech Lab ha deprecado VPAID. La migración a SIMID es la recomendación oficial de la industria."
+    test_priority: COULD

@@ -53,3 +53,11 @@ tmp_b64.json
 qa-report*.html
 playwright-report-tv/
 reports/
+
+# Allure
+allure-results/
+allure-report/
+
+# Stryker mutation reports
+reports/mutation/
+.stryker-tmp/

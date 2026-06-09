@@ -1,0 +1,20 @@
+module: analytics-reactions
+criticality: medium
+last_reviewed: "2026-06-05"
+
+paths:
+  - "src/analytics/reactions/"
+
+depends_on:
+  - events
+  - plugins
+
+depended_by: []
+
+breaks_if_changed:
+  - "Evento reactionEmitted no se registra"
+
+test_suites_required: []
+
+negative_cases:
+  - "Backend de reacciones no disponible → silencioso"

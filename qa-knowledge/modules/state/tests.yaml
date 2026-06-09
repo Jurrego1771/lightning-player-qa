@@ -1,0 +1,125 @@
+version: "1.0"
+module: state
+last_updated: "2026-06-08"
+
+existing_tests:
+  - spec_file: "tests/contract/player-api-property.spec.ts"
+    description: "Property-based tests (fast-check) para volume [0,1], muted, playbackRate. Verifica que setters en rangos válidos no lanzan excepciones y retornan valores dentro de rango."
+    ac_coverage:
+      - STATE-AC-004
+
+  - spec_file: "tests/e2e/vod-playback.spec.ts"
+    description: "Tests e2e de reproducción VOD — incluye verificación de player.paused tras play()/pause()"
+    ac_coverage:
+      - STATE-AC-001
+      - STATE-AC-002
+      - STATE-AC-003
+
+  - spec_file: "tests/e2e/player-api.spec.ts"
+    description: "Tests e2e de la API pública del player — verificación de propiedades de estado y métodos"
+    ac_coverage:
+      - STATE-AC-001
+      - STATE-AC-007
+
+  - spec_file: "tests/e2e/events.spec.ts"
+    description: "Tests de eventos emitidos por el player — incluye ready, playing, pause, ended"
+    ac_coverage:
+      - STATE-AC-002
+      - STATE-AC-009
+
+coverage_gaps:
+  - id: GAP-STATE-001
+    priority: MUST
+    ac_ref: STATE-AC-005
+    title: "No hay test que verifique reset de estado tras player.load() con nuevo contenido"
+    suggested_spec: "tests/integration/state-reset.spec.ts"
+    notes: >
+      Verificar que player.currentTime === 0, player.ended === false y player.duration
+      refleja el nuevo contenido después de player.load({ type, id }). Usar el mismo
+      patrón del behavior.json: player que reprodujo un VOD hasta el final → load nuevo.
+      Requiere dos Mock content IDs distintos en el fixture.
+    industry_note: "El reset de estado tras cambio de contenido es crítico en playlists y next-episode — estado residual puede causar bugs en analytics (reportar tiempo incorrecto para el nuevo contenido)."
+
+  - id: GAP-STATE-002
+    priority: MUST
+    ac_ref: STATE-AC-006
+    title: "No hay test que verifique player.status === 'error' con player.error !== null tras error fatal"
+    suggested_spec: "tests/integration/state-error.spec.ts"
+    notes: >
+      Simular error fatal con source inválida (null src o CORS failure). Verificar
+      player.status === 'error' con expect.poll() y player.error instanceof Error.
+      Verificar que el player no queda en estado 'playing' después del error.
+      El getter de status en Controls verifica api.error primero — este path no está testado.
+    industry_note: "Tests de estado de error son críticos: en producción, un player que reporta status incorrecto post-error puede causar que analytics cuente plays fantasma."
+
+  - id: GAP-STATE-003
+    priority: MUST
+    ac_ref: STATE-AC-009
+    title: "Test de player.ended === true no está aislado como test de contrato de estado"
+    suggested_spec: "tests/contract/player-state-ended.spec.ts"
+    notes: >
+      Crear un test dedicado con VOD corto (< 5s) que verifique: al terminar,
+      player.ended === true, player.paused === true, player.status !== 'playing'.
+      El test de events.spec.ts puede cubrir el evento 'ended' pero no verifica
+      consistencia del estado de los getters simultáneamente.
+
+  - id: GAP-STATE-004
+    priority: MUST
+    ac_ref: STATE-AC-007
+    title: "No hay test de seek (player.currentTime = N) con verificación del getter post-seek"
+    suggested_spec: "tests/integration/state-seek.spec.ts"
+    notes: >
+      Verificar el flujo completo: player.currentTime = 15 → seeked event → player.currentTime
+      refleja valor cercano a 15. Usar expect.poll() post-seeked con tolerancia de ±1s.
+      Verificar también que el player continúa reproduciendo (player.paused === false si
+      estaba reproduciendo antes del seek).
+
+  - id: GAP-STATE-005
+    priority: SHOULD
+    ac_ref: STATE-AC-014
+    title: "No hay test de consistencia entre playerStatus del contexto y player.status getter con debounce"
+    suggested_spec: "tests/integration/state-debounce.spec.ts"
+    notes: >
+      Verificar que player.status refleja el nuevo estado dentro de los 200ms post-transición.
+      Medir el tiempo entre la acción (play/pause) y el reflejo en player.status.
+      Documentar el debounce de 100ms como comportamiento esperado, no como bug.
+
+  - id: GAP-STATE-006
+    priority: SHOULD
+    ac_ref: STATE-AC-012
+    title: "No hay test de player.currentTime en modo DVR — verificar offset relativo"
+    suggested_spec: "tests/integration/state-dvr-currenttime.spec.ts"
+    notes: >
+      Verificar que player.currentTime en streams DVR devuelve un offset [0, duration]
+      no el tiempo absoluto del stream. Requiere fixture con stream DVR y
+      verificación de que currentTime < 86400 (no es tiempo Unix).
+
+  - id: GAP-STATE-007
+    priority: SHOULD
+    ac_ref: STATE-AC-008
+    title: "No hay test aislado de player.duration con verificación de NaN post-ads"
+    suggested_spec: "tests/integration/state-duration-post-ads.spec.ts"
+    notes: >
+      Verificar que player.duration es un número finito > 0 después de que un pre-roll
+      termina (adsContentResumeRequested). Cubre el edge case documentado en
+      STATE-DEF-002 donde duration puede quedar en NaN post-ads.
+    industry_note: "El bug de duration stuck at NaN post-ads afecta directamente a analytics de NPAW/Youbora que usan duration para calcular porcentaje de reproducción."
+
+  - id: GAP-STATE-008
+    priority: COULD
+    ac_ref: STATE-AC-003
+    title: "No hay test de player.currentTime con múltiples actualizaciones (flujo continuo)"
+    suggested_spec: "tests/integration/state-currenttime-continuity.spec.ts"
+    notes: >
+      Verificar que currentTime es monótonamente creciente durante reproducción normal
+      (sin seek). Verificar que la frecuencia de actualización es ~250ms. Útil para
+      detectar regresiones donde timeupdate deja de propagarse a los átomos.
+
+  - id: GAP-STATE-009
+    priority: COULD
+    ac_ref: STATE-AC-010
+    title: "No hay test de persistencia de volumen a través de play/pause cycles"
+    suggested_spec: "tests/contract/player-state-volume-persistence.spec.ts"
+    notes: >
+      Verificar que player.volume = 0.3 → pause() → play() preserva player.volume === 0.3.
+      Puede integrarse en player-api-property.spec.ts como caso property-based adicional.

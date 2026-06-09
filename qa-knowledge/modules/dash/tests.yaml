@@ -1,0 +1,142 @@
+version: "1.0"
+module: dash
+last_updated: "2026-06-08"
+
+existing_tests:
+
+  - spec_file: "tests/e2e/dash-playback.spec.ts"
+    description: "Tests E2E de playback DASH VOD: init sin error, autoplay, play(), pause(), currentTime avanza, seek cambia posición, handler es DASH, destroy() limpia el player"
+    ac_coverage:
+      - DASH-AC-001
+      - DASH-AC-002
+      - DASH-AC-005
+      - DASH-AC-010
+    notes: "Usa ContentIds.dashVod con CDN real. Tests de WebKit skipped."
+
+  - spec_file: "tests/e2e/dash-auto-detect.spec.ts"
+    description: "Tests E2E de auto-detect: URL .mpd llega a playing, lazy-load de DashHandler no causa doble 'ready'"
+    ac_coverage:
+      - DASH-AC-003
+    notes: "Usa ContentIds.dashVod con CDN real. Tests de WebKit skipped."
+
+  - spec_file: "tests/e2e/dash-dvr.spec.ts"
+    description: "Tests E2E de DVR DASH: isDVR=true, seek sin error, seek al inicio, currentTime correcto después de seek"
+    ac_coverage:
+      - DASH-AC-011
+      - DASH-AC-012
+    notes: "TODOS en test.fixme — ContentIds.dashDvr no tiene DVR real. Ver DASH-DEF-001."
+
+  - spec_file: "tests/integration/dash-handler-select.spec.ts"
+    description: "Tests de selección de handler: auto-detect .mpd, regresión HLS .m3u8 no selecciona DASH, format=dash explícito"
+    ac_coverage:
+      - DASH-AC-002
+      - DASH-AC-003
+      - DASH-AC-004
+      - DASH-AC-016
+    notes: "Usa isolatedPlayer + MockContentIds. No requiere stream real. Determinísticos."
+
+  - spec_file: "tests/integration/dash-abr.spec.ts"
+    description: "Tests de ABR DASH: representationchange al inicio, baja representación bajo bandwidth degradado, recovery al restaurar red"
+    ac_coverage:
+      - DASH-AC-006
+      - DASH-AC-018
+    notes: "Usa ExternalStreams.dash.vod (stream externo). CDP throttling solo en Chromium. Puede ser flaky si el stream externo no es accesible en CI."
+
+  - spec_file: "tests/integration/system73-dash.spec.ts"
+    description: "Tests de integración System73 P2P: path deshabilitado, wrapper activo, fallo SDK degradación suave, stale-src guard, double-load guard, reload destroy, componentWillUnmount destroy"
+    ac_coverage:
+      - DASH-AC-013
+      - DASH-AC-014
+      - DASH-AC-015
+    notes: "Usa isolatedPlayer + page.addInitScript para mock SDK. Cobertura completa del ciclo de vida System73."
+
+  - spec_file: "tests/integration/google-dai-dash.spec.ts"
+    description: "Tests de Google DAI con formato DASH — selección de streamFormat=dash"
+    ac_coverage:
+      - DASH-AC-017
+    notes: "test.fixme global — requiere DAI_NETWORK_CODE y DAI_DASH_ASSET_KEY en .env"
+
+  - spec_file: "tests/integration/google-dai-dash-drm.spec.ts"
+    description: "Tests de Google DAI con DASH + DRM"
+    ac_coverage: []
+    notes: "Requiere credenciales DRM y DAI. Sin cobertura efectiva en CI."
+
+  - spec_file: "tests/e2e/drm-widevine-dash.spec.ts"
+    description: "Tests E2E de DRM Widevine en streams DASH"
+    ac_coverage:
+      - DASH-AC-019
+    notes: "Requiere WIDEVINE_LICENSE_URL en .env. Tier 2 (staging/nightly)."
+
+coverage_gaps:
+
+  - id: GAP-DASH-001
+    priority: MUST
+    ac_ref: DASH-AC-011
+    title: "DVR DASH: isDVR y dvrWindow con stream real"
+    suggested_spec: "tests/e2e/dash-dvr.spec.ts"
+    notes: "Los tests existen pero están en test.fixme. Requiere que plataforma provea CONTENT_ID_DASH_DVR con timeShiftBufferDepth > 0. Desbloquear cuando se resuelva DASH-DEF-001."
+    industry_note: "DVR en DASH live es una feature crítica para plataformas de broadcasting. La industria considera el DVR seek como un requisito MUST para streams live."
+
+  - id: GAP-DASH-002
+    priority: MUST
+    ac_ref: DASH-AC-007
+    title: "Fijación manual de representación via player.level = N en DASH"
+    suggested_spec: "tests/integration/dash-handler-select.spec.ts o nuevo dash-quality.spec.ts"
+    notes: "No hay test que verifique que player.level = N realmente llama setRepresentationForTypeByIndex. El test debe usar un stream con múltiples representaciones y verificar que 'levelchange' se emite con N, y que dash.js recibe la llamada. Considerar mock de la API de dash.js."
+    industry_note: "Esencial para features de selector de calidad manual. En OTT, muchos usuarios cambian calidad manualmente."
+
+  - id: GAP-DASH-003
+    priority: MUST
+    ac_ref: DASH-AC-008
+    title: "Restore ABR con player.level = -1 después de nivel fijo"
+    suggested_spec: "tests/integration/dash-quality.spec.ts (nuevo)"
+    notes: "Test de regresión importante: fijar nivel, luego level=-1, verificar autoLevelEnabled=true y que dash.js recibe autoSwitchBitrate: { video: true }."
+    industry_note: ""
+
+  - id: GAP-DASH-004
+    priority: MUST
+    ac_ref: DASH-AC-009
+    title: "Error de segmento DASH: NetworkError se emite correctamente"
+    suggested_spec: "tests/integration/dash-error-handling.spec.ts (nuevo)"
+    notes: "Usar page.route() para interceptar requests de segmentos DASH y retornar 404. Verificar que el evento 'error' se emite con tipo NetworkError. Si el error no es fatal, verificar que el player intenta recovery. Usar stream local (ExternalStreams o mock MPD)."
+    industry_note: "Manejo de errores de segmento es crítico en producción. Fraunhofer y dash.js docs documentan que errores de segmento non-fatal deben gatillar retry automático."
+
+  - id: GAP-DASH-005
+    priority: SHOULD
+    ac_ref: DASH-AC-012
+    title: "DVR DASH: seek al inicio y en medio de la ventana"
+    suggested_spec: "tests/e2e/dash-dvr.spec.ts"
+    notes: "Tests existen pero bloqueados. Misma condición que GAP-DASH-001. Una vez desbloqueados, cubren el seek en offset 0 y offset = duration*0.25."
+    industry_note: ""
+
+  - id: GAP-DASH-006
+    priority: SHOULD
+    ac_ref: DASH-AC-019
+    title: "DRM Widevine + DASH en CI con ClearKey"
+    suggested_spec: "tests/integration/dash-drm-clearkey.spec.ts (nuevo)"
+    notes: "ClearKey DRM no requiere servidor de licencias externo. Permite testear el flujo de protección EME en CI sin credenciales. Requiere generar un stream DASH cifrado con ClearKey (herramienta: mp4encrypt/Bento4 o Shaka Packager)."
+    industry_note: "ClearKey es un mecanismo DRM definido en la W3C EME spec, soportado en todos los browsers sin CDM de terceros. Shaka Player y video.js lo usan en sus test suites para tests de DRM determinísticos."
+
+  - id: GAP-DASH-007
+    priority: SHOULD
+    ac_ref: DASH-AC-001
+    title: "Stream DASH local en tests de integración (sin depender de CDN)"
+    suggested_spec: "tests/integration/dash-playback-isolated.spec.ts (nuevo)"
+    notes: "Los tests E2E de DASH usan el CDN real (ContentIds.dashVod). Esto los hace dependientes de conectividad y puede ser flaky. Crear un stream DASH local (MPD + segmentos fMP4) en fixtures/streams/vod-dash/ con generate-fixtures.sh. El mock content dash.json ya apunta a http://localhost:9001/vod-dash/manifest.mpd."
+    industry_note: "Shaka Player, dash.js y video.js usan streams locales para todos sus tests de integración. La industria considera esto best practice para tests reproducibles."
+
+  - id: GAP-DASH-008
+    priority: COULD
+    ac_ref: DASH-AC-002
+    title: "Verificar handler string exacto 'html5/mse+dash'"
+    suggested_spec: "tests/integration/dash-handler-select.spec.ts"
+    notes: "Los tests existentes usan .toMatch(/dash/). Agregar un assert que verifique el string exacto 'html5/mse+dash' para detectar si el getter cambia en futuras versiones del player."
+    industry_note: ""
+
+  - id: GAP-DASH-009
+    priority: COULD
+    ac_ref: DASH-AC-006
+    title: "player.bandwidth refleja throughput real en DASH"
+    suggested_spec: "tests/integration/dash-abr.spec.ts"
+    notes: "Agregar verificación de player.bandwidth después de 'playing'. Debería retornar un número > 0 en condiciones normales. getAverageThroughput() puede retornar null si el buffer no se ha llenado."
+    industry_note: ""

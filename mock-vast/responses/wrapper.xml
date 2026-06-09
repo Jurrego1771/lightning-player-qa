@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- VAST 3.0 - Wrapper → apunta a /vast/preroll (un nivel de indirección) -->
+<!-- Usado para tests: AC-ADSMANAGER-002 (Wrapper chain resolution) -->
+<VAST version="3.0">
+  <Ad id="wrapper-test-001">
+    <Wrapper>
+      <AdSystem>MockVAST Wrapper</AdSystem>
+      <VASTAdTagURI><![CDATA[http://localhost:9999/vast/preroll]]></VASTAdTagURI>
+      <Impression id="wrapper-impression"><![CDATA[http://localhost:9999/track/wrapper-impression]]></Impression>
+      <Creatives>
+        <Creative>
+          <Linear>
+            <TrackingEvents>
+              <Tracking event="start"><![CDATA[http://localhost:9999/track/wrapper-start]]></Tracking>
+              <Tracking event="complete"><![CDATA[http://localhost:9999/track/wrapper-complete]]></Tracking>
+            </TrackingEvents>
+          </Linear>
+        </Creative>
+      </Creatives>
+    </Wrapper>
+  </Ad>
+</VAST>

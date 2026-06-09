@@ -1,0 +1,70 @@
+version: "1.0"
+module: playback-core
+last_updated: "2026-06-08"
+
+learnings:
+  - id: PLAY-LEARN-001
+    title: "autoplay default es true, no false como esperaría un integrador"
+    discovery: "código fuente: src/player/base.js contextMapper línea 616"
+    detail: "El contextMapper en BasePlayer evalúa 'autoplay' in context ? !!context.autoplay : true. Si el integrador no pasa autoplay en la config, el player usará autoplay: true. Esto es contrario al comportamiento por defecto de la mayoría de librerías de video y del spec de HTMLMediaElement (que no tiene autoplay por defecto)."
+    impact_on_tests: "Tests que no especifiquen autoplay recibirán autoplay: true. Siempre pasar autoplay: false explícitamente en tests que no quieran reproducción automática. En CI, autoplay: true puede fallar por autoplay policy si el stream tiene audio."
+
+  - id: PLAY-LEARN-002
+    title: "DASH no usa dash.js — usa el handler nativo del browser"
+    discovery: "código fuente: src/player/base.js + src/player/handler/dash/handler.js. Verificado: no existe dash.js en package.json"
+    detail: "A diferencia de lo que sugiere el nombre DashHandler, el módulo DASH usa Media Source Extensions nativas del browser, no dash.js. Consecuencia: las propiedades level/levels/bandwidth/bitrate/nextLevel/autoLevelEnabled son undefined/null para contenido DASH. player.sourceType === 'native', no 'dash'. No hay control de ABR para DASH desde el player."
+    impact_on_tests: "Tests de calidad/ABR (hls-abr.spec.ts) NO aplican a DASH. Tests de DASH deben limitarse a: reproducción básica, seek, pause/play, eventos de ciclo de vida. Assertar player.sourceType === 'native' para DASH, no 'dash'."
+
+  - id: PLAY-LEARN-003
+    title: "HLS.js siempre preferido sobre native HLS — excepto Safari+FairPlay"
+    discovery: "código fuente: src/player/base.js getDerivedStateFromProps líneas 355-363"
+    detail: "El comentario en el código dice: 'If HLS.js is supported, we will use it instead of the native player ALWAYS (even when native is supported). This due to many issues, the most pressing being that Chrome is rolling a native HLS support and it's not working properly.' La única excepción es Safari con FairPlay: si isSafari() === true y hay config de fairplay.serverURL, _canPlayNative = true para usar el handler nativo con webkitneedkey."
+    impact_on_tests: "En Playwright Chromium: siempre usa hls.js para HLS. En Playwright WebKit: hls.js no está soportado → usa NativeHandler → muchos tests de HLS se skipean con 'HLS via hls.js no soportado en Playwright WebKit'. Tier 2 para Safari real."
+
+  - id: PLAY-LEARN-004
+    title: "El ping-reload (4s) es el mecanismo de recuperación de stalls del NativeHandler"
+    discovery: "código fuente: src/player/handler/native.js _pingReload() y _setBuffering()"
+    detail: "Cuando el native handler recibe un evento 'waiting' o 'error', llama _pingReload() que programa un re-load después de 4 segundos (pingInterval = 4000). Si hay un evento válido (playing, canplay, etc.) antes de que expire, se cancela el ping. Este mecanismo es la única forma de recuperación de stalls para NativeHandler. HLS handler tiene su propio stall detector."
+    impact_on_tests: "Tests de error recovery deben esperar al menos 4-5s para que el ping-reload pueda actuar. waitForEvent('error') puede llegar antes de que el player haya agotado sus reintentos."
+
+  - id: PLAY-LEARN-005
+    title: "ended event tiene deduplicación: _alreadyEmittedEnded flag"
+    discovery: "código fuente: src/player/handler/native.js _handleEvent() case Events._ended, líneas 298-303"
+    detail: "NativeHandler tiene el flag _alreadyEmittedEnded para prevenir que el evento 'ended' se emita dos veces en el mismo contenido. El flag se resetea en loadedmetadata (cuando se carga nuevo contenido). Esta deduplicación resuelve un problema con HTMLMediaElement que puede emitir el evento ended múltiples veces en algunas circunstancias."
+    impact_on_tests: "Tests que llamen seek → play → ended en el mismo contenido después de que ya se emitió ended verán que 'ended' NO se emite la segunda vez. Para testear ended nuevamente, se debe cargar el contenido con load()."
+
+  - id: PLAY-LEARN-006
+    title: "volumechange workaround: Chrome resetea volume a 1 de forma random"
+    discovery: "código fuente: src/player/handler/native.js _handleEvent() case Events._volumechange, con comentario explicativo"
+    detail: "El NativeHandler tiene un workaround explícito para un bug de Chrome donde el elemento video resetea el volumen a 1 aleatoriamente al cargar contenido. Si el nuevo volumen difiere del volumen configurado (props.volume), el handler lo corrige sin emitir volumechange. Si son iguales, emite normalmente. Esto puede causar que volumechange no se emita cuando se esperaría."
+    impact_on_tests: "Tests que aserten player.volume después de cargar contenido deben usar expect.poll(). El evento volumechange puede ser suprimido por el workaround."
+
+  - id: PLAY-LEARN-007
+    title: "Muted autoplay es la única estrategia confiable para autoplay en producción"
+    discovery: "investigación web: Chrome autoplay policy, MDN autoplay guide"
+    detail: "Desde 2018, Chrome y la mayoría de browsers bloquean autoplay con audio excepto cuando: (1) el video está muted, (2) el usuario tiene MEI alto para ese dominio, (3) el usuario interactuó previamente. La solución estándar adoptada por Netflix, YouTube, Instagram: iniciar muted y mostrar un botón de unmute prominente. El player tiene autoplay: true por default pero sin muted, lo que puede fallar en browsers nuevos/incognito."
+    impact_on_tests: "Tests de autoplay en CI deben usar volume: 0 o muted: true para ser deterministas. Tests con autoplay: true y audio pueden fallar en headless Chromium dependiendo de la versión y política del CI. Documentar como anti-patrón testear autoplay con audio en CI."
+
+  - id: PLAY-LEARN-008
+    title: "React.PureComponent: setState async causa race conditions en assertions inmediatas"
+    discovery: "código fuente: src/player/base.js; memoria: player_system.md"
+    detail: "BasePlayer extiende React.PureComponent. Jotai atoms y React state updates son asíncronos (se procesan en el próximo render cycle). Si un test aserta player.status inmediatamente después de calling pause(), puede recibir 'playing' en lugar de 'pause' porque el render cycle no completó. El _nonReactiveState en BasePlayer fue introducido específicamente para evitar este problema en algunos getters (status), pero no todos los valores pasan por él."
+    impact_on_tests: "SIEMPRE usar expect.poll() para assertar estados del player, nunca assertions directas post-acción. waitForEvent() es más confiable que assertar propiedades directamente."
+
+  - id: PLAY-LEARN-009
+    title: "textTracks metadata track: workaround para bug de AW (AdSwizz)"
+    discovery: "código fuente: src/player/base.js _setMetadata() líneas 147-150, con comentario"
+    detail: "El código tiene un workaround documentado: 'This is needed due to a bug in AW. It sends a cue with startTime 0 and endTime 1 and then removes it until the next segment is loaded, causing a blink in the image.' Los cues con startTime === 0 && endTime === 1 son ignorados en el procesamiento de ICY metadata."
+    impact_on_tests: "Tests de ICY/radio metadata deben ser conscientes de que los primeros cues con startTime=0/endTime=1 pueden ser filtrados. No es un bug del player — es un workaround intencional para AdSwizz."
+
+  - id: PLAY-LEARN-010
+    title: "preload='auto' en NativeHandler mejora tiempo de inicio pero puede consumir ancho de banda innecesario"
+    discovery: "código fuente: src/player/handler/native.js _renderVideo() y _renderAudio(); investigación web: web.dev/fast-playback-with-preload"
+    detail: "NativeHandler siempre renderiza los elementos con preload='auto'. La recomendación de la industria es preload='metadata' para VOD en viewport (balance entre TTFF y consumo de red) y preload='none' fuera del viewport. Chrome desde v64 tiene default preload='metadata', pero NativeHandler lo sobreescribe con 'auto'. En conexiones celulares (2G-4G), Chrome ignora preload='auto' y usa 'metadata'."
+    impact_on_tests: "Tests de performance de primera reproducción (TTFF) deben considerar que la red de test puede comportarse diferente al producción con preload='auto'. En tests con throttling de red, el preload='auto' puede afectar el tiempo de buffering."
+
+  - id: PLAY-LEARN-011
+    title: "autoStartLoad desde preloadEnabled: diferencia entre load() automático y manual"
+    discovery: "código fuente: src/player/handler/native.js _load() líneas 217-222"
+    detail: "NativeHandler tiene lógica de autoStartLoad basada en context.preloadEnabled. Si preloadEnabled es truthy, llama this.load() en el próximo tick (setTimeout 0) después de montar el elemento. Si es falsy, espera a que play() sea llamado para disparar load(). Esto afecta cuándo comienza la descarga del contenido y el tiempo hasta 'canplay'."
+    impact_on_tests: "El comportamiento de 'canplay' puede variar dependiendo de si preloadEnabled está activo. Tests de timing de canplay deben considerar este flag. En el harness de tests, verificar qué valor tiene preloadEnabled en el mock de plataforma."

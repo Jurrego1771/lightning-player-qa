@@ -1,0 +1,104 @@
+version: "1.0"
+module: ads-ima
+last_updated: "2026-06-08"
+
+defects:
+
+  - id: IMA-DEF-001
+    status: known_limitation
+    severity: medium
+    title: "adsComplete no se emite en ads de menos de 3 segundos"
+    description: |
+      En ads muy cortos (<3s), el IMA SDK omite el evento COMPLETE (y por ende THIRD_QUARTILE,
+      MIDPOINT, FIRST_QUARTILE en algunos casos). adsAllAdsCompleted y adsContentResumeRequested
+      también pueden omitirse, dejando el player en estado colgado después del ad.
+    workaround: "Evitar usar VAST creatives de menos de 3 segundos en producción. El player no tiene solución programática."
+    source_comment: "behavior.json: BUG-IMA-001"
+    industry_known: true
+    regression_risk: medium
+
+  - id: IMA-DEF-002
+    status: known_limitation
+    severity: medium
+    title: "SIMID no está implementado — solo VPAID legacy"
+    description: |
+      El player soporta VPAID (en modo ENABLED o INSECURE via insecureVpaidMode) pero no
+      implementa SIMID (Secure Interactive Media Interface Definition), el sucesor oficial
+      de VPAID según IAB Tech Lab. Creatives SIMID no se reproducirán. A medida que los
+      ad servers migran de VPAID a SIMID, los ads interactivos dejarán de funcionar.
+    workaround: "Ninguno. Los ad servers que entreguen solo SIMID obtendrán adsError o ad vacío."
+    source_comment: "src/ads/googleIma/adsLoader.js línea 63: setVpaidMode ENABLED/INSECURE"
+    industry_known: true
+    regression_risk: low
+
+  - id: IMA-DEF-003
+    status: known_limitation
+    severity: low
+    title: "VPAID ENABLED + enablePreloading puede fallar con múltiples VPAID ads en VMAP"
+    description: |
+      El IMA SDK HTML5 tiene un bug conocido donde vpaidMode=ENABLED y enablePreloading=true
+      no reproduce todos los VPAID ads en un VMAP. Solo el primer VPAID ad se reproduce;
+      los siguientes se omiten silenciosamente. El player usa ENABLED por defecto y
+      enablePreloading=true (AdsRenderingSettings.enablePreloading = true en adsLoader.js).
+    workaround: "Configurar adsInsecureVpaidMode=true en la config del player para usar vpaidMode=INSECURE. Deshabilitar preloading no es una opción configurable actualmente."
+    source_comment: "src/ads/googleIma/adsLoader.js línea 91: settings.enablePreloading = true"
+    industry_known: true
+    regression_risk: low
+
+  - id: IMA-DEF-004
+    status: known_limitation
+    severity: medium
+    title: "player.ad.cuePoints retorna undefined/null antes del primer play con autoplay:false"
+    description: |
+      Con autoplay:false, el AdsManager no se inicializa hasta que el usuario hace play.
+      Consultar player.ad.cuePoints antes del primer play retorna null porque
+      this.#_adsManager === null en AdsHandler.get cuePoints(). Cualquier UI que use
+      cuePoints para renderizar ad markers en la progress bar antes del primer play
+      mostrará una barra sin markers.
+    workaround: "Consultar cuePoints en el handler del evento adsLoaded (cuando AdsManager ya está listo), no en la inicialización."
+    source_comment: "src/ads/googleIma/handler.js líneas 196-198"
+    industry_known: false
+    regression_risk: medium
+
+  - id: IMA-DEF-005
+    status: known_limitation
+    severity: medium
+    title: "Ad blocker bloquea VAST URL (no el SDK): el player queda esperando ads indefinidamente"
+    description: |
+      Si el ad blocker permite cargar el IMA SDK pero bloquea la VAST tag URL, la
+      AdsRequest puede quedar pendiente (el IMA SDK puede tener su propio timeout).
+      El adsManager.getAdsManager() promise no resuelve ni rechaza hasta que el SDK
+      emite ADS_MANAGER_LOADED o AD_ERROR. Si el SDK no emite ningún evento (timeout
+      del SDK muy largo), el player puede quedar esperando.
+    workaround: "El IMA SDK normalmente emite AD_ERROR eventualmente por timeout de red. Monitorear el tiempo máximo de espera en producción."
+    source_comment: "src/ads/googleIma/adsRequest.js líneas 38-48: promise sin timeout propio"
+    industry_known: false
+    regression_risk: medium
+
+  - id: IMA-DEF-006
+    status: known_limitation
+    severity: low
+    title: "Post-roll con VAST vacío puede bloquear al player en el último frame del contenido"
+    description: |
+      Si el VMAP incluye un post-roll y el VAST de ese post-roll está vacío o retorna error,
+      el IMA SDK puede dejar al player bloqueado en el último frame del contenido sin emitir
+      CONTENT_RESUME_REQUESTED. El usuario no puede hacer nada (el contenido ya terminó,
+      no hay ad, y el player no emite 'ended' para el contenido post-ad).
+    workaround: "Ninguno. El player no tiene timeout de recuperación para post-roll vacío."
+    source_comment: "Derivado de behavior.json breaks_if_changed + IMA SDK community reports"
+    industry_known: true
+    regression_risk: medium
+
+  - id: IMA-DEF-007
+    status: known_limitation
+    severity: low
+    title: "discardAdBreak() cancela todos los ads del break, no solo el actual"
+    description: |
+      Cuando ad.skip() no puede procesar el skip via adsManager.skip() (el SDK está
+      renderizando su propio botón de skip y rechaza el skip programático), el player
+      usa discardAdBreak() como fallback. Esto cancela TODOS los ads del break, no solo
+      el ad actual. Si hay un break con 2 ads, ambos se omiten al skipear el primero.
+    workaround: "Comportamiento intencional documentado en el código. Evitar VAST pods con múltiples ads si se necesita skip preciso."
+    source_comment: "src/ads/googleIma/ad.js línea 133: #skipByDiscard() con comentario explicativo"
+    industry_known: false
+    regression_risk: low

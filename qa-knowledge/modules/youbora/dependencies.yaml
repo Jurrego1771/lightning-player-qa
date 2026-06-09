@@ -1,0 +1,106 @@
+version: "1.0"
+module: youbora
+last_updated: "2026-06-08"
+
+internal:
+  - id: events
+    reason: >
+      El tracker se suscribe al internalEmitter usando la taxonomía Events/InternalEvents
+      (_contentFirstPlay, _playing, _pause, _ended, _seeking, _seeked, _buffering, _canplay,
+      _adsContentPauseRequested, _adsContentResumeRequested, _error, y la familia _ads*).
+      Renombrar o reordenar estos eventos rompe el bind silenciosamente (no hay error).
+    coupling: high
+    files:
+      - "src/analytics/youbora/tracker.js"
+      - "constants.cjs"
+
+  - id: playback-core
+    reason: >
+      Lee el objeto `api` vía get('api') para currentTime, duration, src, videoWidth/Height,
+      bitrate, playbackRate, volume, fullscreen. La métrica de bitrate/rendition y el playhead
+      dependen de que el handler activo (HLS/DASH) los exponga correctamente.
+    coupling: high
+    files:
+      - "src/analytics/youbora/tracker.js"
+
+  - id: plugins
+    reason: >
+      plugins/index.js es el loader que decide montar YouboraTracker según
+      options.metadata.player.tracking.youbora.enabled. También aplica los guards dnt,
+      reels y fatal error que impiden cargar cualquier plugin.
+    coupling: high
+    files:
+      - "src/plugins/index.js"
+      - "src/analytics/youbora/index.jsx"
+
+  - id: ads-manager
+    reason: >
+      El ad adapter consume la familia Events._ads* (adsStarted, quartiles, adsComplete,
+      adsAllAdsCompleted, adsContentPause/ResumeRequested, adsSkipped, adsClick, adsError) y el
+      objeto api.ad.info / api.ad.cuePoints para reportar break/ad metrics.
+    coupling: medium
+    files:
+      - "src/analytics/youbora/tracker.js"
+
+  - id: platform-config
+    reason: >
+      enabled y account_code provienen del player config servido por la plataforma
+      (metadata.player.tracking.youbora). customer_extras.* aportan user metadata.
+    coupling: medium
+    files:
+      - "src/analytics/youbora/index.jsx"
+
+  - id: metadata
+    reason: >
+      Para type='episode', buildVideoOptions lee metadata.show y metadata.season para enriquecer
+      la View (content.program, content.season, content.episodeTitle).
+    coupling: low
+    files:
+      - "src/analytics/youbora/tracker.js"
+
+  - id: quality-selector
+    reason: >
+      getRendition() compone 'WxH@Nkbps' desde api.videoWidth/Height/bitrate. Los cambios de
+      calidad (manuales o ABR) se reflejan en el campo entities de los pings.
+    coupling: low
+    files:
+      - "src/analytics/youbora/tracker.js"
+
+external:
+  - id: npaw-plugin
+    package: "npaw-plugin"
+    version: "^7.3.28 (prod observado: 7.3.28-generic-js)"
+    reason: >
+      SDK de analítica NPAW/Youbora. Provee NpawPlugin, registerDefaultAdapter,
+      registerDefaultAdsAdapter, y los métodos fire* (fireInit, fireStart, fireJoin, firePause,
+      fireResume, fireSeekBegin/End, fireBufferBegin/End, fireStop, fireError, fireFatalError,
+      fireBreakStart/Stop, fireQuartile, fireSkip, fireClick).
+    risk: high
+    note: >
+      El SDK es una caja negra: la generación de beacons, formato de payload (POST JSON en 7.3.28),
+      timing de /ping y /joinTime, y la lógica de viewCode son internos. Una actualización menor del
+      SDK puede cambiar nombres de campos, endpoints o comportamiento de break sin aviso. NO testear
+      paths exactos de beacons como contrato — son internos al SDK.
+
+  - id: npaw-collector-nqs
+    package: "endpoint CDN (no npm)"
+    version: "n/a"
+    reason: >
+      Endpoints de ingesta de beacons: lma.npaw.com (handshake /data, /configuration que devuelve
+      el host NQS y el sessionId) y {accountCode}.youboranqs01.com (beacons NQS reales).
+    risk: medium
+    note: >
+      El chunk de Youbora se lazy-carga y el handshake LMA precede a cualquier beacon. Latencia o
+      fallo de lma.npaw.com puede dejar la cola de beacons atascada (race "queue stuck"). Dominios
+      a permitir en CSP/allowlist: *.npaw.com, *.youbora.com, *.youboranqs01.com.
+
+  - id: npaw-suite-dashboard
+    package: "SaaS (no integrable en CI)"
+    version: "n/a"
+    reason: >
+      La verificación end-to-end de métricas (View detail, SmartTracking, SmartAds) solo es posible
+      en el dashboard de la NPAW Suite con un accountCode real.
+    risk: medium
+    note: >
+      QA en CI usa accountCode dummy (qa_dummy) y solo puede observar la emisión de beacons HTTP,
+      no su correcta ingesta/render en la Suite. Ver YBRA-DEF-002.

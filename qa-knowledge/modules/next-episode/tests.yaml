@@ -1,0 +1,177 @@
+version: "1.0"
+module: next-episode
+last_updated: "2026-06-08"
+
+existing_tests:
+  - spec_file: "tests/smoke/next-episode-smoke.spec.ts"
+    description: "Happy path headless: nextEpisodeIncoming se emite al acercarse al fin, playNext carga el siguiente episodio con sourcechange y ready"
+    tags: ["@smoke"]
+    ac_coverage:
+      - NEPI-AC-001
+      - NEPI-AC-006
+      - NEPI-AC-010
+    notes: "Usa view='none'. Firefox se skipea por contención del fixture server HLS. Verifica title del siguiente episodio con expect.poll()."
+
+  - spec_file: "tests/integration/next-episode-api.spec.ts"
+    description: "API headless: updateNextEpisode confirma override y playNext carga el episodio confirmado; keepWatching previene auto-load al terminar"
+    tags: ["@integration"]
+    ac_coverage:
+      - NEPI-AC-005
+      - NEPI-AC-006
+      - NEPI-AC-007
+    notes: "Dos tests: (1) confirma nextEpisode override y verifica carga del episodio confirmado; (2) keepWatching verifica que no ocurre sourcechange al ended"
+
+  - spec_file: "tests/visual/next-episode-ui.spec.ts"
+    description: "Visual regression: overlay visible con foco inicial en Watch Next; ArrowLeft mueve foco a Watch Credits"
+    tags: ["@visual"]
+    ac_coverage:
+      - NEPI-AC-002
+      - NEPI-AC-013
+    notes: "Deshabilita animaciones CSS antes del screenshot. Usa maxDiffPixelRatio: 0.02. Snapshots en tests/visual/next-episode-ui.spec.ts-snapshots/"
+
+  - spec_file: "tests/performance/next-episode-transition.spec.ts"
+    description: "Performance: playNext carga el siguiente episodio en menos de 3000ms"
+    tags: ["@performance"]
+    ac_coverage: []
+    notes: "Mide tiempo desde playNext hasta ready. Usa PerfStorage.record para historial. No cubre AC específicos de next episode, es un check de latencia de transición."
+
+coverage_gaps:
+  - id: GAP-NEPI-001
+    priority: MUST
+    ac_ref: NEPI-AC-003
+    title: "Auto-load por countdown de 5s sin interacción del usuario (video view)"
+    suggested_spec: "tests/e2e/next-episode-autoload.spec.ts"
+    notes: |
+      Verificar que si la UI aparece y el usuario no hace nada durante 5s, api.load() se llama
+      automáticamente. El test actual (smoke) usa playNext (evento externo) — no cubre el
+      timer interno. Requiere view='video' (no headless). Timer real de 5s puede ser lento
+      en CI; considerar mockear con page.clock o usar nextEpisodeTime muy bajo para
+      reducir el tiempo de espera total.
+    industry_note: "Este es el happy path principal de binge-watching en plataformas OTT — crítico para la experiencia del usuario"
+
+  - id: GAP-NEPI-002
+    priority: MUST
+    ac_ref: NEPI-AC-008
+    title: "Next episode desactivado para live/audio/DVR"
+    suggested_spec: "tests/integration/next-episode-content-types.spec.ts"
+    notes: |
+      Verificar que para type='live', type='audio' y type='dvr', el evento nextEpisodeIncoming
+      NO se emite y la UI NO aparece aunque haya metadata.next configurado.
+      Tres casos distintos de test para cada tipo.
+
+  - id: GAP-NEPI-003
+    priority: MUST
+    ac_ref: NEPI-AC-011
+    title: "Auto-load desde evento ended cuando UI apareció con < 5s restantes (no countdown)"
+    suggested_spec: "tests/integration/next-episode-ended-autoload.spec.ts"
+    notes: |
+      Cubrir el caso hasEnoughTimeForAnimation=false: video tiene ≤ 5s cuando shouldShow pasa
+      a true. En ese caso NO hay timer — el auto-load debe ocurrir en el evento ended.
+      Seek a (duration - 1) con nextEpisodeTime=1 debería reproducir este escenario.
+
+  - id: GAP-NEPI-004
+    priority: MUST
+    ac_ref: NEPI-AC-012
+    title: "Override de controles: play/pause/seek bloqueados durante UI visible"
+    suggested_spec: "tests/integration/next-episode-controls-override.spec.ts"
+    notes: |
+      Verificar que mientras la UI de next episode está visible, los métodos play(), pause()
+      y seekTo() retornan false. Requiere view='video'. Importante para plataformas que
+      llaman a estos métodos programáticamente (e.g., analytics).
+
+  - id: GAP-NEPI-005
+    priority: MUST
+    ac_ref: NEPI-AC-009
+    title: "sourcechange resetea completamente el estado del módulo"
+    suggested_spec: "tests/integration/next-episode-reset-on-sourcechange.spec.ts"
+    notes: |
+      Verificar que después de un sourcechange, el módulo vuelve a estado inicial:
+      keepWatching=false, incomingEmitted=false, UI no visible. Cargar ep-A con keepWatching,
+      esperar sourcechange a ep-B, verificar que ep-B puede mostrar su propio next episode.
+
+  - id: GAP-NEPI-006
+    priority: SHOULD
+    ac_ref: NEPI-AC-015
+    title: "Clic en Watch Credits cancela countdown y reproduce créditos"
+    suggested_spec: "tests/e2e/next-episode-credits.spec.ts"
+    notes: |
+      Verificar que al hacer clic en Watch Credits: la UI desaparece, no hay sourcechange,
+      el video sigue hasta ended sin cargar el siguiente episodio. Requiere view='video'.
+
+  - id: GAP-NEPI-007
+    priority: SHOULD
+    ac_ref: NEPI-AC-014
+    title: "Tecla Escape cierra la UI y cancela el countdown"
+    suggested_spec: "tests/e2e/next-episode-keyboard.spec.ts"
+    notes: |
+      Verificar comportamiento completo de teclado: ArrowLeft/Right alterna foco,
+      Enter activa el botón enfocado, Escape cierra la UI. Cubrir también el caso
+      de ArrowDown/Up (mismos que Left/Right según el código).
+
+  - id: GAP-NEPI-008
+    priority: SHOULD
+    ac_ref: NEPI-AC-018
+    title: "nextEpisodeConfirmed acepta string como payload"
+    suggested_spec: "tests/integration/next-episode-confirmed-string.spec.ts"
+    notes: |
+      En headless: verificar que emitir nextEpisodeConfirmed('some-id') (string en lugar
+      de objeto) resulta en confirmedNextEpisode = { id: 'some-id' }. La conversión
+      ocurre en useNextEpisodeEvents.js headless, línea 77-80.
+
+  - id: GAP-NEPI-009
+    priority: SHOULD
+    ac_ref: NEPI-RISK-006
+    title: "nextEpisodeOverride bloquea la UI y requiresConfirmation desbloquea"
+    suggested_spec: "tests/integration/next-episode-override.spec.ts"
+    notes: |
+      Verificar el flujo completo: (1) cargar contenido con nextEpisodeOverride definido,
+      (2) verificar que la UI NO aparece aunque timeRemaining <= nextEpisodeTime,
+      (3) emitir nextEpisodeConfirmed, (4) verificar que la UI ahora aparece.
+
+  - id: GAP-NEPI-010
+    priority: SHOULD
+    ac_ref: NEPI-RISK-001
+    title: "No hay double-load: solo una llamada a api.load() por transición"
+    suggested_spec: "tests/integration/next-episode-no-double-load.spec.ts"
+    notes: |
+      Verificar que no ocurre sourcechange doble durante una transición. Contar eventos
+      sourcechange — debe ocurrir exactamente uno. Cubrir la race condition entre el
+      timer y el evento ended cuando timeRemaining está entre 0 y 5s.
+
+  - id: GAP-NEPI-011
+    priority: SHOULD
+    ac_ref: NEPI-AC-009
+    title: "keepWatching no persiste si el contenido cambia (sourcechange reset)"
+    suggested_spec: "tests/integration/next-episode-keepwatching-reset.spec.ts"
+    notes: |
+      Verificar que keepWatching emitido en ep-A NO afecta la carga automática de ep-B.
+      Después del sourcechange a ep-B, el siguiente episodio de ep-B debe cargarse normalmente.
+
+  - id: GAP-NEPI-012
+    priority: COULD
+    ac_ref: NEPI-AC-016
+    title: "TV skin: UI usa clases next-episode--tv con dimensiones aumentadas"
+    suggested_spec: "tests/visual/next-episode-tv.spec.ts"
+    notes: |
+      Visual regression para TV skin. Requiere mockear isTVAtom=true.
+      Verificar que los botones tienen padding mayor y el contenedor tiene la clase correcta.
+
+  - id: GAP-NEPI-013
+    priority: COULD
+    ac_ref: NEPI-RISK-009
+    title: "Accesibilidad: focus visible, keyboard nav WCAG 2.4.7"
+    suggested_spec: "tests/a11y/next-episode-a11y.spec.ts"
+    notes: |
+      Usar axe-core para detectar violaciones de WCAG AA cuando la UI de next episode está
+      visible. Se esperan violations conocidas (outline:none, falta de aria-live).
+      Documentar como known violations, no como test failure.
+
+  - id: GAP-NEPI-014
+    priority: COULD
+    ac_ref: NEPI-RISK-002
+    title: "Autoplay del siguiente episodio en WebKit (simular restricción)"
+    suggested_spec: "tests/integration/next-episode-webkit-autoplay.spec.ts"
+    notes: |
+      Simular el bloqueo de autoplay en WebKit verificando que el player queda en estado
+      paused pero el contenido del siguiente episodio se cargó correctamente (sourcechange
+      ocurrió). Difícil de reproducir en CI headless — considerar test manual en dispositivo.

@@ -1,0 +1,146 @@
+version: "1.0"
+module: platform-config
+last_updated: "2026-06-08"
+
+acceptance_criteria:
+  - id: PLAT-AC-001
+    priority: MUST
+    scenario: "Content config de VOD se resuelve y monta el player"
+    given: "type='media', renderAs/player.type='video', id válido en plataforma"
+    when: "loadConfig() hace fetch a /video/{id}.json"
+    then:
+      - "La respuesta contiene src.hls (o src.mp4) con la URL del manifest"
+      - "El config retornado expone src (string URL), title, account y metadata.mediaId"
+      - "El player inicializa y emite el flujo normal de eventos de carga"
+
+  - id: PLAT-AC-002
+    priority: MUST
+    scenario: "Player config determina view type y UI"
+    given: "data-id presente; api.js hace GET /{type}/{id}/player/{playerId}"
+    when: "el player config se resuelve"
+    then:
+      - "view.type ('video'|'audio'|'radio'|'compact') determina el render del player"
+      - "renderAs del player config decide si content config pide /video o /audio"
+      - "style, autoplay, volume se aplican a la UI"
+
+  - id: PLAT-AC-003
+    priority: MUST
+    scenario: "Type inválido aborta antes del fetch"
+    given: "type distinto de media|episode|live|dvr"
+    when: "loadConfig() evalúa el switch de requestPath"
+    then:
+      - "Se lanza PlayerInitError('Invalid type...') sin hacer ningún fetch"
+      - "api.js recibe el error y emite evento 'error' fatal"
+
+  - id: PLAT-AC-004
+    priority: MUST
+    scenario: "Plataforma responde 403/404 → error fatal, sin crash"
+    given: "id que no existe o contenido con restricción de acceso (ACCESS_DENIED)"
+    when: "GET al content config devuelve 4xx con body { message, data, metadata }"
+    then:
+      - "loadConfig() rechaza con PlayerInitError(message, { data, status, metadata }, fatal=true)"
+      - "El status, data ('ACCESS_DENIED'/'REQUEST_ERROR') y metadata se preservan en el error"
+      - "api.js emite evento 'error' con { fatal: true } — el player no inicializa pero la página no crashea"
+
+  - id: PLAT-AC-005
+    priority: MUST
+    scenario: "JSON malformado o respuesta sin src lanza error manejado"
+    given: "la plataforma responde 200 con un body que no parsea o sin src.*"
+    when: "loadConfig() intenta destructurar src y construir new URL(src)"
+    then:
+      - "El fallo se propaga como error y api.js emite evento 'error' fatal"
+      - "No queda el player en estado colgado (no spinner infinito sin error)"
+
+  - id: PLAT-AC-006
+    priority: MUST
+    scenario: "DRM en respuesta activa el path DRM y produce candidateUrls"
+    given: "isVideo y responseDrm.enabled (o cualquier sub-config con serverURL) y existe hls o mpd"
+    when: "loadConfig() detecta takeDrmPath"
+    then:
+      - "config.src se pone null (el plugin DRM elige formato vía getDRMSupport)"
+      - "config.drm._candidateUrls contiene hls y/o mpd decoradas con query string"
+      - "config.hlsVariant se fuerza a 'normal' (light no soporta DRM correctamente)"
+
+  - id: PLAT-AC-007
+    priority: MUST
+    scenario: "adsMap del backend se normaliza a ads.map"
+    given: "respuesta de plataforma contiene { adsMap: 'https://...vmap' }"
+    when: "loadConfig() normaliza ads"
+    then:
+      - "config.ads.map === 'https://...vmap'"
+      - "la clave adsMap no aparece en el config final"
+
+  - id: PLAT-AC-008
+    priority: SHOULD
+    scenario: "ad_insertion_google del backend produce ads.googleDAI"
+    given: "respuesta con ad_insertion_google.enabled y (asset_key | asset_key_dash | source_id)"
+    when: "loadConfig() procesa DAI (y no es DVR real con start+end)"
+    then:
+      - "config.ads.googleDAI contiene key/keyDash/sourceId/authToken/streamFormat/backup"
+      - "config.preloadEnabled === false y liveMaxLatencyDurationEnabled === false"
+      - "subtitles del media se eliminan (DAI provee sus propios subtítulos por los gaps de ads)"
+
+  - id: PLAT-AC-009
+    priority: SHOULD
+    scenario: "ad_insertion (MediaTailor) produce ads.mediaTailorDAI cuando no hay googleDAI"
+    given: "respuesta con ad_insertion.enabled, sin googleDAI activo"
+    when: "loadConfig() procesa MediaTailor"
+    then:
+      - "config.ads.mediaTailorDAI.enabled === true con host e interval (default 5)"
+      - "config.src se pone null salvo en DVR real (start+end con type='dvr')"
+
+  - id: PLAT-AC-010
+    priority: SHOULD
+    scenario: "format=dash exige mpd disponible"
+    given: "data-format='dash' (o 'mpd') y la respuesta no trae src.mpd"
+    when: "loadConfig() resuelve el formato solicitado"
+    then:
+      - "Se lanza PlayerInitError('DASH requested but mpd source not available', { data: 'FORMAT_NOT_AVAILABLE' })"
+      - "Análogamente format='hls' sin src.hls en video lanza FORMAT_NOT_AVAILABLE"
+
+  - id: PLAT-AC-011
+    priority: SHOULD
+    scenario: "URL del source se decora con cache-bust y dnt"
+    given: "cualquier content config resuelto sin DRM ni DAI"
+    when: "loadConfig() construye config.src"
+    then:
+      - "config.src incluye query param _ (timestamp de cache-busting)"
+      - "config.src incluye dnt=true"
+      - "si hay access_token / player / without_cookies, se propagan al query del src"
+
+  - id: PLAT-AC-012
+    priority: SHOULD
+    scenario: "El fetch del content config se hace con withCredentials"
+    given: "loadConfig() ejecuta GET(requestPath, { withCredentials: true })"
+    when: "el navegador envía la request a embedHost"
+    then:
+      - "La request incluye cookies (credentials) — requiere CORS con origin específico, no wildcard"
+      - "El servidor debe responder Access-Control-Allow-Credentials: true y origin reflejado"
+
+  - id: PLAT-AC-013
+    priority: SHOULD
+    scenario: "DVR de audio reescribe el manifest HLS al rango DVR"
+    given: "type='dvr', renderAs !== 'video', start definido"
+    when: "loadConfig() recibe la respuesta"
+    then:
+      - "src.hls 'live.m3u8' se reescribe a 'playlist_dvr_range-{start}-{duration}.m3u8'"
+      - "se agrega query dvr=true (y start/end si presentes) al request del config"
+
+  - id: PLAT-AC-014
+    priority: COULD
+    scenario: "Resume position se aplica desde localStorage cuando corresponde"
+    given: "resumePosition activo, customer resuelto, type media|episode, sin startPos explícito"
+    when: "loadConfig() calcula startPos"
+    then:
+      - "config.startPos toma el valor guardado en localStorage (resumePlaying) si es mayor que progress.t del backend"
+      - "Si startPos numérico se pasa explícito, tiene precedencia sobre el resume"
+
+  - id: PLAT-AC-015
+    priority: COULD
+    scenario: "nextEpisode override desde atributos del embed"
+    given: "data-next-episode-id o data-next-episode-time presentes"
+    when: "loadConfig() construye finalMetadata"
+    then:
+      - "metadata.next y metadata.nextEpisodeOverride se setean (si hay id)"
+      - "metadata.nextEpisodeTime se setea (si hay time)"
+      - "config.forceEpisode === true"

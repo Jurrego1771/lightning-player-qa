@@ -1,0 +1,187 @@
+version: "1.0"
+module: chromecast
+last_updated: "2026-06-08"
+
+learnings:
+
+  # ── Hallazgos del código fuente ───────────────────────────────────────────
+
+  - id: CAST-LEARN-001
+    title: "getEstimatedTime() es más preciso que currentTime después de session resume"
+    discovery: "código fuente: CastManager.js línea 88 + chromecast.js atoms línea 87"
+    detail: >
+      RemotePlayer.currentTime puede devolver el tiempo cacheado antes del bfcache.
+      getEstimatedTime() usa MediaSession.getEstimatedTime() que calcula el tiempo
+      estimado basado en el tiempo transcurrido desde el último status conocido.
+      El código en syncRemoteState() prefiere getEstimatedTime() con fallback a currentTime.
+      Esta diferencia es crítica al escribir assertions de tiempo en tests de Cast.
+    impact_on_tests: >
+      En tests que verifican sincronización de tiempo, no se puede confiar en
+      remotePlayer.currentTime directamente. Usar getEstimatedTime() o
+      forceTimeSync() para obtener el valor real.
+
+  - id: CAST-LEARN-002
+    title: "ignoreTimeUpdatesUntil previene race condition en session resume"
+    discovery: "código fuente: chromecast.js atoms línea 127-145"
+    detail: >
+      Al detectar SESSION_RESUMED (isResumed=true), el código activa un flag
+      ignoreTimeUpdatesUntil = Date.now() + 5000. Durante esos 5 segundos,
+      todos los eventos timeUpdate del SDK son descartados. Esto previene que
+      el player muestre tiempos stale del bfcache mientras forceTimeSync()
+      obtiene el tiempo real via GetStatusRequest al dispositivo Cast.
+      Si el test verifica el tiempo durante los primeros 5s después de SESSION_RESUMED,
+      obtendrá el valor pre-bfcache o 0, no el tiempo real.
+    impact_on_tests: >
+      Tests de session resume deben esperar más de 5s antes de verificar currentTime.
+      O deben monitorear el evento timeUpdate posterior al forceTimeSync().
+
+  - id: CAST-LEARN-003
+    title: "CAST_EVENT_DELAY_MS=500ms es un workaround para timing del SDK"
+    discovery: "código fuente: constants.js línea 70, CastManager.js línea 374"
+    detail: >
+      El Cast SDK necesita tiempo para procesar los tracks en el receiver después
+      de loadMedia(). El player introduce un delay artificial de 500ms antes de
+      emitir tracksLoaded. Esto no es un valor basado en spec — es un workaround
+      empírico. El timeout se limpia correctamente si manager es destroyed antes
+      de que dispare.
+    impact_on_tests: >
+      Tests que verifiquen castTracksLoaded deben esperar al menos 500ms después
+      de castMediaLoaded. No usar polling muy agresivo en esa ventana.
+
+  - id: CAST-LEARN-004
+    title: "El subtítulo activo se detecta por track.mode==='showing'"
+    discovery: "código fuente: chromecast.js línea 376-389 (getActiveSubtitleFromApi)"
+    detail: >
+      Para transferir el subtítulo activo al Cast device, el código itera
+      api.textTracks y busca el primer track con mode==='showing' y
+      kind en ['subtitles', 'captions']. Tracks con mode==='hidden' o
+      mode==='disabled' son ignorados. Si hay múltiples tracks con mode==='showing'
+      (edge case raro), solo se transfiere el primero.
+    impact_on_tests: >
+      Para simular subtítulo activo en tests, poner track.mode='showing'.
+      Si el mock stream no incluye tracks con esa propiedad, activeTrackId
+      será null y no se activa ningún subtítulo en Cast.
+
+  - id: CAST-LEARN-005
+    title: "La comparación de URLs al desconectar elimina query params"
+    discovery: "código fuente: chromecast.js línea 184-198 (onDisconnected handler)"
+    detail: >
+      Para determinar si el contenido local es el mismo que el remoto,
+      se comparan los base URLs (origin + pathname) descartando query params.
+      Esto es correcto para CDNs con tokens de firma (los tokens cambian pero
+      el contenido es el mismo). Sin embargo, si el integrador usa query params
+      para distinguir versiones del mismo path, la comparación puede fallar.
+    impact_on_tests: >
+      Tests de resume después de disconnect deben verificar con URLs que tengan
+      query params distintos pero mismo path, para validar la lógica de comparación.
+
+  - id: CAST-LEARN-006
+    title: "castEnabledAtom: valores falsy que deshabilitan Cast"
+    discovery: "código fuente: chromecast.js atoms línea 44-47"
+    detail: >
+      castEnabledAtom retorna false para los siguientes valores de
+      contextValueFamily('view.chromecast'): false, 'false', 0, '0'.
+      Cualquier otro valor (incluyendo undefined, null, true, 'true', 1)
+      resulta en Cast habilitado. Esto significa que si la config no incluye
+      la clave view.chromecast, Cast queda habilitado por defecto (si el
+      browser lo soporta).
+    impact_on_tests: >
+      Para testear Cast deshabilitado: pasar view.chromecast=false explícitamente.
+      No confiar en omitir la clave.
+
+  # ── Hallazgos de la industria / investigación web ─────────────────────────
+
+  - id: CAST-LEARN-007
+    title: "CAF v3 es el único framework soportado — SDK v2 está deprecated"
+    discovery: "investigación web: developers.google.com/cast/docs/migrate_v2"
+    detail: >
+      Google deprecó el SDK v2 y solo da soporte a CAF v3. El player usa CAF v3
+      correctamente: CastContext (singleton), RemotePlayer, RemotePlayerController,
+      SessionManager. No hay uso de APIs v2 detectado.
+      La URL del SDK (cast_sender.js?loadCastFramework=1) es la correcta para CAF v3.
+    impact_on_tests: >
+      No hay impacto inmediato. Documenta que el player está en el camino correcto
+      para mantenimiento a largo plazo.
+
+  - id: CAST-LEARN-008
+    title: "MPL deprecated para HLS — Google recomienda Shaka Player en el receiver"
+    discovery: "investigación web: developers.google.com/cast/docs/release-notes (Sept 2024)"
+    detail: >
+      En septiembre 2024, Google anunció que MPL (el player interno del receiver)
+      ya no adoptará actualizaciones de features para HLS. Google recomienda migrar
+      a Shaka Player para reproducción HLS en el receiver. Esto afecta solo al
+      Custom Receiver del integrador, no al sender (que es lo que implementa el player).
+      El Default Media Receiver (CC1AD845) usa el player de Google directamente.
+    impact_on_tests: >
+      Si el integrador usa un Custom Receiver con MPL para HLS, puede encontrar
+      bugs que no serán corregidos. Documentar como riesgo para Custom Receivers
+      con HLS. Para el Default Receiver (CC1AD845) no hay impacto inmediato.
+
+  - id: CAST-LEARN-009
+    title: "Guest Mode fue eliminado del iOS SDK en abril 2024"
+    discovery: "investigación web: Google Cast SDK Release Notes (iOS Sender 4.8.1, April 2024)"
+    detail: >
+      Google eliminó Guest Mode del iOS SDK. Guest Mode permitía conectar a Cast
+      sin estar en la misma red WiFi. Esto solo afecta iOS senders.
+      El Lightning Player no soporta iOS (isBrowserSupported() bloquea iOS),
+      por lo que no hay impacto directo. Pero indica una tendencia de Google
+      de reducir features del SDK.
+    impact_on_tests: >
+      Sin impacto directo. Contexto relevante si se considera soporte futuro
+      de Cast en iOS via App nativa.
+
+  - id: CAST-LEARN-010
+    title: "Solo un text track activo soportado simultáneamente en el receiver"
+    discovery: "investigación web: developers.google.com/cast/docs/web_receiver/tracks"
+    detail: >
+      La documentación oficial indica que aunque setActiveByIds() acepta un array,
+      actualmente solo se soporta un text track activo al mismo tiempo en el receiver.
+      El player implementa esto correctamente: enableTextTrack(id) pasa [id] (array
+      con un solo elemento), y disableTextTracks() pasa [] (desactiva todos).
+      toggleTextTrack() alterna entre [trackId] y [].
+    impact_on_tests: >
+      No intentar activar múltiples text tracks simultáneamente — el comportamiento
+      no está definido. Tests deben verificar que setActiveTrackIds recibe arrays
+      de 0 o 1 elemento.
+
+  - id: CAST-LEARN-011
+    title: "Netflix abandonó Cast en dispositivos Google TV/Chromecast con remote (2025)"
+    discovery: "investigación web: androidauthority.com/netflix-casting-chromecast-google-tv-streamer-3620784/"
+    detail: >
+      En 2025, Netflix eliminó soporte de casting desde el teléfono a dispositivos
+      Chromecast with Google TV y Google TV Streamer (que tienen remote). Esto no
+      afecta el Lightning Player directamente, pero indica que la industria está
+      moviendo el modelo de Cast (push desde teléfono) hacia apps nativas.
+      El Chromecast clásico (dongle sin remote) sigue siendo soportado por Netflix.
+    impact_on_tests: >
+      Sin impacto directo. Contexto de industria relevante para roadmap.
+      Documentar como tendencia de la industria: Cast puede estar perdiendo relevancia
+      en favor de apps nativas en smart TVs.
+
+  - id: CAST-LEARN-012
+    title: "autoJoinPolicy ORIGIN_SCOPED es el default y el más seguro"
+    discovery: "investigación web + código fuente: CastManager.js línea 36"
+    detail: >
+      ORIGIN_SCOPED reconnecta automáticamente sesiones del mismo origen sin picker.
+      PAGE_SCOPED reconnecta solo si es la misma página (más restrictivo).
+      ORIGIN_AND_TAB_SCOPED (si existe) requiere misma pestaña.
+      ORIGIN_SCOPED es el balance correcto para un player embedded: el usuario que
+      ya estaba casting en el mismo dominio se reconecta automáticamente sin fricciones.
+    impact_on_tests: >
+      Tests de session resume deben considerar ORIGIN_SCOPED: una sesión Cast de
+      una carga anterior puede reconectarse automáticamente en el test siguiente
+      si no se llama endSession() explícitamente.
+
+  - id: CAST-LEARN-013
+    title: "Subtítulos requieren HTTPS absolutas — URLs relativas fallan en el receiver"
+    discovery: "investigación web: developers.google.com/cast/docs/media (CORS requirement)"
+    detail: >
+      El receiver de Cast no puede acceder a URLs de subtítulos relativas ni a
+      HTTP (no-HTTPS) sin HSTS. La función normalizeSubtitleUrl() del player
+      normaliza a HTTPS correctamente. Además, los subtítulos requieren CORS
+      configurado correctamente en el servidor. Si el CDN de subtítulos no tiene
+      CORS habilitado, el receiver falla silenciosamente (sin error de loadMedia).
+    impact_on_tests: >
+      Tests de subtítulos en Cast deben usar URLs HTTPS absolutas.
+      Si el mock stream incluye URLs de subtítulos, deben ser HTTPS.
+      El mock VAST server debe servir con Access-Control-Allow-Origin: *.

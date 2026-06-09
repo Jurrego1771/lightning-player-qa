@@ -1,0 +1,142 @@
+version: "1.0"
+module: state
+last_updated: "2026-06-08"
+
+risks:
+  - id: STATE-RISK-001
+    severity: high
+    title: "Atom stale tras eventos de alta frecuencia (timeupdate race condition)"
+    description: >
+      currentTimeAtom se actualiza en cada timeupdate event (~250ms). Si un test lee
+      player.currentTime inmediatamente después de una acción (play, seek, load), puede
+      obtener el valor del ciclo de render anterior. El atomEffect aplica cleanup al
+      desmontar, pero durante el render cycle de React puede haber una ventana donde el
+      átomo tiene el valor anterior.
+    affected_files:
+      - "src/view/video/atoms/currentTime.js"
+      - "src/view/video/atoms/duration.js"
+    trigger: "Assert directo (sin poll) en tests; alta frecuencia de eventos timeupdate"
+    mitigation: "Usar expect.poll() con timeout ≥ 2000ms en todos los asserts de estado. Documentado como anti-patrón en behavior.json."
+    industry_note: "Jotai mantiene discusiones abiertas (#1761, #2461) sobre race conditions en async atoms. El pattern de atomEffect con cleanup es la mitigación recomendada."
+    test_priority: MUST
+
+  - id: STATE-RISK-002
+    severity: high
+    title: "playerStatus con debounce de 100ms — ventana de estado incorrecto"
+    description: >
+      playerStatusAtom y statusAtom aplican un setTimeout de 100ms antes de actualizar
+      el átomo interno. Esto es necesario para evitar flickers de ads (play+pause en ~50ms),
+      pero crea una ventana donde player.status devuelve el valor anterior por hasta 100ms.
+      En tests que verifican transiciones de estado justo después de una acción, el assert
+      puede capturar el valor pre-debounce.
+    affected_files:
+      - "src/view/video/atoms/playerStatus.js"
+      - "src/view/video/atoms/status.js"
+    trigger: "Assert de player.status dentro de los 100ms posteriores a una transición de estado"
+    mitigation: "expect.poll() con timeout ≥ 500ms para asserts de playerStatus. Nunca hacer assert directo de status."
+    industry_note: "El debounce de estado en players de video es una práctica común para absorber las micro-transiciones de ad systems (especialmente Google IMA)."
+    test_priority: MUST
+
+  - id: STATE-RISK-003
+    severity: high
+    title: "Estado no reseteado limpiamente tras destroy() — memory leak y estado fantasma"
+    description: >
+      destroy() llama a _destroy() en ContextProvider, que setea todas las claves del
+      estado a undefined (excepto funciones). Sin embargo, los átomos Jotai en videoStore
+      solo se resetean cuando el componente VideoProvider se desmonta. Si un test reutiliza
+      la misma página sin recargar, los átomos pueden retener valores de la sesión anterior.
+      En particular, currentTimeAtom y durationAtom tienen cleanup en el atomEffect, pero
+      volumeAtom y levelAtom solo hacen null en el cleanup — si el cleanup no se ejecuta
+      (race condition con unmount), el valor anterior persiste.
+    affected_files:
+      - "src/api/player.jsx"
+      - "src/view/video/atoms/volume.js"
+      - "src/view/video/atoms/level.js"
+    trigger: "destroy() seguido inmediatamente de un nuevo loadMSPlayer() sin navegar a página nueva"
+    mitigation: "En tests de múltiples instancias, navegar a about:blank entre tests o recargar la página. Verificar que player.volume, player.currentTime sean null/0 después de destroy."
+    industry_note: "La gestión de estado post-destroy es un problema conocido en players basados en React: el store de Jotai vive en el Provider y no tiene un mecanismo de reset total explícito."
+    test_priority: MUST
+
+  - id: STATE-RISK-004
+    severity: high
+    title: "Desincronización de currentTime en modo DVR — tiempo absoluto vs offset"
+    description: >
+      En streams DVR, currentTimeAtom transforma el tiempo absoluto del stream HLS
+      (puede ser > 172800 segundos = 2 días) a un offset relativo desde dvrWindowStartAtom.
+      Existe una ventana de race condition: si timeupdate llega antes de que dvrWindowStartAtom
+      esté inicializado (cuando raw > 86400*2), el átomo no actualiza currentTimeBase para
+      evitar que la UI muestre un valor erróneo. El comentario en el código lo llama
+      "racing timeupdate". Si dvrWindowStart tarda en popularse, currentTime puede ser null.
+    affected_files:
+      - "src/view/video/atoms/currentTime.js"
+    trigger: "Streams DVR donde el manifest se carga y timeupdate llega antes del primer seek DVR"
+    mitigation: "Await de un valor de currentTime > 0 en tests DVR antes de verificar su valor. No asumir que currentTime está disponible inmediatamente en DVR."
+    industry_note: "La dualidad tiempo-absoluto/offset-relativo en DVR es un reto conocido en players HLS. La BBC iPlayer y otros implementan transformaciones similares."
+    test_priority: MUST
+
+  - id: STATE-RISK-005
+    severity: medium
+    title: "Estado de ads contamina player.paused y player.currentTime"
+    description: >
+      Controls.get() tiene lógica de override: si hay adsManager activo, devuelve
+      get(prop) del adsManager en lugar del playerHandler. Esto significa que durante
+      un pre-roll, player.paused y player.currentTime reflejan el estado del ad video,
+      no del contenido principal. Si un test verifica player.paused después de que los
+      ads empiezan pero antes de que adsContentResumeRequested sea emitido, obtendrá
+      el estado del ad.
+    affected_files:
+      - "src/controls/index.js"
+      - "src/view/video/atoms/currentTime.js"
+    trigger: "Test que verifica player.paused o player.currentTime durante un ad break"
+    mitigation: "En tests con ads, esperar adsContentResumeRequested antes de verificar estado de playback del contenido. O verificar player.isPlayingAd primero."
+    industry_note: "El patrón de override de estado para ads es necesario para que analytics (Youbora, Conviva) puedan reportar el tiempo del ad correctamente."
+    test_priority: SHOULD
+
+  - id: STATE-RISK-006
+    severity: medium
+    title: "Múltiples instancias del player contaminan state vía Object.defineProperty"
+    description: >
+      LightningPlayer.prototype se modifica via Object.defineProperty en controls/methods.js.
+      Esto es un singleton de prototipo: si hay dos instancias del player en la misma página,
+      la segunda instancia sobreescribe los getters/setters de la primera. player.currentTime,
+      player.volume, etc. de la primera instancia apuntarán al estado de la segunda.
+    affected_files:
+      - "src/controls/methods.js"
+      - "src/controls/index.js"
+    trigger: "Dos o más instancias de LightningPlayer activas simultáneamente en la misma página"
+    mitigation: "Evitar múltiples instancias en la misma página. Si es necesario, aislar en iframes separados. Documentado como bug conocido en player_system.md."
+    industry_note: "El uso de prototipos globales para exponer la API es un patrón legacy. El WeakMap en LightningPlayer protege _data pero no los getters expuestos."
+    test_priority: SHOULD
+
+  - id: STATE-RISK-007
+    severity: medium
+    title: "durationAtom puede quedar en NaN durante transición ads → contenido"
+    description: >
+      durationAtom silencia los eventos _durationchange mientras isAdsPlayingAtom === true.
+      Esto corrige un race condition donde el manifest HLS de contenido carga durante el ad
+      y emite durationchange con NaN (stream en vivo) o un valor temporal. Sin embargo,
+      si el evento _durationchange ocurre exactamente cuando isAdsPlayingAtom pasa de true
+      a false, puede perderse la actualización. El comentario en el código confirma este
+      edge case: "leaves duration stuck at NaN after ads end".
+    affected_files:
+      - "src/view/video/atoms/duration.js"
+    trigger: "Ad muy corto (< 200ms) seguido de content VOD, o timing edge entre adsAllAdsCompleted y durationchange"
+    mitigation: "En tests post-ads, usar expect.poll() con timeout extendido (≥ 3000ms) para player.duration. El fix en el código re-ejecuta el effect cuando isAdsPlayingAtom cambia."
+    industry_note: "El race condition entre duración del ad y duración del contenido es un problema conocido en players que usan IMA SDK con HLS."
+    test_priority: SHOULD
+
+  - id: STATE-RISK-008
+    severity: low
+    title: "atomFamily con object keys puede retornar valores stale en contextValueFamily"
+    description: >
+      contextValueFamily usa atomFamily de Jotai para crear átomos derivados del contexto
+      por key. Un bug documentado en Jotai (Discussion #3315) indica que atomFamily con
+      object keys puede retornar valores stale en átomos derivados cuando areEqual no
+      está especificado. Si el contexto React cambia shape, los átomos derivados pueden
+      retener el valor anterior.
+    affected_files:
+      - "src/view/common/atoms/context.js"
+    trigger: "Cambio de tipo de contenido (media → live) o carga de nuevo contenido sin reload"
+    mitigation: "El ContextProvider usa getDerivedStateFromProps para gestionar la consistencia. El impacto real es bajo porque contextValueFamily usa string keys, no object keys."
+    industry_note: "Jotai Discussion #3315 (2025) — issue con atomFamily de object keys. Con string keys el riesgo es mínimo."
+    test_priority: COULD

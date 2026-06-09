@@ -1,0 +1,84 @@
+version: "1.0"
+module: api-bootstrap
+last_updated: "2026-06-08"
+
+defects:
+  - id: BOOT-DEF-001
+    status: known_limitation
+    severity: medium
+    title: "data-loaded callback solo acepta nombre de función global — no expresiones complejas"
+    description: "El atributo data-loaded usa eval() para resolver el nombre, pero está diseñado para recibir un nombre de función global (ej: 'myCallback'). Si se pasa una expresión como 'window.player.init.bind(window.player)', el eval puede funcionar pero genera comportamiento impredecible. El código solo verifica typeof onLoad !== 'function' después del eval."
+    workaround: "Usar siempre un nombre de función global simple. Para casos complejos, usar el playerloaded CustomEvent."
+    source_comment: "src/api/api.js:257 — TODO: Solo permitir load sin callback si tengo un source definido al cargar"
+    industry_known: false
+    regression_risk: low
+
+  - id: BOOT-DEF-002
+    status: known_limitation
+    severity: medium
+    title: "document.currentScript no funciona con scripts async o deferred"
+    description: "La función getScript() usa document.currentScript como método primario para localizar el script tag. Sin embargo, document.currentScript devuelve null cuando el script tiene async o defer attribute. El fallback (scripts[scripts.length - 1]) puede retornar el script incorrecto si hay múltiples scripts cargados. El workaround es usar data-container explicit."
+    workaround: "Siempre usar data-container attribute cuando el script tiene async/defer. O usar loadMSPlayer() programático."
+    source_comment: "src/api/api.js:49 — WARNING: Will NOT work on async scripts"
+    industry_known: true
+    regression_risk: medium
+
+  - id: BOOT-DEF-003
+    status: known_limitation
+    severity: low
+    title: "loadMSPlayer() no tiene tipo TypeScript — no hay autocompletion de config options"
+    description: "window.loadMSPlayer está expuesta como API global pero no tiene declaración de tipos TypeScript. Integradores que usan TypeScript no tienen autocompletion ni type checking de las opciones de configuración. Esto aumenta la probabilidad de typos en config keys (ver BOOT-RISK-008)."
+    workaround: "Ninguno oficial. Se puede declarar el tipo manualmente en el proyecto del integrador."
+    source_comment: "src/api/api.js:284 — no hay @typedef ni declaración de tipos"
+    industry_known: false
+    regression_risk: low
+
+  - id: BOOT-DEF-004
+    status: known_limitation
+    severity: low
+    title: "getScript() con div[data-msp] tiene precedencia sobre document.currentScript"
+    description: "getScript() busca primero un div con selector 'div[data-msp][data-type][data-id]'. Si hay un div con esos atributos en el DOM antes de que se ejecute api.js (ej: si otro script los agregó), ese div será usado como 'script' de bootstrap aunque no sea el elemento correcto. El comportamiento en este edge case es impredecible."
+    workaround: "No agregar div[data-msp][data-type][data-id] al DOM manualmente si no es para bootstrap del player."
+    source_comment: "src/api/api.js:47 — selector precedence en getScript()"
+    industry_known: false
+    regression_risk: low
+
+  - id: BOOT-DEF-005
+    status: known_limitation
+    severity: medium
+    title: "destroy() concurrente puede resultar en 'Failed to destroy player' sin contexto"
+    description: "Si destroy() es llamado concurrentemente (dos llamadas en el mismo tick), el guard _destroying lanza un Error que es re-thrown con el mensaje genérico 'Failed to destroy player'. El error original se loguea a console pero la Promise rejected solo contiene el mensaje genérico, perdiendo el stack trace original."
+    workaround: "Serializar llamadas a destroy() y esperar la Promise antes de llamar nuevamente."
+    source_comment: "src/api/player.jsx:443 — throw new Error('Failed to destroy player')"
+    industry_known: false
+    regression_risk: medium
+
+  - id: BOOT-DEF-006
+    status: known_limitation
+    severity: low
+    title: "Castigos incompletos en legacyApiCompat: Cast events comentados"
+    description: "En legacyApiCompat.js, los eventos de Chromecast (castConnected, castDisconnected, castRemoteDevicePaused, castRemoteDevicePlaying) están comentados. Integradores legacy que usen iframes y esperan estos eventos via postMessage no los recibirán."
+    workaround: "Usar el mecanismo moderno de eventos directos del player (castConnected, castDisconnected) en vez del relay postMessage."
+    source_comment: "src/api/legacyApiCompat.js:165-173 — comentario con los cast events no implementados"
+    industry_known: false
+    regression_risk: low
+
+  - id: BOOT-DEF-007
+    status: known_limitation
+    severity: medium
+    title: "load() en la instancia no puede ejecutarse durante reproducción de ads"
+    description: "player.load() tiene un guard explícito: if ((this.ad || {}).info) throw new Error('Source can\\'t be changed while ads are playing'). Esto impide cambiar de contenido durante un ad break. Si el integrador intenta hacer esto (ej: usuario navega mientras hay un preroll), la Promise es rechazada."
+    workaround: "Esperar a que los ads terminen antes de llamar load(). Escuchar el evento adsAllAdsCompleted."
+    source_comment: "src/api/player.jsx:325 — 'Source can't be changed while ads are playing'"
+    industry_known: true
+    regression_risk: high
+
+  - id: BOOT-DEF-008
+    status: known_limitation
+    severity: low
+    title: "type=radio, podcast, audio no son reconocidos por loadConfig — solo media/episode/live/dvr"
+    description: "loadConfig.js tiene un switch para type que solo maneja 'media', 'live', 'dvr', 'episode'. Cualquier otro type (incluyendo 'radio', 'podcast', 'audio') lanza PlayerInitError. Sin embargo, player_system.md documenta estos tipos como soportados. La resolución es que estos tipos deben ser configurados via el view option, no el type option."
+    workaround: "Para radio: usar type='live' con view='radio'. Para podcast: usar type='media' con view='podcast'. El type en loadConfig es el tipo de endpoint de plataforma, no el tipo de vista."
+    source_comment: "src/platform/loadConfig.js:163 — default throw PlayerInitError"
+    industry_known: false
+    regression_risk: medium

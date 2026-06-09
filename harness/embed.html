@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Lightning Player — Embed Target</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; }
+    #player-container { width: 100%; aspect-ratio: 16/9; }
+  </style>
+</head>
+<body>
+  <div id="player-container"></div>
+  <script>
+    // Tracks state — readable by Playwright via DevTools (frame.evaluate)
+    window.__qa = {
+      ready: false,
+      initialized: false,
+      events: [],
+      eventData: {},
+      errors: [],
+      initError: null,
+    }
+
+    function relayToParent(eventName, data) {
+      if (window.parent !== window) {
+        window.parent.postMessage(
+          { event: 'msp:' + eventName, data: data, source: 'lightning-player' },
+          '*'
+        )
+      }
+    }
+
+    function initPlayer(config) {
+      if (typeof loadMSPlayer === 'undefined') {
+        var err = '[embed] loadMSPlayer not available'
+        window.__qa.initError = err
+        relayToParent('error', { message: err })
+        return
+      }
+
+      var normalizedConfig = Object.assign({}, config)
+      if (normalizedConfig.adsMap && !normalizedConfig.ads) {
+        normalizedConfig.ads = { map: normalizedConfig.adsMap }
+        delete normalizedConfig.adsMap
+      }
+
+      loadMSPlayer('player-container', normalizedConfig)
+        .then(function(player) {
+          window.__player = player
+
+          var EVENTS = [
+            'loaded', 'ready', 'error', 'buffering',
+            'play', 'playing', 'pause', 'ended',
+            'seeking', 'seeked', 'canplay', 'loadedmetadata',
+            'levelchange', 'levelchanged', 'sourcechange',
+            'contentFirstPlay',
+            'adsStarted', 'adsComplete', 'adsError',
+          ]
+
+          EVENTS.forEach(function(name) {
+            player.on(name, function(data) {
+              if (name === 'timeupdate') {
+                if (!window.__qa.events.includes('timeupdate')) window.__qa.events.push('timeupdate')
+                return
+              }
+              window.__qa.events.push(name)
+              if (data !== undefined) window.__qa.eventData[name] = data
+              if (name === 'ready') window.__qa.ready = true
+              if (name === 'error') window.__qa.errors.push(data || {})
+
+              // Relay every event to parent (cross-origin embed channel)
+              relayToParent(name, data)
+            })
+          })
+
+          // Backfill if player already playing when Promise resolved
+          if (player.status === 'playing' || player.status === 'buffering' || !player.paused) {
+            if (!window.__qa.events.includes('playing')) window.__qa.events.push('playing')
+            if (!window.__qa.events.includes('play')) window.__qa.events.push('play')
+          }
+          if (!window.__qa.events.includes('loaded')) window.__qa.events.push('loaded')
+
+          window.__qa.ready = true
+          window.__qa.initialized = true
+          relayToParent('ready', { embedded: true })
+        })
+        .catch(function(err) {
+          var msg = err && err.message ? err.message : String(err)
+          window.__qa.initError = msg
+          window.__qa.errors.push({ message: msg })
+          relayToParent('error', { message: msg })
+        })
+    }
+
+    // Init path 1: URL params (used by embed-harness/host.html)
+    var params = new URLSearchParams(window.location.search)
+    var scriptUrl = params.get('scriptUrl')
+    var contentType = params.get('type')
+    var contentId = params.get('id')
+    var autoplay = params.get('autoplay') !== 'false'
+
+    if (scriptUrl && contentType && contentId) {
+      var script = document.createElement('script')
+      script.src = scriptUrl
+      script.onload = function() {
+        initPlayer({ type: contentType, id: contentId, autoplay: autoplay, muted: true, volume: 0 })
+      }
+      script.onerror = function() {
+        window.__qa.initError = 'Failed to load player script from: ' + scriptUrl
+        relayToParent('error', { message: window.__qa.initError })
+      }
+      document.head.appendChild(script)
+    }
+
+    // Init path 2: postMessage from parent (alternative — player script already loaded externally)
+    window.addEventListener('message', function(e) {
+      if (!e.data || e.data.cmd !== 'init') return
+
+      var cfg = e.data.config || {}
+      if (e.data.scriptUrl && typeof loadMSPlayer === 'undefined') {
+        var s = document.createElement('script')
+        s.src = e.data.scriptUrl
+        s.onload = function() { initPlayer(cfg) }
+        s.onerror = function() {
+          window.__qa.initError = 'Script load failed: ' + e.data.scriptUrl
+          relayToParent('error', { message: window.__qa.initError })
+        }
+        document.head.appendChild(s)
+      } else if (typeof loadMSPlayer !== 'undefined') {
+        initPlayer(cfg)
+      }
+    })
+  </script>
+</body>
+</html>

@@ -1,0 +1,178 @@
+version: "1.0"
+module: api-bootstrap
+last_updated: "2026-06-08"
+
+acceptance_criteria:
+  - id: BOOT-AC-001
+    priority: MUST
+    scenario: "Embed via script tag con data-id válido monta el player y dispara playerloaded"
+    given: "Script tag con data-type='media', data-id válido, data-player válido en el body"
+    when: "El browser carga el script"
+    then:
+      - "El player se monta en el DOM (elemento contenedor creado o encontrado)"
+      - "Se emite evento 'ready' en la instancia del player"
+      - "Se dispara CustomEvent 'playerloaded' en el script tag con { detail: PlayerInstance }"
+      - "La instancia tiene los métodos play, pause, destroy, on, off"
+
+  - id: BOOT-AC-002
+    priority: MUST
+    scenario: "loadMSPlayer() retorna Promise que resuelve con instancia de API"
+    given: "Script tag sin data-id (modo loadMSPlayer) cargado en el browser"
+    when: "Se llama window.loadMSPlayer('container-id', { type: 'media', id: 'ABC' })"
+    then:
+      - "La Promise resuelve con el objeto player"
+      - "El player tiene métodos on, play, pause, destroy"
+      - "window.loadMSPlayer está definida después de cargar el script sin data-id"
+
+  - id: BOOT-AC-003
+    priority: MUST
+    scenario: "data-id inválido (404) emite error sin retry loop infinito"
+    given: "Script tag con data-id que no existe en la plataforma (responde 404)"
+    when: "El script intenta cargar la config de contenido"
+    then:
+      - "Se emite evento 'error' con fatal:true en menos de 10 segundos"
+      - "No existe loop de retries indefinido (el error se emite una sola vez)"
+      - "El player queda en estado estable, sin crashear JS (sin uncaught exceptions)"
+
+  - id: BOOT-AC-004
+    priority: MUST
+    scenario: "data-loaded callback recibe la instancia del player"
+    given: "Script tag con data-loaded='myCallback' y window.myCallback definido"
+    when: "El player termina de inicializarse"
+    then:
+      - "window.myCallback es invocado con la instancia del player como argumento"
+      - "La instancia recibida tiene play, pause, destroy"
+      - "El playerloaded CustomEvent también se dispara en el script tag"
+
+  - id: BOOT-AC-005
+    priority: MUST
+    scenario: "destroy() limpia el DOM y libera recursos"
+    given: "Una instancia del player montada vía loadMSPlayer() o script tag"
+    when: "Se llama player.destroy()"
+    then:
+      - "El elemento DOM del player es desmontado (React root unmounted)"
+      - "El internalEmitter es reseteado"
+      - "cleanupChromecast() es invocado"
+      - "Llamadas sucesivas a destroy() no lanzan excepciones (idempotente)"
+
+  - id: BOOT-AC-006
+    priority: MUST
+    scenario: "Segunda llamada a loadMSPlayer() destruye la instancia anterior"
+    given: "Una instancia del player ya montada vía loadMSPlayer()"
+    when: "Se llama loadMSPlayer() con un nuevo container o nuevas opciones"
+    then:
+      - "La instancia anterior es destruida antes de crear la nueva"
+      - "La nueva instancia se monta correctamente"
+      - "No hay instancias huérfanas ni memory leaks del árbol React anterior"
+
+  - id: BOOT-AC-007
+    priority: MUST
+    scenario: "Script en HEAD sin data-container falla con error descriptivo"
+    given: "Script tag ubicado dentro de <head> sin atributo data-container"
+    when: "El browser carga el script"
+    then:
+      - "Se lanza un Error con mensaje 'Player script must be loaded inside body OR have a container option'"
+      - "No hay crash silencioso ni comportamiento indefinido"
+
+  - id: BOOT-AC-008
+    priority: MUST
+    scenario: "container inexistente en loadMSPlayer() falla con error descriptivo"
+    given: "No existe ningún elemento DOM con el id 'nonexistent-container'"
+    when: "Se llama window.loadMSPlayer('nonexistent-container', opts)"
+    then:
+      - "La Promise es rechazada con un error que menciona el id del container"
+      - "El mensaje de error incluye \"container element 'nonexistent-container' does not exist\""
+
+  - id: BOOT-AC-009
+    priority: MUST
+    scenario: "Tipo de contenido inválido lanza PlayerInitError"
+    given: "Se intenta inicializar con type='podcast' u otro tipo no soportado por loadConfig"
+    when: "loadConfig intenta construir la URL del request"
+    then:
+      - "Se lanza PlayerInitError con mensaje 'Invalid type. Must be one of media, episode, live or dvr'"
+      - "El error es fatal (fatal:true en el estado del player)"
+
+  - id: BOOT-AC-010
+    priority: SHOULD
+    scenario: "data-custom-* attributes preservados en config.custom"
+    given: "Script tag con data-custom-myvar='valor' y data-custom-campaign='test'"
+    when: "El player se inicializa"
+    then:
+      - "config.custom.myvar === 'valor'"
+      - "config.custom.campaign === 'test'"
+      - "Los valores custom están disponibles para plugins y analytics"
+
+  - id: BOOT-AC-011
+    priority: SHOULD
+    scenario: "data-* con valor $expr evalúa la expresión JS"
+    given: "Script tag con data-volume='$window.DEFAULT_VOLUME' y window.DEFAULT_VOLUME = 0.5"
+    when: "El player parsea los atributos"
+    then:
+      - "config.volume === 0.5 (valor evaluado, no el string '$window.DEFAULT_VOLUME')"
+      - "La evaluación ocurre en scope aislado (no expone variables minificadas)"
+
+  - id: BOOT-AC-012
+    priority: SHOULD
+    scenario: "data-global expone la instancia en window bajo el nombre indicado"
+    given: "Script tag con data-global='myPlayer'"
+    when: "El player termina de inicializarse"
+    then:
+      - "window.myPlayer es la instancia del player"
+      - "window.myPlayer.play es una función"
+
+  - id: BOOT-AC-013
+    priority: SHOULD
+    scenario: "type=episode es tratado internamente como media"
+    given: "Script tag con data-type='episode' y data-id válido"
+    when: "El player se inicializa y monta"
+    then:
+      - "El player reproduce el contenido correctamente"
+      - "El tipo interno visible en el React tree es 'media' (mappedType)"
+      - "originalType conserva el valor 'episode'"
+
+  - id: BOOT-AC-014
+    priority: SHOULD
+    scenario: "ads config de JS tiene precedencia sobre la config de plataforma"
+    given: "Script tag con data-ads-map='https://custom-vast.example.com'"
+    when: "El player fetcha la config de plataforma (que puede tener ads propios)"
+    then:
+      - "La config de ads de JS (data-ads-map) sobreescribe la config de ads de plataforma"
+      - "El player usa la URL de VAST custom, no la de plataforma"
+
+  - id: BOOT-AC-015
+    priority: SHOULD
+    scenario: "loadConfig() en instancia existente destruye y reinicializa el player"
+    given: "Una instancia del player reproduciendo contenido"
+    when: "Se llama player.loadConfig({ type: 'media', id: 'nuevo-id' })"
+    then:
+      - "El player es destruido antes de montar la nueva config"
+      - "Se monta con la nueva config correctamente"
+      - "No se puede llamar loadConfig() mientras otro loadConfig() está en curso (lanza error)"
+
+  - id: BOOT-AC-016
+    priority: COULD
+    scenario: "ads-map='null' (string) desactiva los ads"
+    given: "Script tag con data-ads-map='null' (string literal)"
+    when: "El player se inicializa"
+    then:
+      - "config.ads.map es null (no el string 'null')"
+      - "El player no intenta cargar ads"
+
+  - id: BOOT-AC-017
+    priority: COULD
+    scenario: "player=dynamic bypasea la carga de UI config del player"
+    given: "Script tag con data-player='dynamic'"
+    when: "El player ejecuta loadDependencies()"
+    then:
+      - "No se hace GET al endpoint de player config"
+      - "El player se monta con config vacía de UI (uso custom/headless)"
+
+  - id: BOOT-AC-018
+    priority: COULD
+    scenario: "Legacy compat activo solo en iframes bajo .mdstrm.com"
+    given: "Player embebido en un iframe cuyo hostname es subdomain.mdstrm.com"
+    when: "El player inicializa"
+    then:
+      - "legacyApiCompat es importado y activado"
+      - "Los eventos del player son relayados a window.parent via postMessage"
+      - "onPlayerReady es enviado cuando el player emite 'ready' o 'canplay'"

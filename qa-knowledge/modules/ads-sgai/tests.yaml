@@ -1,0 +1,179 @@
+version: "1.0"
+module: ads-sgai
+last_updated: "2026-06-08"
+
+# ESTADO GENERAL: COBERTURA PARCIAL — GAP CONOCIDO
+# El módulo SGAI es el gap de cobertura más grande del repo QA.
+# Los tests de ad break completo (SGAI-AC-001, AC-002, AC-003, AC-005) requieren
+# un mock del Google IMA DAI SDK que aún no existe en el proyecto.
+# Las suites existentes están mayormente en estado test.fixme o cubren
+# casos de degradación graceful (sin SDK real).
+
+existing_tests:
+
+  - spec_file: "tests/integration/ads-sgai.spec.ts"
+    description: >
+      Suite de inicialización del plugin SGAI. Verifica que el player inicializa
+      sin errores con config SGAI, llega a estado playing, y que el currentTime avanza.
+      También verifica no-regresión HLS sin SGAI y resiliencia ante fallo del SDK.
+      ESTADO: Todos los tests están marcados como test.fixme — pendientes hasta que
+      PR #595 sea mergeado a develop CDN (player version >= 1.0.58).
+    ac_coverage:
+      - "SGAI-AC-007"
+    status: fixme
+    notes: "Remover fixme cuando player CDN develop sea >= 1.0.58 post-merge PR #595"
+
+  - spec_file: "tests/integration/ads-sgai-lifecycle.spec.ts"
+    description: >
+      Suite de lifecycle. Cubre:
+      1. Sin networkCode/customAssetKey → SGAI no inicializa (3 variantes)
+      2. destroy() con SGAI configurado → cleanup sin errores (2 variantes)
+      3. Verificación de que el manifest mock sirve EXT-X-CUE-OUT correctamente
+      4. AC-SGAI-002 (buffering) y AC-SGAI-003 (DVR seek) — marcados como fixme
+         hasta que exista mock del Google IMA DAI SDK
+    ac_coverage:
+      - "SGAI-AC-006"
+      - "SGAI-AC-004"
+    status: partial
+    notes: >
+      describe.fixme block al final del spec cubre AC-SGAI-002 y AC-SGAI-003 con
+      TODOs pendientes. Mock del SDK necesario para completar cobertura.
+
+  - spec_file: "tests/integration/ads-sgai-mute-state-lifecycle.spec.ts"
+    description: >
+      Suite de mute state. Cubre el hotfix/vpmute: 6 suites que verifican:
+      1. Inicialización de mute state (unmuted y muted)
+      2. Sincronización de mute en volumechange
+      3. Resiliencia ante errores (try/catch en updateMuteState)
+      4. No-regresión sin SGAI
+      5. Race condition STREAM_INITIALIZED delay (CCGAP-2)
+      6. Listener isolation en player reinit sin unmount (CCGAP-1-SGAI)
+    ac_coverage:
+      - "SGAI-AC-009"
+      - "SGAI-AC-014"
+    status: active
+
+coverage_gaps:
+
+  - id: GAP-SGAI-001
+    priority: MUST
+    ac_ref: "SGAI-AC-001"
+    title: "Ad break SGAI completo — EXT-X-CUE-OUT dispara overlay, pod reproduce, contenido resume"
+    suggested_spec: "tests/integration/ads-sgai-full-cycle.spec.ts"
+    notes: >
+      Requiere: (1) Mock del Google IMA DAI SDK (StreamManager + PodStreamRequest + eventos).
+      El mock debe: exponer google.ima.dai.api.StreamManager, simular STREAM_INITIALIZED
+      con streamId fake, simular AD_BREAK_STARTED/AD_STARTED/AD_BREAK_ENDED en los momentos
+      correctos. (2) Fixture HLS con EXT-X-CUE-OUT en el mock-vast server (ya existe en
+      /sgai/live.m3u8). (3) Mock de la plataforma para /sgai-ad-break endpoint.
+      El mock del SDK puede implementarse via page.addInitScript() antes de que el player cargue.
+    industry_note: >
+      Este es el test más crítico del módulo. Sin él, SGAI puede romper silenciosamente
+      en producción. La industria considera el happy path del ad break como el smoke test
+      mínimo para cualquier sistema de inserción de anuncios.
+    blocker: "Mock del Google IMA DAI SDK no implementado"
+
+  - id: GAP-SGAI-002
+    priority: MUST
+    ac_ref: "SGAI-AC-002"
+    title: "buffering state durante cue point — NO loop infinito (BUG-SGAI-001 regression)"
+    suggested_spec: "tests/integration/ads-sgai-full-cycle.spec.ts"
+    notes: >
+      Depende de GAP-SGAI-001 (mock del SDK). Una vez el mock esté disponible,
+      simular buffering forzado (interceptar fragmentos HLS con delay > 2s) justo
+      cuando el fragmento trigger del cue point llega. Verificar que player.status
+      no queda en 'buffering' indefinidamente y que AD_BREAK_STARTED se emite como
+      máximo una vez. Alternativa sin SDK: verificar directamente que
+      SGAIService.#attemptPendingCuePlayback() no crea un timer loop (inspección
+      del estado de pendingCueTimers en el page context).
+    industry_note: >
+      Loop infinito durante buffering es el defecto más reportado en implementaciones
+      SGAI en producción (según GitHub issues de ExoPlayer y media3).
+    blocker: "Mock del Google IMA DAI SDK no implementado"
+
+  - id: GAP-SGAI-003
+    priority: MUST
+    ac_ref: "SGAI-AC-003"
+    title: "DVR seek antes del fragmento trigger — ad break skipped correctamente"
+    suggested_spec: "tests/integration/ads-sgai-dvr.spec.ts"
+    notes: >
+      Requiere: (1) Stream DVR-capable en el mock server, (2) Mock del SDK con
+      STREAM_INITIALIZED simulado. La verificación del skip es observable sin SDK:
+      si currentFragmentName !== segmentName del pending cue, el cue debe ser
+      eliminado de pendingCues. Esto es verificable via page.evaluate() sobre
+      el estado interno de SGAIService (requiere exposición del servicio en window).
+    blocker: "Stream DVR fixture + comportamiento verificable sin SDK real"
+
+  - id: GAP-SGAI-004
+    priority: MUST
+    ac_ref: "SGAI-AC-005"
+    title: "Audio del contenido restaurado exactamente después del ad break"
+    suggested_spec: "tests/integration/ads-sgai-full-cycle.spec.ts"
+    notes: >
+      Depende de GAP-SGAI-001. Una vez el mock del SDK esté disponible y el ad break
+      complete, verificar que: player.volume === volumeAnteBreak, player.muted === false
+      si estaba unmuted antes. Cubrir los 4 formatos: fullscreen (content muted durante
+      ad), pip (content continúa audible), sidebyside (content reducido), lbanner.
+    blocker: "Mock del Google IMA DAI SDK no implementado"
+
+  - id: GAP-SGAI-005
+    priority: MUST
+    ac_ref: "SGAI-AC-008"
+    title: "Compatibilidad probe — device no compatible: SGAI deshabilitado, content reproduce"
+    suggested_spec: "tests/integration/ads-sgai-compatibility.spec.ts"
+    notes: >
+      Mockear MediaCapabilities, requestVideoFrameCallback, y navigator.hardwareConcurrency
+      via page.addInitScript() para simular un device no compatible. Verificar que:
+      (1) compatibilityMode === 'unsupported', (2) no hay preload del ad pod,
+      (3) el stream de contenido reproduce normalmente. Este test NO requiere mock del SDK.
+    blocker: "Ninguno — implementable con addInitScript()"
+
+  - id: GAP-SGAI-006
+    priority: SHOULD
+    ac_ref: "SGAI-AC-010"
+    title: "googleDaiToken con pd= y scte35= sobreescribe parámetros del cue en URL del pod"
+    suggested_spec: "tests/unit/sgai-service.spec.ts"
+    notes: >
+      Verificable mediante unit test de SGAIService.#buildAdPodUrl() con diferentes
+      valores de googleDaiToken. No requiere Playwright. Alternativa: interceptar la
+      URL del ad pod via page.route() y verificar los query params.
+
+  - id: GAP-SGAI-007
+    priority: SHOULD
+    ac_ref: "SGAI-AC-011"
+    title: "lbanner multi-creativo: AD_BREAK_ENDED emitido una sola vez tras todos los creativos"
+    suggested_spec: "tests/integration/ads-sgai-full-cycle.spec.ts"
+    notes: >
+      Depende de GAP-SGAI-001. El mock del SDK debe simular: AD_PERIOD_STARTED con
+      totalAds=3, tres ciclos STARTED/COMPLETE, tres AD_BREAK_ENDED del SDK.
+      Verificar que el AD_BREAK_ENDED interno de SGAIService se emite exactamente una vez.
+
+  - id: GAP-SGAI-008
+    priority: SHOULD
+    ac_ref: "SGAI-AC-012"
+    title: "adBreakIdEndpoint custom: request enviado al endpoint correcto"
+    suggested_spec: "tests/integration/ads-sgai-config.spec.ts"
+    notes: >
+      Usar page.route() para interceptar requests a la URL del adBreakIdEndpoint custom.
+      Verificar que la request contiene currentTime y cust_params como query params.
+      No requiere mock del SDK completo — solo verificar que la request HTTP es correcta.
+
+  - id: GAP-SGAI-009
+    priority: SHOULD
+    ac_ref: "SGAI-AC-013"
+    title: "Deduplicación: mismo cue en múltiples refrescos del manifest — un solo ad break"
+    suggested_spec: "tests/integration/ads-sgai-full-cycle.spec.ts"
+    notes: >
+      Depende de GAP-SGAI-001. Fixture HLS que sirve el mismo cue point en 3 refrescos
+      del manifest. Verificar que AD_BREAK_STARTED se emite exactamente una vez.
+
+  - id: GAP-SGAI-010
+    priority: COULD
+    ac_ref: "SGAI-AC-007"
+    title: "SDK CDN falla con test.fixme removido (post PR #595 merge)"
+    suggested_spec: "tests/integration/ads-sgai.spec.ts"
+    notes: >
+      Los tests de ads-sgai.spec.ts tienen test.fixme. Cuando PR #595 sea mergeado
+      a develop CDN (player version >= 1.0.58), remover los fixme y verificar que
+      los tests pasan. No requiere nuevo código — solo remoción de test.fixme.
+    blocker: "PR #595 merge a develop CDN"

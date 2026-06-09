@@ -1,0 +1,149 @@
+version: "1.0"
+module: quality-selector
+last_updated: "2026-06-08"
+
+acceptance_criteria:
+  - id: QUAL-AC-001
+    priority: MUST
+    scenario: "player.levels retorna las representaciones del manifest tras ready"
+    given: "Player HLS reproduciendo un stream multi-bitrate"
+    when: "Se lee player.levels después del evento 'ready' (o tras el primer 'canplay')"
+    then:
+      - "player.levels es un array con al menos 2 elementos"
+      - "cada elemento tiene index (0-based), height, width, bitrate y label"
+      - "los index son consecutivos desde 0"
+
+  - id: QUAL-AC-002
+    priority: MUST
+    scenario: "setLevel(N) fija el nivel y deshabilita ABR"
+    given: "Player HLS reproduciendo en modo ABR (player.level puede variar, autoLevelEnabled === true)"
+    when: "Se asigna player.level = 0"
+    then:
+      - "se emite el evento levelchange con level=0"
+      - "player.nextLevel === 0 de inmediato"
+      - "tras el siguiente segmento se emite levelchanged y player.level === 0"
+      - "player.autoLevelEnabled === false"
+
+  - id: QUAL-AC-003
+    priority: MUST
+    scenario: "setLevel(-1) re-habilita ABR auto"
+    given: "Player HLS con nivel fijo (player.level >= 0, autoLevelEnabled === false)"
+    when: "Se asigna player.level = -1"
+    then:
+      - "player.autoLevelEnabled vuelve a true"
+      - "se emite levelchange (transición manual→auto, evento sintético)"
+      - "el nivel puede volver a cambiar automáticamente según el bandwidth"
+
+  - id: QUAL-AC-004
+    priority: MUST
+    scenario: "DASH soporta selección manual de calidad (dash.js 5.1.1)"
+    given: "Player DASH reproduciendo un MPD multi-bitrate"
+    when: "Se asigna player.level = 0"
+    then:
+      - "se emite levelchange con level=0"
+      - "player.autoLevelEnabled === false"
+      - "dash.js conmuta la representación (setRepresentationForTypeByIndex) y emite levelchanged"
+      - "player.level === 0 tras QUALITY_CHANGE_RENDERED"
+
+  - id: QUAL-AC-005
+    priority: MUST
+    scenario: "DASH re-habilita ABR con level = -1"
+    given: "Player DASH con representación fija (autoLevelEnabled === false)"
+    when: "Se asigna player.level = -1"
+    then:
+      - "player.autoLevelEnabled === true (autoSwitchBitrate=true vía updateSettings)"
+      - "se emite levelchange con level=-1"
+
+  - id: QUAL-AC-006
+    priority: MUST
+    scenario: "ABR degrada calidad bajo bandwidth limitado"
+    given: "Player (HLS o DASH) reproduciendo en modo ABR con red normal"
+    when: "Se aplica throttling de red a ~500 Kbps vía CDP"
+    then:
+      - "el motor de ABR conmuta a un nivel de menor bitrate"
+      - "se emite al menos un levelchanged"
+      - "la reproducción continúa sin error fatal (puede haber rebuffer transitorio)"
+
+  - id: QUAL-AC-007
+    priority: SHOULD
+    scenario: "ABR recupera calidad al restaurar bandwidth"
+    given: "Player en ABR que previamente bajó de nivel por red degradada"
+    when: "Se restaura el bandwidth a un valor alto vía CDP"
+    then:
+      - "el motor de ABR conmuta hacia un nivel de mayor bitrate"
+      - "se emite un segundo levelchanged (switch hacia arriba)"
+
+  - id: QUAL-AC-008
+    priority: MUST
+    scenario: "setLevel con índice fuera de rango es rechazado de forma segura"
+    given: "Player HLS con N niveles disponibles (player.levels.length === N)"
+    when: "Se asigna player.level = N (un índice >= levels.length, no -1)"
+    then:
+      - "HLS arroja Error('Invalid level') — el set falla de forma controlada"
+      - "el nivel previo no cambia"
+    industry_note: "El comportamiento difiere entre handlers: DASH ignora silenciosamente índices fuera de rango (no-op), HLS lanza. Ver QUAL-DEF-002."
+
+  - id: QUAL-AC-009
+    priority: SHOULD
+    scenario: "DASH ignora índices fuera de rango sin lanzar"
+    given: "Player DASH con N niveles disponibles"
+    when: "Se asigna player.level = N (índice >= levels.length)"
+    then:
+      - "no se lanza ningún error"
+      - "no se emite levelchange"
+      - "el nivel activo no cambia"
+
+  - id: QUAL-AC-010
+    priority: SHOULD
+    scenario: "nextLevel refleja el nivel solicitado antes de que level lo adopte"
+    given: "Player HLS reproduciendo en ABR (nextLevel === -1)"
+    when: "Se asigna player.nextLevel = 0 (o player.level = 0)"
+    then:
+      - "player.nextLevel === 0 de inmediato"
+      - "player.level puede seguir siendo el valor anterior hasta el siguiente switch"
+      - "tras levelchanged, player.level === 0 (level alcanza a nextLevel)"
+
+  - id: QUAL-AC-011
+    priority: SHOULD
+    scenario: "bitrate refleja el bitrate del nivel activo"
+    given: "Player reproduciendo con un nivel fijo player.level = K"
+    when: "Se lee player.bitrate"
+    then:
+      - "player.bitrate === player.levels[K].bitrate (en bits/seg)"
+      - "el valor cambia cuando el nivel activo cambia"
+
+  - id: QUAL-AC-012
+    priority: SHOULD
+    scenario: "bandwidth retorna el ancho de banda estimado en bits/seg"
+    given: "Player reproduciendo desde hace varios segundos (varios segmentos descargados)"
+    when: "Se lee player.bandwidth"
+    then:
+      - "player.bandwidth es un número positivo en bits/seg"
+      - "antes del primer segmento descargado puede ser null"
+    industry_note: "No existe evento público de 'bandwidth estimado'; el estimador actúa internamente entre segmentos."
+
+  - id: QUAL-AC-013
+    priority: COULD
+    scenario: "El selector de calidad UI no se muestra sin niveles"
+    given: "Player reproduciendo un stream con un único nivel (o sin levels parseados)"
+    when: "Se abre el menú de opciones"
+    then:
+      - "el item de calidad (Quality) no se renderiza si levels está vacío o tiene < 1 nivel mostrable"
+
+  - id: QUAL-AC-014
+    priority: COULD
+    scenario: "droppedFrames es monotónicamente no decreciente durante la reproducción"
+    given: "Player reproduciendo video"
+    when: "Se lee player.droppedFrames en dos momentos sucesivos"
+    then:
+      - "droppedFrames es un número >= 0"
+      - "el segundo valor es >= al primero (acumulativo)"
+
+  - id: QUAL-AC-015
+    priority: COULD
+    scenario: "API legacy postMessage de calidad funciona en iframe embed"
+    given: "Player embebido vía iframe usando la API legacy postMessage"
+    when: "Se envía el comando 'playbackLevels' y luego 'playbackLevel' con data=0"
+    then:
+      - "'playbackLevels' retorna el array de niveles (o null)"
+      - "'playbackLevel' fija player.level = 0"

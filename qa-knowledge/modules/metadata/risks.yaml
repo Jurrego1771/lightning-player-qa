@@ -1,0 +1,117 @@
+version: "1.0"
+module: metadata
+last_updated: "2026-06-08"
+
+risks:
+  - id: META-RISK-001
+    severity: medium
+    title: "duration no confiable antes de loadedmetadata"
+    description: >
+      player.duration puede ser 0 o NaN hasta que el browser dispara loadedmetadata.
+      Los tests o consumidores que leen duration inmediatamente tras load() obtienen un
+      valor incorrecto, y setPositionState entra en la rama else (setPositionState(null))
+      mientras duration es NaN.
+    affected_files:
+      - "src/metadata/mediaSession.js"
+    trigger: "Lectura de duration en la ventana entre load() y loadedmetadata."
+    mitigation: "updatePosition() guarda con `if (duration && !isNaN(duration))`; los tests deben esperar loadedmetadata/durationchange antes de asertar."
+    industry_note: "HTML5 estándar: duration es NaN hasta que hay metadata; comportamiento esperado, no bug."
+    test_priority: MUST
+
+  - id: META-RISK-002
+    severity: medium
+    title: "duration=Infinity en live confunde a consumidores de la metadata"
+    description: >
+      Para live, mediaSession fuerza setPositionState con duration: Infinity. Cualquier
+      cálculo aguas abajo (porcentaje visto, scrubber, analytics) que asuma duración finita
+      produce Infinity/NaN. En DVR el rango real disponible viene de seekable, no de duration.
+    affected_files:
+      - "src/metadata/mediaSession.js"
+    trigger: "type==='live' al construir el position state."
+    mitigation: "El código distingue type==='live' y manda Infinity explícito; consumidores deben tratar live aparte y usar seekable para DVR."
+    industry_note: "Estándar en la industria (hls.js, video.js, JWPlayer): live ⇒ duration Infinity; DVR ⇒ usar buffer/seekable window."
+    test_priority: MUST
+
+  - id: META-RISK-003
+    severity: high
+    title: "metadatachanged duplicado por re-renders"
+    description: >
+      Sin la dedup por isEqual + debounce 100ms, re-renders internos de React (ej. Reels al
+      re-montar el item, fix/issue-627) re-emiten metadatachanged con el mismo payload, lo que
+      contamina analytics y dispara recargas en integradores.
+    affected_files:
+      - "src/metadata/exposeMetadata.js"
+    trigger: "Re-render que produce el mismo objeto metadata (mismo item)."
+    mitigation: "isEqual(currentMetadata, metadataRef.current) suprime duplicados; debounce de 100ms absorbe flushes síncronos."
+    industry_note: "Patrón común: deduplicar eventos de metadata antes de notificar a analytics/host."
+    test_priority: MUST
+
+  - id: META-RISK-004
+    severity: medium
+    title: "now-playing bloqueado por useID3Sync (ICY matching)"
+    description: >
+      Con view.useID3Sync:true, isPlayingLive() empareja la canción por artist/title ICY del
+      stream HLS en vez de timestamps. Si el stream emite {type:'ICY'} sin artist/title, ningún
+      doc de Firestore matchea y player.metadata.title nunca se actualiza.
+    affected_files:
+      - "src/metadata/firestore/useFirestore.js"
+      - "src/metadata/exposeMetadata.js"
+    trigger: "Estación de radio con useID3Sync:true cuyo stream no provee tags ICY."
+    mitigation: "Configurar useID3Sync:false en estaciones sin ICY confiable. Documentado como bloqueo en radio-nowplaying-metadata.spec.ts."
+    industry_note: "ICY/timed-metadata matching es frágil: depende de que el encoder inyecte tags consistentes."
+    test_priority: SHOULD
+
+  - id: META-RISK-005
+    severity: medium
+    title: "Fuga / updates tardíos de listeners Firestore"
+    description: >
+      onSnapshot mantiene listeners persistentes y los cursores se cachean en un objeto módulo
+      (cursors[cursorHash]) con el cleanup de conteo comentado. Tras background/foreground o
+      cambios de estación pueden quedar suscripciones activas que entreguen updates tardíos.
+    affected_files:
+      - "src/metadata/firestore/useFirestore.js"
+    trigger: "Cambio de estación, re-load de config, o background prolongado en radio."
+    mitigation: "El effect de onData hace unsubscribe en cleanup; el cursor cache no se libera por diseño (comentado)."
+    industry_note: "Firestore reconecta listeners al volver de background y puede re-disparar snapshots."
+    test_priority: SHOULD
+
+  - id: META-RISK-006
+    severity: low
+    title: "setPositionState lanza con valores inconsistentes"
+    description: >
+      La Media Session API lanza TypeError si position>duration, valores negativos o NaN. Durante
+      transiciones (ad↔contenido, seek, live) los valores pueden ser momentáneamente inconsistentes.
+    affected_files:
+      - "src/metadata/mediaSession.js"
+    trigger: "Transición de estado con duration/position desincronizados."
+    mitigation: "setPositionState envuelto en try/catch; durante ad se fuerza position:0/duration:0."
+    industry_note: "MDN recomienda resetear con setPositionState(null) cuando no hay datos fiables — el código lo hace."
+    test_priority: SHOULD
+
+  - id: META-RISK-007
+    severity: low
+    title: "Artwork roto en blob/data y dependencia del image proxy"
+    description: >
+      El artwork se genera añadiendo query params de resize al póster; pósters blob:/data: se
+      filtran (artwork vacío) y URLs http dependen de que el CDN soporte w/h/fit/crop. Si el proxy
+      no soporta esos params, el SO muestra imágenes rotas o sin escalar.
+    affected_files:
+      - "src/metadata/mediaSession.js"
+    trigger: "Póster blob/data, o CDN que ignora los params de resize."
+    mitigation: "Filtro de blob/data; 6 tamaños solicitados para que el SO elija. iOS<16.4 pixelaba."
+    industry_note: "Chrome usa 512x512 (256 en low-end); iOS 16.4/18 corrigió el upscale pixelado. Servir artwork con Cache-Control."
+    test_priority: COULD
+
+  - id: META-RISK-008
+    severity: medium
+    title: "Conflicto de Media Session en multi-instancia"
+    description: >
+      Con varios players en la página, todos compiten por la única navigator.mediaSession del
+      documento. Si la coordinación msp:playing/_isCurrentMediaSession falla, dos instancias
+      pisan la metadata/controles del SO o ninguna queda como dueña.
+    affected_files:
+      - "src/metadata/mediaSession.js"
+    trigger: "Dos o más players activos simultáneamente en la misma página."
+    mitigation: "setCurrentMediaSession(true/false) coordinado por eventos msp:playing/adsStarted/adsResumed; solo libera si la metadata actual es la suya."
+    industry_note: "Media Session es singleton por documento; multi-player requiere arbitraje explícito."
+    test_priority: SHOULD

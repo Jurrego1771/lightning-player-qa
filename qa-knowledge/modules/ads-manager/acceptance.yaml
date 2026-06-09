@@ -1,0 +1,174 @@
+version: "1.0"
+module: ads-manager
+last_updated: "2026-06-08"
+
+acceptance_criteria:
+  - id: ADMGR-AC-001
+    priority: MUST
+    scenario: "ads.map ausente o null — sin ads, sin error"
+    given: "Player inicializado con config sin ads.map o ads.map=null"
+    when: "El player completa la inicialización y comienza reproducción"
+    then:
+      - "No se inicializa ningún ad system (AdsLoader no es creado)"
+      - "El evento adsRequested NO se emite"
+      - "El contenido reproduce inmediatamente sin pausas"
+      - "No se emite ningún error fatal"
+
+  - id: ADMGR-AC-002
+    priority: MUST
+    scenario: "ads.map válida → ciclo completo pre-roll (adsRequested → adsStarted → adsAllAdsCompleted)"
+    given: "Player con ads.map apuntando a un endpoint VAST con un pre-roll válido"
+    when: "El player inicializa y autoplay está activo"
+    then:
+      - "adsRequested se emite al inicio de la solicitud"
+      - "adsLoaded se emite tras parsear el VAST exitosamente"
+      - "adsContentPauseRequested se emite antes del ad"
+      - "adsStarted se emite cuando el ad comienza a reproducirse"
+      - "adsImpression se emite en el primer frame de reproducción"
+      - "adsAllAdsCompleted se emite al terminar todos los ads"
+      - "adsContentResumeRequested se emite y el contenido reanuda"
+
+  - id: ADMGR-AC-003
+    priority: MUST
+    scenario: "Ad system falla (VAST 4xx/5xx) — graceful degradation"
+    given: "Player con ads.map configurada pero el endpoint VAST retorna error HTTP (503, 404)"
+    when: "El ads loader intenta obtener el VAST"
+    then:
+      - "adsError se emite con código de error apropiado (1005 AD_REQUEST_FAILED)"
+      - "El player NO crashea (sin uncaught JS errors)"
+      - "adsAllAdsCompleted se emite para limpiar el estado"
+      - "adsContentResumeRequested se emite si había una pausa pendiente"
+      - "El contenido comienza o reanuda reproducción normalmente"
+
+  - id: ADMGR-AC-004
+    priority: MUST
+    scenario: "VAST Wrapper chain se resuelve correctamente"
+    given: "ads.map apuntando a VAST Wrapper que contiene VASTAdTagURI hacia el creativo final"
+    when: "El AdsLoader parsea el VAST"
+    then:
+      - "La cadena de Wrappers se sigue hasta el creativo inline final"
+      - "adsLoaded o adsStarted se emite (resolución exitosa)"
+      - "Los beacons de tracking del Wrapper y del creativo final se disparan"
+      - "El player NO crashea si la cadena Wrapper falla"
+
+  - id: ADMGR-AC-005
+    priority: MUST
+    scenario: "VMAP con mid-roll — ad se inserta en el timestamp correcto"
+    given: "ads.map apuntando a VMAP con un mid-roll definido en t=01:00 (60 segundos)"
+    when: "El contenido alcanza los 60 segundos de reproducción"
+    then:
+      - "La reproducción del contenido se pausa en t=60s"
+      - "adsContentPauseRequested se emite"
+      - "El ad break de mid-roll se reproduce completamente"
+      - "adsContentResumeRequested se emite"
+      - "El contenido reanuda desde t=60s (no desde el inicio)"
+      - "Los cue points del VMAP están disponibles via player.ad.cuePoints"
+
+  - id: ADMGR-AC-006
+    priority: MUST
+    scenario: "Ad skippable — skip disponible después del skipOffset"
+    given: "Ad con skipTimeOffset=5 (skippable después de 5 segundos)"
+    when: "El playhead del ad supera los 5 segundos"
+    then:
+      - "adsSkippableStateChanged se emite con skippable=true"
+      - "player.ad.info.skippable retorna true"
+      - "player.ad.skip() ejecuta el skip"
+      - "adsSkipped se emite"
+      - "El contenido reanuda tras el skip"
+
+  - id: ADMGR-AC-007
+    priority: MUST
+    scenario: "ErrorBoundary — React error en AdsManager en producción no rompe el player"
+    given: "Player en modo producción con ads configuradas"
+    when: "Ocurre un error React no manejado dentro del componente AdsManager"
+    then:
+      - "ErrorBoundary captura el error (solo en IS_PRODUCTION=true)"
+      - "handler.destroy() es llamado"
+      - "adsError se emite via internalEmitter"
+      - "Si había un ad activo, adsComplete se emite"
+      - "Si adsAllAdsCompleted no había sido emitido, se emite"
+      - "Si había ContentPauseRequested pendiente, se emite ContentResumeRequested"
+      - "El player reanuda reproducción del contenido"
+
+  - id: ADMGR-AC-008
+    priority: MUST
+    scenario: "reset() al cambiar source — estado previo no contamina nuevo content"
+    given: "Player que reprodujo content con ads (incluyendo mid-rolls cargados)"
+    when: "El player carga un nuevo contenido (nuevo ads.map o mismo)"
+    then:
+      - "AdsHandler.reset() es llamado — todos los listeners son removidos"
+      - "AdsManager, AdsLoader y AdsDisplayContainer son destruidos"
+      - "Los cue points del content anterior NO aparecen en el nuevo ciclo"
+      - "adsRequested se re-emite para el nuevo content"
+
+  - id: ADMGR-AC-009
+    priority: MUST
+    scenario: "VAST vacío (EMPTY_VAST_RESPONSE 303/1009) — degradación sin bloqueo"
+    given: "ads.map apuntando a endpoint que retorna VAST válido pero sin ads (empty)"
+    when: "El AdsLoader procesa la respuesta"
+    then:
+      - "adsError se emite con código 303 o 1009"
+      - "adsAllAdsCompleted se emite"
+      - "El contenido reproduce inmediatamente sin ads"
+      - "No se emite ningún error fatal del player"
+
+  - id: ADMGR-AC-010
+    priority: SHOULD
+    scenario: "VMAP con post-roll — ad se ejecuta al final del contenido"
+    given: "ads.map apuntando a VMAP con post-roll"
+    when: "El contenido termina su reproducción (evento ended)"
+    then:
+      - "AdsLoader.contentComplete() es llamado"
+      - "El post-roll ad break se inicia"
+      - "adsContentPauseRequested se emite"
+      - "El post-roll se reproduce"
+      - "adsAllAdsCompleted se emite al finalizar"
+
+  - id: ADMGR-AC-011
+    priority: SHOULD
+    scenario: "Preload de midroll — ad se precargas 8 segundos antes del cue point"
+    given: "VMAP con mid-roll en t=120s y contenido reproduciéndose"
+    when: "El playhead alcanza t=112s (8 segundos antes del cue point)"
+    then:
+      - "AdsManager inicia el preload del ad creativo"
+      - "El ad está listo para reproducir cuando el playhead alcanza t=120s"
+      - "La transición contenido→ad es fluida (sin buffering visible)"
+
+  - id: ADMGR-AC-012
+    priority: SHOULD
+    scenario: "canPause=false — usuario no puede pausar el ad"
+    given: "Player con adsCanPause=false y ad reproduciéndose"
+    when: "Se llama handler.pause()"
+    then:
+      - "handler.pause() retorna sin pausar el ad"
+      - "El ad continúa reproduciéndose normalmente"
+
+  - id: ADMGR-AC-013
+    priority: SHOULD
+    scenario: "Beacon de viewable impression — 2 segundos continuos al 50% en viewport"
+    given: "Ad linear reproduciéndose con IntersectionObserver disponible"
+    when: "El elemento de video del ad está al 50% visible por 2 segundos continuos"
+    then:
+      - "El beacon 'viewable' se dispara exactamente una vez"
+      - "Si el ad termina antes de 2s visible: el beacon 'notviewable' se dispara"
+      - "Si IntersectionObserver no está disponible: 'viewundetermined' se dispara"
+
+  - id: ADMGR-AC-014
+    priority: COULD
+    scenario: "Audio player — video fallback para el ad container"
+    given: "Player de tipo 'audio' con ads configuradas"
+    when: "El AdsManager monta el componente"
+    then:
+      - "Se monta un elemento <video> como videoFallback para el container de ads"
+      - "El ad se reproduce en el videoFallback, no en el elemento audio"
+      - "AdsHandler usa videoFallback como referencia de dimensiones"
+
+  - id: ADMGR-AC-015
+    priority: COULD
+    scenario: "Macros del ad tag URL son resueltas correctamente"
+    given: "ads.map URL con macros $page-url$, $listenerid$, $player-width$"
+    when: "AdsHandler.initialize() construye el AdsRequest"
+    then:
+      - "Las macros $page-url$, $listenerid$, $player-width$, $player-height$ son sustituidas"
+      - "Para dominios mdstrm.com: params custom.* son añadidos automáticamente"
+      - "Los parámetros correlator, scor, omid_p, sdk_apis son añadidos por setDefaultMacros"

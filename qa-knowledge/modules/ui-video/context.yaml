@@ -1,0 +1,12 @@
+module: ui-video
+criticality: medium
+last_reviewed: "2026-06-05"
+paths: ["src/view/video/"]
+depends_on: [events, state, controls-api]
+depended_by: []
+breaks_if_changed:
+  - "Vista de video principal no renderiza"
+  - "Controles de video (play, volumen, fullscreen) no responden"
+test_suites_required: [visual, a11y]
+negative_cases:
+  - "Sin source → placeholder visible, no crash"

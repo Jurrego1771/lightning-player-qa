@@ -1,0 +1,97 @@
+version: "1.0"
+module: drm
+last_updated: "2026-06-08"
+
+existing_tests:
+  - spec_file: "tests/e2e/drm-widevine-dash.spec.ts"
+    description: "E2E de Widevine DASH: inicialización sin error, llega a playing, currentTime avanza, seek en contenido protegido. Solo corre en Chromium con CDM real. Requiere CONTENT_ID_DASH_WIDEVINE en .env."
+    ac_coverage:
+      - "DRM-AC-001"
+      - "DRM-AC-011"
+    notes: "Se salta si no hay CONTENT_ID_DASH_WIDEVINE configurado."
+
+  - spec_file: "tests/integration/drm-candidate-selection.spec.ts"
+    description: "Integración: selección de URL candidata según key system del browser (Chromium → MPD, Safari → HLS). Resiliencia ante candidateUrls vacío, key system inexistente, y config sin DRM."
+    ac_coverage:
+      - "DRM-AC-004"
+      - "DRM-AC-005"
+      - "DRM-AC-008"
+      - "DRM-AC-009"
+      - "DRM-AC-013"
+
+  - spec_file: "tests/integration/drm-fairplay-hls.spec.ts"
+    description: "Integración de FairPlay via hls.js emeEnabled: verifica que el player acepta config FairPlay sin crash, que el handler es asignado, y que el player maneja gracefully la falta de CDM FairPlay en no-Safari."
+    ac_coverage:
+      - "DRM-AC-003"
+    notes: "Tests verifican config y resilencia — no reproducción real de FairPlay (limitación de headless)."
+
+  - spec_file: "tests/integration/google-dai-dash-drm.spec.ts"
+    description: "Integración de Google DAI + DASH + DRM. Todos los tests son test.fixme() — requieren credenciales DAI reales (DAI_NETWORK_CODE, DAI_DASH_DRM_ASSET_KEY) y stream DASH+DRM."
+    ac_coverage:
+      - "DRM-AC-012"
+    notes: "Todos los tests están marcados como fixme. Ver .env.example para credenciales necesarias."
+
+coverage_gaps:
+  - id: GAP-DRM-001
+    priority: MUST
+    ac_ref: "DRM-AC-002"
+    title: "License server 403 emite evento error con código DRM_LICENSE_ERROR"
+    suggested_spec: "tests/integration/drm-license-errors.spec.ts"
+    notes: "El AC está documentado y hay un test en drm-widevine-dash.spec.ts que hace skip si no hay stream. Falta un test de integración que mockee el license server retornando 403 y verifique el evento error con data='DRM_LICENSE_ERROR'. Usar page.route() para interceptar la license request."
+    industry_note: "La industria considera el manejo de errores de licencia como crítico — el error debe ser informativo y no dejar al usuario en estado de espera indefinida."
+
+  - id: GAP-DRM-002
+    priority: MUST
+    ac_ref: "DRM-AC-006"
+    title: "Token auth incluido correctamente en header X-AxDRM-Message"
+    suggested_spec: "tests/unit/drm-getDashProtectionData.spec.ts"
+    notes: "getDashProtectionData.js es una función pura — puede testearse como unit test sin browser. Verificar que token → X-AxDRM-Message, drmToken → X-AxDRM-Message, httpRequestHeaders tiene precedencia sobre token. Este test puede correrse sin CDM ni streams reales."
+    industry_note: "La correcta transmisión del token de auth al license server es crítica — si el header está mal formado, el 100% del contenido protegido fallará con 403."
+
+  - id: GAP-DRM-003
+    priority: MUST
+    ac_ref: "DRM-AC-007"
+    title: "httpRequestHeaders tiene precedencia sobre token en getDashProtectionData"
+    suggested_spec: "tests/unit/drm-getDashProtectionData.spec.ts"
+    notes: "Co-ubicar con GAP-DRM-002 en un test unitario de getDashProtectionData."
+    industry_note: "Ninguna."
+
+  - id: GAP-DRM-004
+    priority: MUST
+    ac_ref: "DRM-AC-010"
+    title: "FairPlay HLS en Safari real reproduce contenido protegido"
+    suggested_spec: "tests/e2e/drm-fairplay-safari.spec.ts"
+    notes: "FIXME — requiere Safari real (no Playwright WebKit headless). Marcarlo como @safari-only y excluir de CI headless. Usar BrowserStack o macOS runner con Safari nativo. El test debe verificar que la license se obtiene, el certificado FairPlay se descarga, y la reproducción comienza."
+    industry_note: "FairPlay es el DRM exclusivo de Apple y cubre el 30-40% del mercado OTT (iOS, Safari macOS). No tener tests E2E de FairPlay es un gap de cobertura significativo para cualquier servicio OTT con audiencia Apple."
+
+  - id: GAP-DRM-005
+    priority: SHOULD
+    ac_ref: "DRM-AC-012"
+    title: "Google DAI + DRM: timeout de 5s y giveUpSession funciona correctamente"
+    suggested_spec: "tests/integration/google-dai-dash-drm.spec.ts"
+    notes: "Habilitar tests existentes (actualmente fixme) cuando haya credenciales DAI. También agregar test de timeout que simule DAI tardando más de 5s para verificar que giveUpSession=true y el player continúa sin crash."
+    industry_note: "El flujo DAI+DRM es uno de los más complejos en streaming moderno. Requiere coordinación precisa entre el ad server, el CDM, y el license server."
+
+  - id: GAP-DRM-006
+    priority: SHOULD
+    ac_ref: "DRM-AC-014"
+    title: "PlayReady DASH en Edge reproduce contenido protegido"
+    suggested_spec: "tests/e2e/drm-playready-edge.spec.ts"
+    notes: "FIXME — requiere Microsoft Edge real con PlayReady activo. Excluir de CI headless. Marcar como @edge-only. En el futuro se puede habilitar en un Windows runner con Edge instalado."
+    industry_note: "PlayReady es relevante para audiencias en entornos corporativos con Windows y para Smart TVs Microsoft."
+
+  - id: GAP-DRM-007
+    priority: SHOULD
+    ac_ref: "DRM-AC-008"
+    title: "candidateUrls sin ningún campo HLS ni MPD emite error DRM_NOT_SUPPORTED"
+    suggested_spec: "tests/integration/drm-candidate-selection.spec.ts"
+    notes: "Agregar test case al spec existente con candidateUrls={} (objeto vacío, no array). Verificar que DRMPluginRunner no lanza TypeError y que se emite el evento error correcto."
+    industry_note: "Ninguna."
+
+  - id: GAP-DRM-008
+    priority: COULD
+    ac_ref: "DRM-AC-001"
+    title: "Widevine DASH: license renewal durante sesión larga (>1h de reproducción)"
+    suggested_spec: "tests/e2e/drm-widevine-license-renewal.spec.ts"
+    notes: "Requiere stream de prueba con license duration corta (ej: 5 minutos). Verificar que el CDM renueva la licencia automáticamente sin interrumpir la reproducción. Este es un escenario de edge case documentado como problemático en la industria."
+    industry_note: "La renovación de licencias Widevine es gestionada por el CDM del browser, no por el player. Sin embargo, el player puede interferir si hace alguna operación (seek, cambio de calidad) justo durante la renovación. Netflix y Disney+ han documentado problemas de este tipo en produción."

@@ -16,6 +16,7 @@ import * as path from 'path'
 import type { FullConfig } from '@playwright/test'
 import { checkHlsFixtures } from './checks/hls-fixtures'
 import { checkExternalStreams } from './checks/stream-health'
+import { checkPlatformSchemas } from './checks/platform-schema'
 import { getEnvironmentConfig } from '../config/environments'
 
 const IMA_SDK_URL  = 'https://imasdk.googleapis.com/js/sdkloader/ima3.js'
@@ -94,7 +95,29 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
     throw err
   }
 
-  // ── 2. IMA SDK Cache (WARN) ──────────────────────────────────────────────
+  // ── 2. Platform Schema Validation (WARN) ────────────────────────────────
+  console.log(`\n${bold(' Platform Fixture Schemas')}`)
+  {
+    const schemaResults = checkPlatformSchemas()
+    let schemaFails = 0
+    for (const r of schemaResults) {
+      if (r.ok) {
+        console.log(`  ${ok(r.fixture)}`)
+      } else {
+        schemaFails++
+        for (const e of r.errors) {
+          console.log(`  ${warn(`${r.fixture} — ${e.field}: expected ${e.expected}, got ${e.received}`)}`)
+        }
+      }
+    }
+    if (schemaFails === 0) {
+      console.log(`  ${dim(`${schemaResults.length} fixtures validated`)}`)
+    } else {
+      console.log(`  ${warn(`${schemaFails} fixture(s) failed schema validation — tests using them may fail unexpectedly`)}`)
+    }
+  }
+
+  // ── 3. IMA SDK Cache (WARN) ──────────────────────────────────────────────
   // Cacheamos IMA SDK localmente para que setupPlatformMocks() lo sirva vía
   // page.route() sin depender del CDN de Google en cada test de ads.
   console.log(`\n${bold(' IMA SDK Cache')}`)
@@ -108,7 +131,7 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
     }
   }
 
-  // ── 3. External Streams & Player Script (WARN) ───────────────────────────
+  // ── 4. External Streams & Player Script (WARN) ───────────────────────────
   console.log(`\n${bold(' External Streams')}`)
 
   const envConfig = getEnvironmentConfig()

@@ -1,0 +1,104 @@
+version: "1.0"
+module: hls
+last_updated: "2026-06-08"
+
+existing_tests:
+  - spec_file: "tests/integration/hls-abr.spec.ts"
+    description: "Tests de ABR con CDP throttling: bandwidth degradado → level baja; recovery → level sube; error de segmento con retry; startup time <3s; nextLevel vs level durante transición"
+    ac_coverage:
+      - HLS-AC-001
+      - HLS-AC-002
+      - HLS-AC-003
+      - HLS-AC-004
+      - HLS-AC-010
+
+  - spec_file: "tests/integration/hls-edge.spec.ts"
+    description: "Edge cases: segmento HTTP 404 persistente → error fatal (via route.fulfill 404); EXT-X-DISCONTINUITY → no crash + reproducción continúa más allá del punto de discontinuidad"
+    ac_coverage:
+      - HLS-AC-005
+      - HLS-AC-007
+
+  - spec_file: "tests/integration/system73-hls.spec.ts"
+    description: "Integración System73 P2P SDK: sin config → playback normal; con mock SDK → wrapPlayerConfig + wrapPlayer se llaman; SDK import failure → degradación suave; double-load guard; reload destruye wrapper anterior; player destroy llama wrapper.destroy()"
+    ac_coverage:
+      - HLS-AC-013
+
+  - spec_file: "tests/integration/drm-fairplay-hls.spec.ts"
+    description: "FairPlay via hls.js emeEnabled: player acepta config sin error de init; config incluye emeEnabled + drmSystems; CDM no disponible → error DRM graceful sin crash JS"
+    ac_coverage:
+      - HLS-AC-015
+
+  - spec_file: "tests/e2e/vod-playback.spec.ts"
+    description: "Playback VOD completo end-to-end con plataforma real: carga, reproducción, currentTime avanza"
+    ac_coverage:
+      - HLS-AC-001
+
+  - spec_file: "tests/e2e/dvr-advanced.spec.ts"
+    description: "DVR window en stream live: seekable range crece, seek dentro de la ventana funciona"
+    ac_coverage:
+      - HLS-AC-006
+
+coverage_gaps:
+  - id: GAP-HLS-001
+    priority: MUST
+    ac_ref: HLS-AC-008
+    title: "Manifest inválido o no disponible emite error fatal"
+    suggested_spec: "tests/integration/hls-edge.spec.ts"
+    notes: "Agregar test en hls-edge.spec.ts: usar page.route para interceptar la URL del manifest M3U8 y retornar 404 o body malformado. Verificar que player emite 'error' con fatal=true y no queda en loading infinito."
+    industry_note: "Error de manifest es el escenario más común de fallo en producción OTT (CDN 502/503/404). Es el primer punto de fallo y debe tener cobertura explícita."
+
+  - id: GAP-HLS-002
+    priority: MUST
+    ac_ref: HLS-AC-009
+    title: "player.level con índice fuera de rango lanza Error o hace no-op"
+    suggested_spec: "tests/integration/hls-abr.spec.ts"
+    notes: "Agregar test: esperar 'playing', obtener player.levels.length, intentar player.level = levels.length (un índice más allá). Verificar que se lanza Error('Invalid level') o el nivel no cambia. El código fuente tiene el guard explícito."
+    industry_note: "La validación de índice de nivel es un contrato de API que puede romperse en refactors."
+
+  - id: GAP-HLS-003
+    priority: SHOULD
+    ac_ref: HLS-AC-011
+    title: "CMCD se envía en las requests de segmentos cuando contentId/sessionId disponibles"
+    suggested_spec: "tests/integration/hls-cmcd.spec.ts"
+    notes: "Crear nuevo spec. Configurar mock content con id y metadata.MDSTRMPID. Interceptar requests de segmentos con page.route y verificar presencia de query params CMCD (MSID, SID). Solo disponible cuando ambos valores están en el contexto del player."
+    industry_note: "CMCD (Common Media Client Data / SVTA CTA-5004) es un estándar creciente en OTT para telemetría de CDN. Verificar que el player lo implementa correctamente es valor para los operadores."
+
+  - id: GAP-HLS-004
+    priority: SHOULD
+    ac_ref: HLS-AC-012
+    title: "AirPlay: preferManagedMediaSource=false cuando AirPlay está disponible en Safari"
+    suggested_spec: "tests/integration/hls-airplay-compat.spec.ts"
+    notes: "Requiere Safari/WebKit. Verificar que el botón AirPlay es visible (no disableRemotePlayback). En Chromium, solo se puede verificar que la lógica de isAirPlaySupported() se evalúa. Test completo requiere WebKit."
+    industry_note: "Regresión conocida en hls.js + Safari 17.1+ (issue #6197). Este gap tiene alto riesgo de regresión en cada update de hls.js."
+
+  - id: GAP-HLS-005
+    priority: SHOULD
+    ac_ref: HLS-AC-014
+    title: "Audio tracks múltiples: player.audioTracks.length > 1 con manifest multi-audio"
+    suggested_spec: "tests/integration/hls-audio-tracks.spec.ts"
+    notes: "Crear fixture HLS con múltiples grupos AUDIO en el manifest (español + inglés). Verificar que player.audioTracks.length >= 2, que cada track tiene label e language correctos, y que cambiar el track activo dispara el evento 'change' del AudioTrackList."
+    industry_note: "Multi-audio es requisito para contenido internacional OTT. El proxy AudioTrackListProxy en el handler es un wrapper custom no-trivial que requiere cobertura propia."
+
+  - id: GAP-HLS-006
+    priority: SHOULD
+    ac_ref: HLS-AC-016
+    title: "Live stream stall recovery: flush de buffer y reset de currentTime a 0"
+    suggested_spec: "tests/integration/hls-live-stall.spec.ts"
+    notes: "Crear fixture de stream live simulado. Interceptar segmentos para simular stall (abort/timeout), luego liberar. Verificar que después de recovery en stream live: currentTime se resetea o el player retoma cerca del live edge. Requiere fixture HLS live local."
+    industry_note: "El stall recovery en live streams con reset de buffer es crítico para la experiencia de usuario. Un stream live que tarda horas en 'recuperarse' (buffereando desde el inicio) es inutilizable."
+
+  - id: GAP-HLS-007
+    priority: COULD
+    ac_ref: HLS-AC-015
+    title: "FairPlay DRM: config emeEnabled + drmSystems verificada con mock platform DRM"
+    suggested_spec: "tests/integration/drm-fairplay-hls.spec.ts"
+    notes: "Los tests actuales usan MockContentIds.vod que puede no tener DRM config. Crear un mock content con drm.fairplay.serverURL para verificar que _getHlsDrmConfig() retorna config válida y la inyecta en HLSConfig. Solo necesita verificar la config, no el CDM real."
+    industry_note: "FairPlay via EME en hls.js es el único DRM disponible en Safari para streams HLS. Debe tener cobertura dedicada con config real."
+
+  - id: GAP-HLS-008
+    priority: COULD
+    ac_ref: HLS-AC-002
+    title: "ABR test con stream LL-HLS: verificar stuttering conocido en v1.6.13"
+    suggested_spec: "tests/integration/hls-ll-hls.spec.ts"
+    notes: "Crear fixture LL-HLS (con EXT-X-PART y EXT-X-PRELOAD-HINT). Verificar que el player reproduce y que el stuttering del issue #7431 es tolerable (no causa error fatal). Documentar si es reproducible en CI. Requiere conocimiento de generación de fixtures LL-HLS."
+    industry_note: "LL-HLS es el futuro del live streaming OTT. Issue #7431 en hls.js v1.6.6+ puede afectar a usuarios de live streams en producción."

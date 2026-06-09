@@ -1,0 +1,74 @@
+version: "1.0"
+module: drm
+last_updated: "2026-06-08"
+
+defects:
+  - id: DRM-DEF-001
+    status: known_limitation
+    severity: high
+    title: "FairPlay HLS no testeable en Playwright headless (WebKit sin CDM FairPlay)"
+    description: "Playwright WebKit headless no incluye el CDM FairPlay de Apple. Los tests E2E de FairPlay (reproducción real de contenido HLS+FairPlay) no pueden ejecutarse en CI headless. Los tests existentes en drm-fairplay-hls.spec.ts solo verifican que el player acepta la config sin crash — no verifican que FairPlay reproduzca."
+    workaround: "Ejecutar tests de FairPlay en Safari real (macOS físico o servicio de cloud browser como BrowserStack). En CI, usar tests de integración que verifican la config de hls.js sin necesitar el CDM."
+    source_comment: "tests/integration/drm-fairplay-hls.spec.ts:29 — comentario: 'FairPlay via hls.js emeEnabled solo funciona en browsers que soportan WebKit EME'"
+    industry_known: true
+    regression_risk: low
+
+  - id: DRM-DEF-002
+    status: known_limitation
+    severity: high
+    title: "Widevine L1 no disponible en ningún browser de escritorio — solo L3"
+    description: "El player solicita Widevine con robustness 'SW_SECURE_CRYPTO' (L3 software). No hay forma de obtener L1 en Chrome de escritorio. Esto significa que contenido con requisito L1 (típicamente 4K/UHD premium) no puede reproducirse en browsers de escritorio — el license server rechazará la solicitud."
+    workaround: "Usar L3 para SD/HD/FHD. Para contenido UHD/4K que requiere L1, se necesita una app nativa (Android, iOS, Smart TV) con CDM hardware certificado."
+    source_comment: "src/helper/getDRMSupport.js:33 — robustness: 'SW_SECURE_CRYPTO'"
+    industry_known: true
+    regression_risk: low
+
+  - id: DRM-DEF-003
+    status: known_limitation
+    severity: medium
+    title: "PlayReady no testeable en CI — requiere entorno Windows con licencia específica"
+    description: "PlayReady (com.microsoft.playready) está disponible en Edge/IE11 pero no en Chromium headless. Los tests de candidateUrls con PlayReady no pueden verificar la reproducción real. El código de getDRMSupport soporta PlayReady pero no hay tests E2E para este path."
+    workaround: "Los tests de PlayReady deben ejecutarse en Edge real en Windows. No hay cobertura E2E de PlayReady en la suite actual."
+    source_comment: "src/helper/getDRMSupport.js:11 — 'com.microsoft.playready' en la lista de keySystems"
+    industry_known: true
+    regression_risk: low
+
+  - id: DRM-DEF-004
+    status: known_limitation
+    severity: medium
+    title: "Google DAI + DRM: timeout hardcoded de 5s puede causar inicio de reproducción sin ads"
+    description: "SESSION_WAIT_MS = 5000ms en DRMPlugin. Si Google DAI tarda más de 5s en proveer el manifest, giveUpSession=true y DRMPlugin avanza con candidateUrls sin el manifest de DAI. Esto puede resultar en reproducción del contenido sin la inserción de ads de DAI."
+    workaround: "El valor de SESSION_WAIT_MS está hardcoded en el código — no es configurable desde la API pública. Para mitigar, el operador debe asegurarse de que la latencia de la red para DAI sea menor de 5s."
+    source_comment: "src/player/drm/plugin.jsx:102 — const SESSION_WAIT_MS = 5000"
+    industry_known: false
+    regression_risk: medium
+
+  - id: DRM-DEF-005
+    status: known_limitation
+    severity: medium
+    title: "candidateUrls.mpd sin candidateUrls.hls en browser que no soporta DASH nativo falla silenciosamente"
+    description: "Si el backend retorna candidateUrls solo con mpd (sin hls) y el browser no puede manejar DASH nativo, DRMPluginRunner asigna src=null (porque la condición isFairPlay ? hls : mpd || hls puede retornar null si no hay hls como fallback). El error resultante es DRM_NOT_SUPPORTED, pero la causa real es la falta de URL de fallback."
+    workaround: "El backend debe siempre incluir candidateUrls.hls como fallback cuando hay DRM configurado. Si el contenido no tiene stream HLS, documentarlo explícitamente."
+    source_comment: "src/player/drm/plugin.jsx:53-61 — lógica de selección de src"
+    industry_known: false
+    regression_risk: medium
+
+  - id: DRM-DEF-006
+    status: open
+    severity: low
+    title: "Sin mecanismo de retry automático para license requests fallidas por timeout de red"
+    description: "Si la license request falla por timeout de red (no por error HTTP), el CDM del browser puede reintentar internamente, pero el player no tiene lógica de retry explícita. Si el CDM agota sus reintentos, el player emite error. No hay forma de configurar un número de reintentos desde la API pública."
+    workaround: "El operador puede escuchar el evento 'error' y llamar player.load() para recargar el contenido (lo que iniciará un nuevo license request). No es automático."
+    source_comment: "Ninguno — gap de funcionalidad."
+    industry_known: true
+    regression_risk: low
+
+  - id: DRM-DEF-007
+    status: known_limitation
+    severity: low
+    title: "drm.vkeySystem filtering puede excluir protData válido si hay inconsistencia de key system"
+    description: "Si drm.vkeySystem está seteado como 'com.widevine.alpha' pero el browser detectó 'com.microsoft.playready' (o viceversa), getDashProtectionData filtra todos los key systems excepto el que coincide con vkeySystem. Resultado: protData vacío y la license request falla. Este es un edge case de configs inconsistentes."
+    workaround: "No mezclar vkeySystem manual con la detección automática de getDRMSupport. El DRMPlugin ya gestiona vkeySystem automáticamente — no sobreescribir."
+    source_comment: "src/player/drm/getDashProtectionData.js:18-21 — filtrado por selectedKeySystem"
+    industry_known: false
+    regression_risk: low

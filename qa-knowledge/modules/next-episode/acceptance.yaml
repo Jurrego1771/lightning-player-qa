@@ -1,0 +1,222 @@
+version: "1.0"
+module: next-episode
+last_updated: "2026-06-08"
+
+acceptance_criteria:
+
+  # ── MUST: Happy paths ─────────────────────────────────────────────────────
+
+  - id: NEPI-AC-001
+    priority: MUST
+    scenario: "nextEpisodeIncoming se emite antes de que aparezca la UI"
+    given: "Un episodio VOD en reproducción con metadata.next definido y nextEpisodeTime=30"
+    when: "El tiempo restante llega a 35 segundos (nextEpisodeTime + 5)"
+    then:
+      - "El evento nextEpisodeIncoming se emite exactamente una vez"
+      - "El payload es el ID del siguiente episodio"
+      - "El evento NO se vuelve a emitir durante el mismo contenido"
+
+  - id: NEPI-AC-002
+    priority: MUST
+    scenario: "La UI de next episode aparece en el threshold correcto (video view)"
+    given: "Un episodio VOD en reproducción con metadata.next definido y nextEpisodeTime=30"
+    when: "El tiempo restante llega a exactamente 30 segundos"
+    then:
+      - "El overlay .next-episode se hace visible en el DOM"
+      - "Se muestran dos botones: 'Watch Credits' y 'Watch Next'"
+      - "El foco inicial está en el botón 'Watch Next'"
+      - "La barra de controles del player queda oculta"
+
+  - id: NEPI-AC-003
+    priority: MUST
+    scenario: "Auto-load con countdown: el siguiente episodio se carga automáticamente"
+    given: "La UI de next episode es visible con hasEnoughTimeForAnimation (timeRemaining > 5)"
+    when: "Pasan 5 segundos sin interacción del usuario"
+    then:
+      - "El evento nextEpisodeLoadRequested se emite con el ID del contenido actual"
+      - "Se llama a api.load() con { id: nextEpisodeId, type }"
+      - "El evento sourcechange se emite"
+      - "El player hace ready en el siguiente episodio"
+
+  - id: NEPI-AC-004
+    priority: MUST
+    scenario: "Clic en 'Watch Next' carga el siguiente episodio inmediatamente"
+    given: "La UI de next episode es visible con el botón 'Watch Next' activo"
+    when: "El usuario hace clic en 'Watch Next'"
+    then:
+      - "El countdown se cancela"
+      - "El evento nextEpisodeLoadRequested se emite"
+      - "api.load() se llama inmediatamente"
+      - "El player transiciona al siguiente episodio"
+
+  - id: NEPI-AC-005
+    priority: MUST
+    scenario: "keepWatching previene el auto-load al terminar el video"
+    given: "Un episodio VOD con siguiente episodio configurado"
+    when: "El integrador emite nextEpisodeKeepWatching y el video llega al final"
+    then:
+      - "El evento nextEpisodeKeepWatching es recibido por el player"
+      - "NO se llama a api.load() al terminar el video"
+      - "NO ocurre sourcechange"
+      - "El player permanece en el contenido actual (ended)"
+
+  - id: NEPI-AC-006
+    priority: MUST
+    scenario: "nextEpisodePlayNext carga el siguiente episodio inmediatamente"
+    given: "Un episodio VOD con siguiente episodio configurado, en cualquier punto de la reproducción"
+    when: "El integrador emite nextEpisodePlayNext"
+    then:
+      - "El flag keepWatching se resetea a false"
+      - "Se llama a api.load() con el ID del siguiente episodio"
+      - "El evento sourcechange ocurre"
+      - "El player hace ready en el siguiente episodio"
+
+  - id: NEPI-AC-007
+    priority: MUST
+    scenario: "nextEpisodeConfirmed sobreescribe el episodio siguiente con datos custom"
+    given: "Un episodio VOD con metadata.next='ep-A' en reproducción"
+    when: "El integrador emite nextEpisodeConfirmed({ id: 'ep-B', type: 'episode', nextEpisodeTime: 10 })"
+    then:
+      - "El evento nextEpisodeConfirmed es recibido"
+      - "El ID efectivo del siguiente episodio pasa a ser 'ep-B'"
+      - "El nextEpisodeTime efectivo pasa a ser 10 segundos"
+      - "Cuando se carga, api.load() recibe { id: 'ep-B', type: 'episode', ... }"
+
+  - id: NEPI-AC-008
+    priority: MUST
+    scenario: "El next episode NO aplica a contenido live/audio/DVR"
+    given: "El player reproduciendo un stream en vivo (type='live') o audio (type='audio') o DVR"
+    when: "Se comprueba si el módulo next episode está activo"
+    then:
+      - "La UI de next episode NO aparece bajo ninguna circunstancia"
+      - "El evento nextEpisodeIncoming NO se emite"
+      - "NO ocurre auto-load al terminar el contenido"
+
+  - id: NEPI-AC-009
+    priority: MUST
+    scenario: "sourcechange resetea completamente el estado del módulo"
+    given: "El módulo next episode está activo (UI visible o keepWatching set)"
+    when: "Ocurre un sourcechange (cambio de contenido)"
+    then:
+      - "confirmedNextEpisode se resetea a null"
+      - "keepWatching se resetea a false"
+      - "incomingEventEmitted se resetea a false"
+      - "isLoading se resetea a false"
+      - "La UI desaparece (isVisible=false, setNextEpisodeVisible(false))"
+
+  - id: NEPI-AC-010
+    priority: MUST
+    scenario: "nextEpisodeLoadRequested siempre se emite antes de api.load() con el ID del contenido actual"
+    given: "El player tiene un contenido activo con ID='current-id' y hay un siguiente episodio"
+    when: "Se dispara cualquier carga del siguiente episodio (auto-load, clic, playNext)"
+    then:
+      - "El evento nextEpisodeLoadRequested se emite con payload = 'current-id'"
+      - "La emisión ocurre ANTES de api.load()"
+
+  # ── MUST: Edge cases críticos ─────────────────────────────────────────────
+
+  - id: NEPI-AC-011
+    priority: MUST
+    scenario: "Auto-load al terminar el video (sin countdown) cuando timeRemaining ≤ 5"
+    given: "La UI apareció cuando el video tenía menos de 5 segundos restantes (hasEnoughTimeForAnimation=false)"
+    when: "El video llega al evento ended"
+    then:
+      - "api.load() se llama desde el handler de ended"
+      - "NO hay countdown de 5 segundos (el timer no se inicia)"
+      - "El siguiente episodio se carga correctamente"
+
+  - id: NEPI-AC-012
+    priority: MUST
+    scenario: "La UI de next episode bloquea los controles del player"
+    given: "La UI de next episode está visible"
+    when: "El integrador intenta llamar a play(), pause() o setCurrentTime()"
+    then:
+      - "Las llamadas a play() y pause() retornan false (override activo)"
+      - "El intento de seek (set currentTime) retorna false"
+      - "La UI no desaparece como efecto de estas llamadas"
+
+  # ── SHOULD: Keyboard y TV ─────────────────────────────────────────────────
+
+  - id: NEPI-AC-013
+    priority: SHOULD
+    scenario: "Navegación por teclado: ArrowLeft/Right alterna el foco entre botones"
+    given: "La UI de next episode está visible con foco inicial en 'Watch Next' (focusedButton=0)"
+    when: "El usuario presiona ArrowLeft"
+    then:
+      - "El foco visual se mueve al botón 'Watch Credits' (focusedButton=1)"
+      - "El countdown se cancela (isAnimating=false)"
+      - "El botón 'Watch Credits' recibe focus programático"
+
+  - id: NEPI-AC-014
+    priority: SHOULD
+    scenario: "Tecla Escape cierra la UI de next episode (actúa como 'Watch Credits')"
+    given: "La UI de next episode está visible"
+    when: "El usuario presiona Escape"
+    then:
+      - "La UI desaparece"
+      - "El countdown se cancela"
+      - "Se llama a onCreditsClick callback"
+      - "El player continúa reproduciendo los créditos"
+
+  - id: NEPI-AC-015
+    priority: SHOULD
+    scenario: "Clic en 'Watch Credits' cancela el auto-load y reproduce créditos"
+    given: "La UI de next episode está visible con countdown activo"
+    when: "El usuario hace clic en 'Watch Credits'"
+    then:
+      - "El countdown se cancela (isAnimating=false)"
+      - "La UI desaparece"
+      - "NO se carga el siguiente episodio al terminar el video"
+      - "Se llama al callback onCreditsClick"
+
+  - id: NEPI-AC-016
+    priority: SHOULD
+    scenario: "TV skin: la UI usa dimensiones y estilos aumentados para pantallas grandes"
+    given: "El player detecta TV (isTVAtom=true)"
+    when: "La UI de next episode es visible"
+    then:
+      - "El contenedor tiene la clase next-episode--tv"
+      - "Los botones tienen padding mayor (14px 24px vs 8px 16px)"
+      - "Los iconos SVG tienen tamaño aumentado (18px vs 12px)"
+
+  # ── SHOULD: Headless ──────────────────────────────────────────────────────
+
+  - id: NEPI-AC-017
+    priority: SHOULD
+    scenario: "Headless view: nextEpisodeIncoming se emite correctamente sin UI"
+    given: "El player cargado con view='none' y nextEpisodeId configurado"
+    when: "El tiempo restante cruza el threshold incoming (nextEpisodeTime + 5)"
+    then:
+      - "El evento nextEpisodeIncoming se emite con el ID correcto"
+      - "No hay elementos DOM de next episode renderizados"
+
+  - id: NEPI-AC-018
+    priority: SHOULD
+    scenario: "nextEpisodeConfirmed acepta string como payload además de objeto"
+    given: "El player tiene un episodio activo"
+    when: "El integrador emite nextEpisodeConfirmed('some-id') (string, no objeto)"
+    then:
+      - "El player convierte internamente a { id: 'some-id' }"
+      - "El siguiente episodio efectivo pasa a ser 'some-id'"
+
+  # ── COULD: Visual regression ──────────────────────────────────────────────
+
+  - id: NEPI-AC-019
+    priority: COULD
+    scenario: "El botón 'Watch Next' muestra la animación de progreso (progress bar fill)"
+    given: "La UI de next episode aparece con hasEnoughTimeForAnimation=true"
+    when: "Transcurren los 5 segundos del countdown"
+    then:
+      - "El pseudo-elemento ::after del botón anima de 0% a 100% en 5s"
+      - "La clase next-episode__button--animating está presente durante el countdown"
+      - "La clase se elimina cuando el countdown termina o el usuario interactúa"
+
+  - id: NEPI-AC-020
+    priority: COULD
+    scenario: "Responsive: en móvil < 480px los botones se apilan verticalmente"
+    given: "El viewport es menor a 480px de ancho"
+    when: "La UI de next episode es visible"
+    then:
+      - "El contenedor .next-episode usa flex-direction: column"
+      - "Los botones tienen ancho mínimo reducido (90px)"
+      - "Los botones son accesibles por touch"

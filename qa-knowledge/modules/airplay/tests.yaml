@@ -1,0 +1,114 @@
+version: "1.0"
+module: airplay
+last_updated: "2026-06-08"
+
+existing_tests:
+  - spec_file: "tests/integration/airplay.spec.ts"
+    description: "airPlayAvailabilityChange registrable en el harness sin error (WebKit). Verifica que player.on('airPlayAvailabilityChange') no lanza."
+    ac_coverage: ["APLY-AC-003"]
+
+  - spec_file: "tests/integration/airplay.spec.ts"
+    description: "Los 3 eventos AirPlay (availabilityChange/connected/disconnected) se registran sin error en WebKit."
+    ac_coverage: ["APLY-AC-003"]
+
+  - spec_file: "tests/integration/airplay.spec.ts"
+    description: "WebKit: airPlayAvailabilityChange se emite con payload válido (availability 'available'|'not-available') o no se emite en headless sin receptores (anotado)."
+    ac_coverage: ["APLY-AC-004"]
+
+  - spec_file: "tests/integration/airplay.spec.ts"
+    description: "WebKit: el <video> tiene x-webkit-airplay='allow' si está presente; tolera ausencia (anotado)."
+    ac_coverage: ["APLY-AC-001"]
+
+  - spec_file: "tests/integration/airplay.spec.ts"
+    description: "test.fixme — airPlayConnected al conectar a receptor AirPlay (requiere dispositivo real)."
+    ac_coverage: ["APLY-AC-005"]
+
+  - spec_file: "tests/integration/airplay.spec.ts"
+    description: "test.fixme — airPlayDisconnected al desconectar (requiere dispositivo real)."
+    ac_coverage: ["APLY-AC-006"]
+
+coverage_gaps:
+  - id: GAP-APLY-001
+    priority: MUST
+    ac_ref: APLY-AC-002
+    title: "Degradación elegante en Chromium/Firefox — getters undefined y on() no lanza"
+    suggested_spec: "tests/integration/airplay.spec.ts"
+    notes: >
+      Hoy todos los tests hacen test.skip fuera de WebKit. Falta un test POSITIVO en
+      Chromium/Firefox que verifique que isAirPlaySupported es false, que no se renderiza
+      botón AirPlay, y que player.on('airPlayConnected', cb) NO lanza (no-op). Es el AC
+      MUST de degradación y actualmente no tiene cobertura ejecutable.
+    industry_note: "AirPlay es exclusivo de Safari (Apple Support); romper navegadores no-WebKit por asumir la API es un riesgo real de regresión."
+
+  - id: GAP-APLY-002
+    priority: MUST
+    ac_ref: APLY-AC-007
+    title: "Safari 17.1+: no se usa ManagedMediaSource cuando AirPlay es soportado"
+    suggested_spec: "tests/integration/airplay-mms.spec.ts"
+    notes: >
+      Verificar que con AirPlay soportado, preferManagedMediaSource es false y el botón
+      AirPlay permanece visible (disableRemotePlayback no queda en true). Es la mitigación
+      central del bug #6197 y carece de test de regresión. Requiere WebKit; en headless,
+      al menos comprobar el efecto observable (botón/atom de disponibilidad).
+    industry_note: "hls.js #6197 — regresión de alto impacto; un bump de hls.js podría reintroducir disableRemotePlayback=true."
+
+  - id: GAP-APLY-003
+    priority: SHOULD
+    ac_ref: APLY-AC-008
+    title: "Workaround del segundo <source> presente y limpiado correctamente"
+    suggested_spec: "tests/integration/airplay-mms.spec.ts"
+    notes: >
+      Con window.ManagedMediaSource presente y un hlsSrc, verificar que existe un segundo
+      <source> type='application/x-mpegurl' y que se elimina al destruir/cambiar fuente.
+      Comprobar que no se acumulan múltiples <source> al cambiar de src.
+    industry_note: "Guía oficial WebKit (blog 15036) — el segundo <source> es el mecanismo de handoff para MSE+AirPlay."
+
+  - id: GAP-APLY-004
+    priority: SHOULD
+    ac_ref: APLY-AC-010
+    title: "view.airplay=false desactiva el módulo"
+    suggested_spec: "tests/integration/airplay.spec.ts"
+    notes: >
+      Con context view.airplay=false en WebKit, verificar que no se adjunta el manager,
+      no se muestra botón/indicador y player.airplayAvailable permanece false. Sin
+      cobertura actual del path de configuración.
+
+  - id: GAP-APLY-005
+    priority: SHOULD
+    ac_ref: APLY-AC-009
+    title: "detach/destroy restaura disableRemotePlayback y limpia listeners"
+    suggested_spec: "tests/integration/airplay.spec.ts"
+    notes: >
+      Verificar que tras destruir el player en WebKit, el valor de disableRemotePlayback
+      vuelve al previo y no quedan listeners colgados (sin fugas). Testeable observando el
+      <video> antes/después.
+
+  - id: GAP-APLY-006
+    priority: SHOULD
+    ac_ref: APLY-AC-011
+    title: "ext_pb refleja el estado de conexión AirPlay en el beacon de analytics"
+    suggested_spec: "tests/integration/airplay-analytics.spec.ts"
+    notes: >
+      Cruzar con el módulo analytics-streammetrics. Mockeando manager.isConnected,
+      verificar que el payload de playback envía ext_pb=1 al conectar y ext_pb=0 al
+      desconectar.
+
+  - id: GAP-APLY-007
+    priority: COULD
+    ac_ref: APLY-AC-013
+    title: "showPicker fuerza unmute (volume=1, muted=false)"
+    suggested_spec: "tests/integration/airplay.spec.ts"
+    notes: >
+      Con contenido muteado en WebKit y disponibilidad simulada, verificar que tras
+      invocar el picker el <video> queda muted=false / volume=1. Requiere stub de
+      isAvailable=true ya que showPicker tiene guard por disponibilidad.
+
+  - id: GAP-APLY-008
+    priority: COULD
+    ac_ref: APLY-AC-001
+    title: "Multi-instancia: dos players no cruzan estado AirPlay"
+    suggested_spec: "tests/integration/airplay-multiinstance.spec.ts"
+    notes: >
+      Documentado como limitación (APLY-DEF-004). Test de regresión que monte dos players
+      en WebKit y verifique que el estado airplay de uno no contamina al otro. Puede
+      empezar como test.fixme si el comportamiento aún no está definido.

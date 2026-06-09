@@ -1,0 +1,165 @@
+version: "1.0"
+module: ads-manager
+last_updated: "2026-06-08"
+
+user_stories:
+  - id: US-ADMGR-001
+    persona: Viewer
+    narrative:
+      as: "viewer de un video VOD"
+      want: "que el pre-roll se reproduzca rápidamente y el contenido inicie sin delays adicionales después"
+      so_that: "puedo ver el contenido que vine a ver con la menor fricción posible"
+    business_value: HIGH
+    risk_area:
+      - "adsContentPauseRequested timing"
+      - "VAST load latency"
+      - "adsContentResumeRequested → player.play() delay"
+    related_features:
+      - "playback-core"
+      - "controls-api"
+    acceptance:
+      - "ADMGR-AC-002"
+      - "ADMGR-AC-005"
+    notes: "La latencia entre el fin del ad y el inicio del contenido es percibida como bug por el viewer. La transición debe ser inmediata. El preload del creativo (AdsTracker#onCanPlay) ayuda a que el ad esté listo antes de reproducirse."
+
+  - id: US-ADMGR-002
+    persona: Viewer
+    narrative:
+      as: "viewer en mobile con browser que bloquea autoplay"
+      want: "que el player no quede bloqueado o en pantalla negra si los ads no pueden reproducirse automáticamente"
+      so_that: "puedo interactuar con el player y ver el contenido cuando hago tap"
+    business_value: HIGH
+    risk_area:
+      - "autoplay blocked (NotAllowedError)"
+      - "graceful degradation"
+    related_features:
+      - "playback-core"
+    acceptance:
+      - "ADMGR-AC-003"
+      - "ADMGR-AC-004"
+    notes: "En iOS Safari y Chrome mobile con políticas de autoplay estrictas, el ad puede no poder reproducirse en el primer intento. El player debe quedar en estado recoverable."
+
+  - id: US-ADMGR-003
+    persona: Viewer
+    narrative:
+      as: "viewer viendo un contenido largo con mid-rolls"
+      want: "que los ad breaks aparezcan exactamente donde el content owner los programó, y que el contenido reanude desde el mismo punto donde se pausó"
+      so_that: "no pierdo el hilo del contenido que estaba viendo"
+    business_value: HIGH
+    risk_area:
+      - "VMAP midroll timing"
+      - "resume position accuracy"
+      - "seek race condition with ad break"
+    related_features:
+      - "playback-core"
+    acceptance:
+      - "ADMGR-AC-005"
+      - "ADMGR-AC-010"
+    notes: "El resume desde el punto correcto es crítico para contenidos episódicos o deportivos en vivo diferido. El player guarda #resumeTime en ContentPauseRequested y lo usa en #onContentResumeRequested vía URL hash `t=`."
+
+  - id: US-ADMGR-004
+    persona: Viewer
+    narrative:
+      as: "viewer viendo un ad skippable"
+      want: "poder saltar el ad después de los segundos indicados"
+      so_that: "tengo control sobre mi experiencia de visualización"
+    business_value: MEDIUM
+    risk_area:
+      - "skipTimeOffset detection"
+      - "adsSkippableStateChanged timing"
+      - "handler.skippable known limitation"
+    related_features:
+      - "controls-api"
+    acceptance:
+      - "ADMGR-AC-006"
+    notes: "El botón de skip en la UI debe activarse exactamente cuando adsSkippableStateChanged=true se emite. No antes (ADMGR-DEF-001 puede causar issues). player.ad.info.skippable es la fuente correcta del estado."
+
+  - id: US-ADMGR-005
+    persona: Integrator
+    narrative:
+      as: "integrador del player en una plataforma de streaming OTT"
+      want: "que un error del sistema de ads nunca bloquee la reproducción del contenido ni cause un crash del player"
+      so_that: "la experiencia del viewer se degrada gracefully (sin ads) en vez de romper completamente"
+    business_value: HIGH
+    risk_area:
+      - "graceful degradation"
+      - "ErrorBoundary failsafe"
+      - "ADMGR-RISK-001 (contenido bloqueado)"
+    related_features:
+      - "playback-core"
+      - "events"
+    acceptance:
+      - "ADMGR-AC-003"
+      - "ADMGR-AC-007"
+      - "ADMGR-AC-009"
+    notes: "El integrador no debe necesitar implementar lógica de fallback en su código. El player garantiza la degradación graceful internamente via AdsHandler.#onAdError y el ErrorBoundary en producción."
+
+  - id: US-ADMGR-006
+    persona: Integrator
+    narrative:
+      as: "integrador del player que quiere añadir targeting personalizado a las solicitudes de ads"
+      want: "poder pasar parámetros custom que se añadan automáticamente al ad tag URL"
+      so_that: "el ad server puede devolver ads más relevantes para el contexto de mi plataforma"
+    business_value: MEDIUM
+    risk_area:
+      - "macro resolution accuracy"
+      - "URL encoding of custom params"
+      - "mdstrm.com domain detection"
+    related_features:
+      - "platform-config"
+    acceptance:
+      - "ADMGR-AC-015"
+    notes: "La config `custom: { key: 'value' }` es la vía principal. Para dominios mdstrm.com, los params se añaden como custom.key automáticamente. Para otros dominios, deben estar como macros $custom.key$ en el ad tag URL. El integrador debe entender esta distinción."
+
+  - id: US-ADMGR-007
+    persona: Operator
+    narrative:
+      as: "operador de una plataforma que quiere monitorear la salud del sistema de ads en producción"
+      want: "recibir eventos de error con códigos VAST estándar cuando algo falla en el ciclo de ads"
+      so_that: "puedo identificar si el problema es el servidor de ads, el creativo, o el player"
+    business_value: HIGH
+    risk_area:
+      - "error code accuracy"
+      - "adsError payload"
+      - "VAST error code coverage"
+    related_features:
+      - "events"
+      - "youbora"
+    acceptance:
+      - "ADMGR-AC-003"
+      - "ADMGR-AC-009"
+    notes: "Los códigos de error VAST estándar (100-900) y custom (1005-1205) están definidos en error/codes.js. El payload de adsError incluye { code, message }. Los sistemas de analytics (Youbora) consumen estos eventos para reportar ad error rates."
+
+  - id: US-ADMGR-008
+    persona: Operator
+    narrative:
+      as: "operador de una plataforma con contenido de audio (radio, podcast) con video ads"
+      want: "que los video ads se reproduzcan correctamente en el player de audio sin requerir un video element en el contenido"
+      so_that: "puedo monetizar el contenido de audio con video ads estándar"
+    business_value: MEDIUM
+    risk_area:
+      - "videoFallback container"
+      - "audio player type detection"
+      - "ad dimensions in audio context"
+    related_features:
+      - "playback-core"
+    acceptance:
+      - "ADMGR-AC-014"
+    notes: "El componente AdsManager renderiza un <video> fallback solo cuando type='audio'. El AdsHandler usa videoFallback como referencia de dimensiones. El fullscreen es siempre false en este contexto (audio player no tiene fullscreen)."
+
+  - id: US-ADMGR-009
+    persona: Operator
+    narrative:
+      as: "operador que quiere que la medición de viewability (OMID) sea reportada a los ad networks"
+      want: "que el player dispare correctamente los beacons de viewable impression según el estándar MRC"
+      so_that: "los ad networks paguen por impresiones viewables certificadas (CPM viewable)"
+    business_value: HIGH
+    risk_area:
+      - "IntersectionObserver availability"
+      - "2-second viewable threshold"
+      - "OMID SDK version"
+    related_features:
+      - "events"
+    acceptance:
+      - "ADMGR-AC-013"
+    notes: "El viewable impression usa IntersectionObserver (nativo) para detectar visibilidad. OMID SDK se inicializa para ad verification cuando el VAST incluye adVerifications. Si IntersectionObserver no está disponible, se emite viewundetermined como fallback responsable."

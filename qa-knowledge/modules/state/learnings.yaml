@@ -1,0 +1,111 @@
+version: "1.0"
+module: state
+last_updated: "2026-06-08"
+
+learnings:
+  - id: STATE-LEARN-001
+    title: "playerStatus NO es el readyState HTML5 — es un enum custom del player"
+    discovery: "código fuente: src/player/base.js líneas 249-285 (_onPlaying, _onPause, _onBuffering, _onCanPlay)"
+    detail: >
+      player.status devuelve valores como 'playing', 'pause', 'buffering', 'waiting', 'error'.
+      Estos NO corresponden a HTMLMediaElement.readyState (HAVE_NOTHING, HAVE_METADATA, etc.)
+      ni a HTMLMediaElement.networkState. Son eventos custom del player mapeados a strings
+      por BasePlayer._setStatus(). 'waiting' es el estado inicial al cargar, equivalente
+      aproximado a HAVE_NOTHING. 'pause' (no 'paused') es el string exacto para estado pausado.
+    impact_on_tests: "Usar 'pause' no 'paused' al comparar player.status. No mezclar con readyState HTML5."
+
+  - id: STATE-LEARN-002
+    title: "player.status pasa por Controls.get() que verifica player.error primero"
+    discovery: "código fuente: src/controls/index.js líneas 204-210 (_exposeMethods, getter de status)"
+    detail: >
+      El getter de player.status en Controls hace: si `get('api').error` existe, devuelve
+      Events._error ('error') sin consultar el estado interno. Esto significa que si
+      api.error está seteado, player.status === 'error' independientemente del playerStatus
+      del contexto. Es un check de seguridad para garantizar que el error siempre sea visible.
+    impact_on_tests: "Para testear el estado 'error': verificar player.status === 'error' Y player.error !== null. No confiar solo en player.status para determinar el tipo de error."
+
+  - id: STATE-LEARN-003
+    title: "currentTime en DVR devuelve offset relativo, no tiempo absoluto del stream"
+    discovery: "código fuente: src/view/video/atoms/currentTime.js líneas 22-34"
+    detail: >
+      Para streams type='dvr', currentTimeAtom calcula: offset = rawCurrentTime - dvrWindowStart.
+      El resultado está clampado entre 0 y duration. Si dvrWindowStart no está inicializado
+      (null/undefined) Y el raw time > 172800 (2 días), el átomo NO actualiza currentTimeBase
+      — espera a que dvrWindowStart esté disponible. Esto es intencional para evitar que la UI
+      muestre un timestamp absurdo de "2 días" antes del seek DVR.
+    impact_on_tests: "En tests DVR, no asumir que currentTime está disponible inmediatamente. Await del primer seek antes de verificar el valor. El valor esperado es el offset desde el inicio del DVR, no el timestamp Unix del stream."
+
+  - id: STATE-LEARN-004
+    title: "volume tiene validación de rango en el setter del átomo — valores fuera de [0,1] son ignorados silenciosamente"
+    discovery: "código fuente: src/view/video/atoms/volume.js líneas 42-45"
+    detail: >
+      El setter de volumeAtom valida: if (isNaN(_volume) || _volume < 0 || _volume > 1) return.
+      Asignar player.volume = 1.5 o player.volume = -0.1 NO lanza excepción, simplemente no
+      hace nada — el volumen anterior se preserva. Esto es diferente del comportamiento del
+      HTMLMediaElement nativo que clampea automáticamente en [0,1].
+    impact_on_tests: "Tests de property-based deben verificar que valores fuera de rango no cambian el volumen actual (preservación del estado anterior), no que se clampeen al límite."
+
+  - id: STATE-LEARN-005
+    title: "player.loop es config-only en runtime — el setter no funciona correctamente"
+    discovery: "código fuente: src/player/base.js línea 460 (loop en readOnlyProps) + tests/contract/player-api-property.spec.ts líneas 53-71 (test.fixme)"
+    detail: >
+      loop está listado en readOnlyProps en BasePlayer._exposeMethods() — solo getter, no setter.
+      El test player-api-property.spec.ts tiene un test.fixme que documenta: "setLoop(true) no
+      se refleja en getLoop(). El player.loop parece ser getter-only (no runtime-settable) en v1.0.75."
+      loop solo se puede configurar en la config inicial del player, no durante runtime.
+    impact_on_tests: "No escribir tests que esperen player.loop = true en runtime. Loop es config-time only. Tests de property-based para loop deben marcar como known limitation."
+
+  - id: STATE-LEARN-006
+    title: "Dos capas de estado: React Context (config) + Jotai Store (playback) con sincronización unidireccional"
+    discovery: "código fuente: src/view/video/atoms/provider.js — MapContextToAtomHandler"
+    detail: >
+      La sincronización fluye en una dirección: React Context → Jotai atoms (via MapContextToAtomHandler
+      que llama setContext(context) en useEffect). Los átomos Jotai NO escriben de vuelta al
+      Context directamente — cuando un átomo necesita actualizar estado (e.g., volumeAtom setter),
+      lo hace via api.volume = value, que emite volumechange, que el atomEffect capta y actualiza
+      el átomo. El Context solo se actualiza via setData() llamado explícitamente.
+    impact_on_tests: "No esperar que cambiar un átomo Jotai internamente se refleje en el Context. La cadena siempre es: API call → DOM event → atomEffect → atom value."
+
+  - id: STATE-LEARN-007
+    title: "isPlayingAtom tiene debounce de 100ms específicamente para absorber el ciclo play+pause de Google IMA"
+    discovery: "código fuente: src/view/video/atoms/playerStatus.js líneas 13-16 — comentario explícito"
+    detail: >
+      El comentario en el código dice: "Player status needs to be deferred because when ads
+      initialize they play and pause again in 50ms". atomWithDebounce de 100ms evita que
+      la UI parpadee entre 'playing' y 'pause' durante la inicialización del IMA AdsManager.
+      Esto significa que isPlayingAtom puede tardar hasta 100ms en reflejar el estado real.
+    impact_on_tests: "Siempre usar expect.poll() con timeout ≥ 500ms para assertions sobre player.paused o player.isPlayingAd. Los primeros 100ms post-play() el estado puede ser incorrecto."
+
+  - id: STATE-LEARN-008
+    title: "Jotai fue elegido sobre Redux/Zustand por granularidad de re-renders en componentes de media"
+    discovery: "investigación web: jotai.org docs/basics/comparison + makersden.io/blog/react-state-management-in-2025"
+    detail: >
+      La arquitectura atómica de Jotai permite que un componente que solo muestra el volumen
+      no re-renderice cuando currentTime cambia (~4 veces por segundo). Con Redux o Context
+      global, cualquier cambio de estado dispararía re-renders en todos los consumidores.
+      Para un player de video donde currentTime cambia cada 250ms, esto es crítico para la
+      performance. El tradeoff es mayor complejidad en la sincronización y el testing.
+    impact_on_tests: "La granularidad de Jotai es una ventaja para performance pero complica el testing: no hay un único store observable. Los tests deben usar la API pública, no los átomos internos."
+
+  - id: STATE-LEARN-009
+    title: "atomEffect (jotai-effect) gestiona el ciclo de vida de event listeners — cleanup es crítico"
+    discovery: "código fuente: src/view/video/atoms/volume.js, currentTime.js, seeking.js — todos con cleanup de internalEmitter.off()"
+    detail: >
+      Todos los atomEffect del módulo state retornan una función de cleanup que hace off() de
+      los event listeners y resetea el átomo a null. Este cleanup se ejecuta cuando:
+      1. El playerReadyAtom pasa a false (fuente se cambia/destroy)
+      2. El componente VideoProvider se desmonta
+      Sin este cleanup, los listeners se acumulan y los átomos retienen valores de sesiones
+      anteriores — un memory leak clásico en single-page applications.
+    impact_on_tests: "En tests de carga de nuevo contenido (player.load()), verificar que los átomos de estado se resetean a null antes de recibir los nuevos valores. Timeout de poll más largo puede ser necesario."
+
+  - id: STATE-LEARN-010
+    title: "ExoPlayer / AndroidX Media3 como referencia de máquina de estados para players modernos"
+    discovery: "investigación web: developer.android.com/media/media3/exoplayer/listening-to-player-events + github.com/google/ExoPlayer/issues/7427"
+    detail: >
+      La industria de players móviles y web ha convergido en modelos de estado similares:
+      IDLE → BUFFERING → READY → ENDED. El Lightning Player usa 'waiting'/'playing'/'buffering'/'pause'/'error'
+      que es el equivalente web. El problema de "BUFFERING y READY repeated" (ExoPlayer #7351)
+      es análogo al flicker de playerStatus que motivó el debounce de 100ms en este player.
+      La solución del debounce es una práctica establecida en la industria.
+    impact_on_tests: "Los edge cases de buffering (especialmente en HLS con múltiples quality levels) son conocidos como fuente de transiciones de estado inesperadas. Tests de buffering deben tener tolerancia alta."

@@ -1,0 +1,148 @@
+version: "1.0"
+module: error-handling
+last_updated: "2026-06-08"
+
+risks:
+  - id: ERR-RISK-001
+    severity: high
+    title: "Error silencioso: no-fatal emite evento pero no actualiza el getter 'error'"
+    description: >
+      ErrorHandler (src/error/index.js:28) solo escribe el error al contexto cuando err.fatal es true.
+      Un integrador que solo lee la propiedad 'error' (en vez de suscribirse al evento) NUNCA verá los
+      errores no-fatales (network transitorio, level load, buffer stalled). Peor: KEY_SYSTEM_NO_ACCESS
+      entra a buffering SIN emitir error alguno — un dispositivo sin acceso DRM puede quedar en buffering
+      indefinido sin ninguna señal observable.
+    affected_files:
+      - "src/error/index.js"
+      - "src/player/handler/hls/handler.js"
+    trigger: "Error no-fatal o KEY_SYSTEM_NO_ACCESS; integrador que solo lee getter 'error'."
+    mitigation: >
+      El evento 'error' SÍ se emite para todos los casos no-fatales (menos NO_ACCESS). QA debe testear
+      vía suscripción al evento, no vía getter. NO_ACCESS no tiene mitigación actual.
+    industry_note: >
+      SVTA/Castlabs señalan que errores silenciosos sin código user-facing son la causa #1 de tiempos
+      de resolución largos en OTT. El estándar SVTA recomienda un código observable para todo fallo.
+    test_priority: MUST
+
+  - id: ERR-RISK-002
+    severity: high
+    title: "Loop loading: startLoad() en network error sin guard de retries visible"
+    description: >
+      En hls/handler.js:408 los network errors fatales que NO son de manifest llaman hls.startLoad() y
+      emiten un NetworkError no-fatal. Si la condición de red persiste, esto puede entrar en un ciclo de
+      startLoad → error → startLoad. El player delega el límite al budget interno de hls.js, pero no hay
+      un guard explícito a nivel player que escale a fatal tras X reintentos del propio handler.
+    affected_files:
+      - "src/player/handler/hls/handler.js"
+    trigger: "Network error fatal no-manifest recurrente (CDN intermitente, segmento que siempre 5xx)."
+    mitigation: >
+      hls.js tiene su propio retry budget con backoff exponencial que eventualmente emite fatal; los
+      tests de '503 persistente' y 'segmento abort total' confirman que el player termina en error.
+    industry_note: >
+      hls.js docs advierten explícitamente que reintentar startLoad() inmediatamente puede causar loop
+      loading; recomiendan ajustar loading policies o destruir/recrear la instancia tras fatales repetidos.
+    test_priority: MUST
+
+  - id: ERR-RISK-003
+    severity: medium
+    title: "Errores native no normalizados a la taxonomía PlayerError"
+    description: >
+      native.js solo mapea HTMLMediaElement.error.code === 4 a MediaError. Los codes 1 (ABORTED),
+      2 (NETWORK) y 3 (DECODE) se emiten como event.nativeEvent crudo, sin type/fatal/data. Los
+      suscriptores reciben objetos de error heterogéneos: a veces PlayerError, a veces MediaError nativo.
+    affected_files:
+      - "src/player/handler/native.js"
+    trigger: "Reproducción native (sin MSE, ej. iOS Safari HLS nativo) con error code 1/2/3."
+    mitigation: "Ninguna; los códigos 1/2/3 pasan sin normalizar."
+    industry_note: >
+      MDN define los 4 códigos MediaError. La práctica OTT es normalizar TODOS a una taxonomía única;
+      no hacerlo complica el reporting de QoE y la lógica de retry del integrador.
+    test_priority: SHOULD
+
+  - id: ERR-RISK-004
+    severity: high
+    title: "Error DRM sin mensaje claro / KEY_SYSTEM genérico"
+    description: >
+      Los errores KEY_SYSTEM distintos de NO_ACCESS se emiten como PlayerError fatal genérico
+      (type 'default') con message = data.details de hls.js, que suele ser críptico (ej.
+      'keySystemLicenseRequestFailed'). El plugin DRM solo distingue 'DRM_NOT_SUPPORTED'. No hay
+      diferenciación entre license server 403, certificado FairPlay inválido, o output protection.
+    affected_files:
+      - "src/player/handler/hls/handler.js"
+      - "src/player/drm/plugin.jsx"
+    trigger: "Fallo de licencia DRM, certificado FairPlay inválido, restricción HDCP."
+    mitigation: >
+      En modo debug, hls/handler.js:393 detecta el caso FairPlay 'keyId is null' y emite un console.warn
+      explicativo. Fuera de debug no hay diferenciación.
+    industry_note: >
+      Castlabs/SVTA documentan que los errores DRM son los más opacos del ecosistema; la falta de
+      mensaje accionable es un problema transversal de Widevine/FairPlay/PlayReady.
+    test_priority: SHOULD
+
+  - id: ERR-RISK-005
+    severity: high
+    title: "Errores fatales pre-ready se pierden para analytics (YBRA-DEF-001)"
+    description: >
+      loadConfig lanza PlayerInitError fatal de forma síncrona; un 403 de config puede ocurrir antes de
+      que el listener de ready esté registrado. El adapter NPAW (youbora) solo existe tras ready/firstPlay,
+      por lo que el beacon /error de startup NO se envía. También provoca un backfill race en QA: el
+      evento 'error' se dispara antes de que el harness registre su listener.
+    affected_files:
+      - "src/platform/loadConfig.js"
+      - "src/analytics/youbora/tracker.js"
+    trigger: "Config 403/5xx, DRM no soportado o formato no disponible, antes del evento ready."
+    mitigation: >
+      QA usa fallback 3-way en error-recovery.spec.ts (initError | getErrors | status | eventData) para
+      tolerar el backfill race. Fix de analytics pendiente en el player (ver YBRA-DEF-001).
+    industry_note: >
+      NPAW/Conviva consideran los startup errors (EBVS — Exits Before Video Start) la métrica QoE más
+      correlacionada con churn; perderla degrada gravemente el reporting.
+    test_priority: MUST
+
+  - id: ERR-RISK-006
+    severity: medium
+    title: "Confusión error de ad vs error de contenido"
+    description: >
+      AdError y PlayerError son jerarquías separadas y un AdError no debe marcar el contenido como fatal.
+      El riesgo es de regresión: un cambio en ads/manager/render/handler.js que emita Events._error con un
+      objeto fatal en vez de un AdError contaminaría el estado del contenido y rompería la reproducción
+      ante un simple fallo de ad.
+    affected_files:
+      - "src/ads/manager/render/handler.js"
+      - "src/ads/manager/error/error.js"
+    trigger: "VAST vacío, MediaFile no encontrado, VPAID error, timeout de ad."
+    mitigation: "Diseño actual mantiene jerarquías separadas; AdError no es PlayerError."
+    industry_note: >
+      VAST 4.x distingue errores fatales y no-fatales de ad; la regla universal OTT es que el contenido
+      principal nunca debe fallar por un ad (graceful ad failure → resume content).
+    test_priority: SHOULD
+
+  - id: ERR-RISK-007
+    severity: medium
+    title: "Clasificación red/media frágil en DASH"
+    description: >
+      dash/handler.js:176 decide NetworkError vs MediaError por la presencia de error.event.request o
+      error.event.url. Cambios de estructura de error entre versiones mayores de dash.js pueden invalidar
+      esta heurística y misclasificar errores, afectando la lógica de retry y el reporting.
+    affected_files:
+      - "src/player/handler/dash/handler.js"
+    trigger: "Upgrade de dash.js; error con estructura inesperada."
+    mitigation: "Fallback message 'DASH error' y fatal default true cuando faltan campos."
+    industry_note: "dash.js ha cambiado su modelo de errores entre v3 y v4; heurísticas por campo son frágiles."
+    test_priority: SHOULD
+
+  - id: ERR-RISK-008
+    severity: low
+    title: "Recovery de media reanuda desde posición potencialmente desfasada"
+    description: >
+      hls.recoverMediaError() puede requerir swapAudioCodec() si falla repetidamente; el player no
+      encadena swapAudioCodec tras un segundo MEDIA_ERROR (está comentado en handler.js:414). Un media
+      error persistente por codec podría no recuperarse aunque swapAudioCodec lo resolvería.
+    affected_files:
+      - "src/player/handler/hls/handler.js"
+    trigger: "Media error recurrente por incompatibilidad de codec de audio."
+    mitigation: "Tras agotar recovery, hls.js escala a fatal y el player emite error."
+    industry_note: >
+      hls.js recomienda el patrón recoverMediaError() → si vuelve a fallar rápido → swapAudioCodec().
+      El player implementa solo el primer paso.
+    test_priority: COULD

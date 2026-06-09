@@ -1,0 +1,90 @@
+version: "1.0"
+module: quality-selector
+last_updated: "2026-06-08"
+
+defects:
+  - id: QUAL-DEF-001
+    status: known_limitation
+    severity: low
+    title: "ABR requiere CDP network throttling para testearse de forma determinista"
+    description: >
+      No es posible validar la conmutación de ABR (degradación/recovery) sin simular condiciones
+      de red. Sin CDP throttling los tests dependen del CDN y la red de CI, resultando no
+      deterministas. Además CDP solo está disponible en Chromium, por lo que los tests de ABR no
+      corren en WebKit/Firefox.
+    workaround: >
+      Usar helpers/qoe-metrics.ts (createCDPSession + setNetworkThrottle) y streams locales
+      (localhost:9001) con 2+ niveles. Restringir los tests de ABR al proyecto 'performance'
+      (Chromium only). Marcar skip en navegadores sin CDP.
+    source_comment: "tests/integration/hls-abr.spec.ts:11 ('Solo corre en Chromium ... CDP requiere Chromium')"
+    industry_known: true
+    regression_risk: low
+
+  - id: QUAL-DEF-002
+    status: known_limitation
+    severity: medium
+    title: "Comportamiento inconsistente ante índice de nivel inválido: HLS lanza, DASH no-op"
+    description: >
+      player.level = N con N >= levels.length (no -1) produce Error('Invalid level') en HLS pero
+      es ignorado silenciosamente en DASH. La API unificada no normaliza este caso, lo que obliga
+      al integrador a manejar dos comportamientos distintos según el protocolo subyacente (que no
+      siempre conoce).
+    workaround: "Validar el índice contra player.levels.length antes de asignar player.level."
+    source_comment: "src/player/handler/hls/handler.js:575 (throw 'Invalid level') vs dash/handler.js:419 (rango validado sin throw)"
+    industry_known: false
+    regression_risk: medium
+
+  - id: QUAL-DEF-003
+    status: known_workaround
+    severity: low
+    title: "Switch manual→auto no emite cambio de nivel natural; se emite levelchange sintético"
+    description: >
+      Al volver de nivel fijo a ABR (level=-1), el nivel real puede no cambiar de inmediato, por
+      lo que hls.js no dispara LEVEL_SWITCHING/SWITCHED de forma natural. El player emite un
+      levelchange 'fake' para informar a la UI del cambio manual→auto.
+    workaround: >
+      El código emite internalEmitter.emit(Events._levelchange, nextLevel) sintético cuando
+      wasAutoLevelEnabled===false && lvl===-1. La UI se sincroniza con ese evento.
+    source_comment: "src/player/handler/hls/handler.js:580-589 ('We fake a levelchange event when going from manual to auto')"
+    industry_known: false
+    regression_risk: low
+
+  - id: QUAL-DEF-004
+    status: known_limitation
+    severity: low
+    title: "DASH aplica el switch manual de forma asíncrona (setTimeout 0)"
+    description: >
+      En DASH, setRepresentationForTypeByIndex y la desactivación de autoSwitchBitrate se ejecutan
+      dentro de un setTimeout(0). El cambio efectivo de representación no es síncrono respecto a la
+      asignación player.level = N. Un test que lee level inmediatamente tras el set puede ver el
+      valor anterior.
+    workaround: "Esperar el evento levelchanged (QUALITY_CHANGE_RENDERED) antes de assertear level."
+    source_comment: "src/player/handler/dash/handler.js:425-432 (setTimeout(() => { ... setRepresentationForTypeByIndex }, 0))"
+    industry_known: true
+    regression_risk: low
+
+  - id: QUAL-DEF-005
+    status: known_limitation
+    severity: low
+    title: "bandwidth y bitrate retornan null antes del primer segmento (y bitrate null en DASH con level=-1 fuera de rango)"
+    description: >
+      player.bandwidth es null hasta que el estimador converge (HLS bandwidthEstimate / DASH
+      getAverageThroughput). player.bitrate es null en DASH cuando level === -1 o el índice está
+      fuera del rango de levels. Consumidores que asumen siempre un número pueden romperse.
+    workaround: "Tratar null como 'desconocido'. Esperar varios segundos de reproducción antes de leer telemetría."
+    source_comment: "src/player/handler/hls/handler.js:531-537 / dash/handler.js:311-325 (returns null)"
+    industry_known: true
+    regression_risk: low
+
+  - id: QUAL-DEF-006
+    status: known_limitation
+    severity: low
+    title: "Preferencia de calidad del usuario no persiste entre sesiones/sources"
+    description: >
+      El player no recuerda la última calidad elegida; cada source nuevo o reload reinicia en ABR
+      auto (HLS startLevel=-1, DASH autoSwitchBitrate=true). Varios competidores OTT persisten la
+      preferencia en localStorage.
+    workaround: "Ninguno en el player. El integrador puede re-aplicar player.level tras 'ready' si desea persistencia."
+    source_comment: "src/view/video/atoms/level.js:10 (atom inicializa con api.level ?? -1, sin storage)"
+    industry_known: true
+    regression_risk: low

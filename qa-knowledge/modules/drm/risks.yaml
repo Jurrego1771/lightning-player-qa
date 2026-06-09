@@ -1,0 +1,105 @@
+version: "1.0"
+module: drm
+last_updated: "2026-06-08"
+
+risks:
+  - id: DRM-RISK-001
+    severity: high
+    title: "License server caído bloquea todo el contenido protegido"
+    description: "No hay mecanismo de fallback cuando el license server retorna error HTTP. El player emite DRM_LICENSE_ERROR y detiene la reproducción. Afecta a TODOS los usuarios del contenido protegido simultáneamente."
+    affected_files:
+      - "src/player/drm/plugin.jsx"
+      - "src/player/drm/getDashProtectionData.js"
+    trigger: "License server retorna 4xx/5xx o no responde (timeout de red)"
+    mitigation: "El player emite evento 'error' con fatal=true — el operador puede reaccionar via on('error'). No hay retry automático en el player."
+    industry_note: "Práctica de la industria: license servers deben tener SLA 99.9%+ y redundancia geográfica. Muchos sistemas DRM empresariales (Axinom, BuyDRM) tienen HA built-in. El player no debe reintentar licenses por sí mismo — el CDM del browser lo hace."
+    test_priority: MUST
+
+  - id: DRM-RISK-002
+    severity: high
+    title: "Widevine L1 no disponible en browsers de escritorio — solo L3"
+    description: "En todos los browsers de escritorio (Chrome, Edge, Firefox), el CDM Widevine solo provee Security Level 3 (software decryption). L1 (hardware TEE) está disponible únicamente en Android, Smart TVs, y algunos Chromebooks con chip certificado. Esto limita la resolución máxima de contenido UHD/4K a los requisitos de L3."
+    affected_files:
+      - "src/helper/getDRMSupport.js"
+    trigger: "Contenido con requisito de L1 (ej: 4K UHD con Widevine L1 obligatorio)"
+    mitigation: "El player usa L3 por defecto (robustness: 'SW_SECURE_CRYPTO'). El license server puede negar la licencia si el contenido requiere L1."
+    industry_note: "Estándar de la industria: streaming 4K en browser siempre es L3 (incluyendo Netflix, Disney+, Prime Video en Chrome). L1 en browser está bloqueado por Google intencionalmente para proteger la cadena de custodia de contenido premium."
+    test_priority: SHOULD
+
+  - id: DRM-RISK-003
+    severity: high
+    title: "FairPlay solo funciona en Safari — no testeable en CI headless"
+    description: "FairPlay Streaming (com.apple.fps.1_0) es exclusivo del CDM de Apple, disponible únicamente en Safari (macOS/iOS). Playwright WebKit headless no incluye el CDM FairPlay. Esto significa que los tests de FairPlay no pueden ejecutarse en CI estándar."
+    affected_files:
+      - "src/player/drm/plugin.jsx"
+      - "src/helper/getDRMSupport.js"
+    trigger: "Cualquier test que verifique reproducción real de FairPlay en entorno headless"
+    mitigation: "Tests de FairPlay marcados como fixme o con skip condicional en browsers no-Safari. Se requiere Safari real (macOS físico o BrowserStack/Sauce Labs con Safari)."
+    industry_note: "Apple no permite FairPlay fuera de su ecosistema de hardware certificado. Este es un constraint arquitectural del ecosistema Apple, no un bug del player."
+    test_priority: MUST
+
+  - id: DRM-RISK-004
+    severity: high
+    title: "Race condition DRMPlugin + Google DAI: deferred manifest puede timeout"
+    description: "Cuando deferSrcForGoogleDAI=true, DRMPlugin espera hasta 5000ms (SESSION_WAIT_MS) que Google DAI provea el manifest URL. Si DAI tarda más de 5s, giveUpSession=true y DRMPlugin procede con candidateUrls sin el manifest de DAI — potencialmente iniciando la reproducción sin ads."
+    affected_files:
+      - "src/player/drm/plugin.jsx"
+    trigger: "DAI SDK lento, red lenta, error en la respuesta de DAI"
+    mitigation: "Timeout hardcoded de 5000ms con giveUpSession. El player continúa (no crashea), pero puede reproducir sin ads o con la URL incorrecta."
+    industry_note: "DAI DASH + DRM es el escenario más complejo en streaming moderno. Requiere sincronización entre 3 sistemas: el CDM, el ad server, y el license server. Netflix, YouTube usan arquitecturas custom para este caso."
+    test_priority: MUST
+
+  - id: DRM-RISK-005
+    severity: medium
+    title: "Token DRM en query param vs header: inconsistencia según configuración"
+    description: "getDashProtectionData.js soporta dos formas de auth: httpRequestHeaders (directo) o token/drmToken (converted a X-AxDRM-Message header). Si el operador configura ambos, httpRequestHeaders tiene precedencia silenciosamente. Si el token está en un formato distinto a string, se ignora."
+    affected_files:
+      - "src/player/drm/getDashProtectionData.js"
+    trigger: "Operador configura drm.widevine con httpRequestHeaders Y token simultáneamente"
+    mitigation: "httpRequestHeaders tiene precedencia — documentado en el código pero no en la API pública. El operador debe saber qué campo usar."
+    industry_note: "Ninguna. Este es un patrón de config del player. El estándar MPEG-DASH no especifica cómo transportar tokens de auth — cada proveedor DRM usa su propio mecanismo."
+    test_priority: MUST
+
+  - id: DRM-RISK-006
+    severity: medium
+    title: "vkeySystem filtering: contenido configurado con un key system específico puede ignorar otros"
+    description: "Si drm.vkeySystem está seteado (no null), getDashProtectionData filtra y solo incluye el key system que coincide con keySystemId. Si el browser no soporta ese key system específico, no habrá protData y la reproducción fallará silenciosamente."
+    affected_files:
+      - "src/player/drm/getDashProtectionData.js"
+    trigger: "drm.vkeySystem está seteado explícitamente y no coincide con el CDM del browser"
+    mitigation: "El DRMPlugin ya detecta el key system soportado y lo almacena en vkeySystem. El riesgo es si alguien inyecta vkeySystem manualmente con un valor incorrecto."
+    industry_note: "Ninguna específica."
+    test_priority: SHOULD
+
+  - id: DRM-RISK-007
+    severity: medium
+    title: "DRM en contenido no-video: takeDrmPath requiere isVideo=true"
+    description: "loadConfig.js solo activa takeDrmPath cuando isVideo=true Y (drm.enabled OR hasDrmConfig). Si el contenido es audio o el playerType no es 'video', el DRM se ignora aunque esté configurado."
+    affected_files:
+      - "src/platform/loadConfig.js"
+    trigger: "Contenido de audio con DRM configurado (caso edge raro)"
+    mitigation: "Por diseño — el audio DRM no está en scope. Documentado en el código."
+    industry_note: "El DRM en audio (Widevine/FairPlay para audio-only streams) es infrecuente. La mayoría de los proveedores de streaming no protegen audio-only con DRM."
+    test_priority: COULD
+
+  - id: DRM-RISK-008
+    severity: medium
+    title: "MediaTailor skipCdn + DRM: key system debe detectarse ANTES de la solicitud MediaTailor"
+    description: "Cuando waitForMtManifest=true, DRMPlugin lanza getDRMSupport() early para detectar el key system y almacenarlo en _drmKeySystem. Esto permite que MediaTailor sepa qué formato (HLS vs DASH) pedir. Si este early detection falla, MediaTailor puede pedir el formato incorrecto."
+    affected_files:
+      - "src/player/drm/plugin.jsx"
+    trigger: "getDRMSupport() falla o tarda demasiado cuando skipMtCdn=true"
+    mitigation: "El early detection se ejecuta como efecto separado. Si falla, el timeout de 5s aplica y se avanza sin el manifest de MediaTailor."
+    industry_note: "El patrón de skipCdn + DRM + MediaTailor es específico de la arquitectura de Mediastream."
+    test_priority: SHOULD
+
+  - id: DRM-RISK-009
+    severity: low
+    title: "PlayReady prácticamente no testeable en CI moderno"
+    description: "Microsoft PlayReady es soportado via MSMediaKeys (IE11) y com.microsoft.playready en Edge. getDRMSupport.js lo detecta, pero en CI headless con Chromium, PlayReady no está disponible. El fallback a Widevine ocurre correctamente."
+    affected_files:
+      - "src/helper/getDRMSupport.js"
+    trigger: "Tests que verifican PlayReady en CI headless"
+    mitigation: "No hay tests de PlayReady en CI — marcados como gap conocido."
+    industry_note: "PlayReady tiene menos del 2% de share en browsers de escritorio modernos (Edge usa Widevine por defecto). Sigue siendo relevante para dispositivos Windows embebidos y Smart TVs Microsoft."
+    test_priority: COULD

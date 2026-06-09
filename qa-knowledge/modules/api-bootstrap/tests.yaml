@@ -1,0 +1,145 @@
+version: "1.0"
+module: api-bootstrap
+last_updated: "2026-06-08"
+
+existing_tests:
+  - spec_file: "tests/contract/api-bootstrap.spec.ts"
+    description: "Tests de contrato para mecanismos de inicialización: data-id 404 emite error sin retry, playerloaded CustomEvent y data-loaded callback"
+    ac_coverage:
+      - "BOOT-AC-003"
+      - "BOOT-AC-004"
+
+  - spec_file: "tests/e2e/vod-playback.spec.ts"
+    description: "Inicialización via loadMSPlayer() con autoplay=false, carga de VOD, verificación de estado listo"
+    ac_coverage:
+      - "BOOT-AC-001"
+      - "BOOT-AC-002"
+
+  - spec_file: "tests/contract/player-api.spec.ts"
+    description: "Tests de contrato de la API pública: métodos on/off/play/pause/destroy/load, propiedades públicas"
+    ac_coverage:
+      - "BOOT-AC-002"
+      - "BOOT-AC-005"
+
+  - spec_file: "tests/contract/player-api-property.spec.ts"
+    description: "Verificación de propiedades públicas de la instancia del player"
+    ac_coverage:
+      - "BOOT-AC-002"
+
+  - spec_file: "tests/e2e/chaos.spec.ts"
+    description: "Tests de comportamiento bajo condiciones adversas — potencialmente cubre destroy() concurrente y múltiples instancias"
+    ac_coverage:
+      - "BOOT-AC-006"
+
+coverage_gaps:
+  - id: GAP-BOOT-001
+    priority: MUST
+    ac_ref: "BOOT-AC-007"
+    title: "Script en HEAD sin data-container debe fallar con error descriptivo"
+    suggested_spec: "tests/contract/api-bootstrap.spec.ts"
+    notes: "Requiere harness que inyecte el script en el HEAD del documento. Verificar que el mensaje de error incluye 'Player script must be loaded inside body'."
+    industry_note: "document.currentScript falla en scripts async — este test es crítico para documentar el comportamiento real."
+
+  - id: GAP-BOOT-002
+    priority: MUST
+    ac_ref: "BOOT-AC-008"
+    title: "container inexistente en loadMSPlayer() rechaza Promise con mensaje del container ID"
+    suggested_spec: "tests/contract/api-bootstrap.spec.ts"
+    notes: "Llamar loadMSPlayer('nonexistent-id', opts) y verificar que la Promise es rejected con mensaje que incluye el nombre del container."
+    industry_note: "Error messages descriptivos son críticos para DX de integradores."
+
+  - id: GAP-BOOT-003
+    priority: MUST
+    ac_ref: "BOOT-AC-009"
+    title: "Tipo de contenido inválido lanza PlayerInitError antes de montar el player"
+    suggested_spec: "tests/contract/api-bootstrap.spec.ts"
+    notes: "Testear con type='podcast' y type='audio' directamente. Verificar que el error es emitido como player event 'error' con fatal:true."
+    industry_note: "Fail-fast en tipos inválidos es patrón estándar de SDKs de media player."
+
+  - id: GAP-BOOT-004
+    priority: MUST
+    ac_ref: "BOOT-AC-005"
+    title: "destroy() limpia el DOM y no deja listeners zombie"
+    suggested_spec: "tests/contract/api-bootstrap.spec.ts"
+    notes: "Después de destroy(), verificar que el elemento DOM del player ya no existe. También verificar que eventos registrados con player.on() antes de destroy() no se disparan después."
+    industry_note: "Memory leaks por listeners zombie son el defecto más común post-destroy en players (Video.js #6537, hls.js #1220)."
+
+  - id: GAP-BOOT-005
+    priority: MUST
+    ac_ref: "BOOT-AC-006"
+    title: "Segunda llamada a loadMSPlayer() destruye la primera instancia antes de crear la nueva"
+    suggested_spec: "tests/integration/bootstrap-reinit.spec.ts"
+    notes: "Llamar loadMSPlayer() dos veces. Después de la segunda llamada, verificar que la primera instancia tiene el DOM desmontado. Verificar que la segunda instancia funciona correctamente."
+    industry_note: "Bitmovin documenta explícitamente que destroy() debe preceder a new Player(). Lightning lo hace automáticamente — pero debe testearse."
+
+  - id: GAP-BOOT-006
+    priority: SHOULD
+    ac_ref: "BOOT-AC-010"
+    title: "data-custom-* attributes son preservados en config.custom con camelCase del sub-key"
+    suggested_spec: "tests/contract/api-bootstrap.spec.ts"
+    notes: "Usar data-custom-campaign-id='test123'. Verificar que config.custom['campaign-id'] === 'test123' (sub-keys de custom NO hacen camelCase, solo el prefix data-custom- se remueve)."
+    industry_note: null
+
+  - id: GAP-BOOT-007
+    priority: SHOULD
+    ac_ref: "BOOT-AC-011"
+    title: "data-* con valor $expr evalúa expresión JS en scope aislado"
+    suggested_spec: "tests/contract/api-bootstrap.spec.ts"
+    notes: "Definir window.TEST_VOLUME = 0.5. Agregar data-volume='$window.TEST_VOLUME'. Verificar config.volume === 0.5."
+    industry_note: "El eval() en scope aislado es un patrón único de Lightning — importante documentar su comportamiento real."
+
+  - id: GAP-BOOT-008
+    priority: SHOULD
+    ac_ref: "BOOT-AC-014"
+    title: "ads config de JS tiene precedencia sobre platform config"
+    suggested_spec: "tests/integration/bootstrap-ads-override.spec.ts"
+    notes: "Pasar data-ads-map='https://custom-vast.example' y verificar que el player usa esa URL en vez de la VAST de plataforma. Usar page.route() para interceptar las requests."
+    industry_note: "Override de ads en el embed es funcionalidad crítica para DSPs e integradores de monetización."
+
+  - id: GAP-BOOT-009
+    priority: SHOULD
+    ac_ref: "BOOT-AC-016"
+    title: "data-ads-map='null' (string) desactiva los ads"
+    suggested_spec: "tests/contract/api-bootstrap.spec.ts"
+    notes: "Pasar data-ads-map='null'. Verificar que config.ads.map es null (no el string). Verificar que el player no intenta cargar ads."
+    industry_note: null
+
+  - id: GAP-BOOT-010
+    priority: SHOULD
+    ac_ref: "BOOT-AC-015"
+    title: "loadConfig() en instancia existente destruye y reinicializa correctamente"
+    suggested_spec: "tests/integration/bootstrap-reinit.spec.ts"
+    notes: "Llamar player.loadConfig() con nuevo contenido. Verificar que el player se reinicializa sin errores. También testear el guard: llamar loadConfig() dos veces rápido, la segunda debe lanzar error."
+    industry_note: null
+
+  - id: GAP-BOOT-011
+    priority: SHOULD
+    ac_ref: "BOOT-AC-012"
+    title: "data-global expone la instancia del player en window"
+    suggested_spec: "tests/contract/api-bootstrap.spec.ts"
+    notes: "Agregar data-global='testPlayer'. Después del playerloaded event, verificar que window.testPlayer es la instancia del player."
+    industry_note: null
+
+  - id: GAP-BOOT-012
+    priority: SHOULD
+    ac_ref: "BOOT-AC-013"
+    title: "type=episode es mapeado a media internamente pero originalType se preserva"
+    suggested_spec: "tests/contract/api-bootstrap.spec.ts"
+    notes: "Inicializar con type='episode'. Verificar que el player reproduce contenido. Verificar player.getOption('type') === 'episode' (el original, no el mapeado)."
+    industry_note: null
+
+  - id: GAP-BOOT-013
+    priority: COULD
+    ac_ref: "BOOT-AC-017"
+    title: "player=dynamic bypasea la carga de UI config del player"
+    suggested_spec: "tests/contract/api-bootstrap.spec.ts"
+    notes: "Interceptar con page.route() las requests al endpoint de player config. Verificar que con player='dynamic' no se hace esa request."
+    industry_note: null
+
+  - id: GAP-BOOT-014
+    priority: COULD
+    ac_ref: "BOOT-AC-018"
+    title: "legacyApiCompat activo en iframe bajo .mdstrm.com relaya eventos via postMessage"
+    suggested_spec: "tests/e2e/embed-cross-origin.spec.ts (existente — verificar cobertura específica)"
+    notes: "Verificar que onPlayerReady es enviado al parent. Verificar que los comandos del parent (videoPlay, videoStop) son recibidos y ejecutados."
+    industry_note: "Cobertura existente puede ser parcial. Revisar si onCastConnected está cubierto (está comentado en el código)."

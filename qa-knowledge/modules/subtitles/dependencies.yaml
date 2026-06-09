@@ -1,0 +1,55 @@
+version: "1.0"
+module: subtitles
+last_updated: "2026-06-08"
+
+internal:
+  - id: zoom
+    reason: "zoomEnabledAtom + zoomScaleAtom determinan si VTT usa overlay en lugar de pista nativa"
+    coupling: high
+    files:
+      - src/view/video/atoms/zoom.js
+      - src/view/video/atoms/subtitle.js
+
+  - id: chromecast
+    reason: "effectiveSubtitleListAtom y effectiveActiveSubtitleAtom cambian comportamiento cuando castConnected=true"
+    coupling: high
+    files:
+      - src/chromecast/subtitles.js
+      - src/view/video/atoms/chromecast.js
+      - src/view/video/atoms/subtitle.js
+
+  - id: ads-dai
+    reason: "DAI elimina config.subtitles antes de inicializar; solo VTT embebido en manifiesto HLS disponible"
+    coupling: medium
+    files:
+      - src/platform/loadConfig.js
+
+  - id: hls
+    reason: "hls.js expone pistas de subtítulos del manifiesto como TextTracks nativos del <video>"
+    coupling: medium
+
+  - id: tv-skin
+    reason: "TV sidebar y TVBottomRight usan subtitleHelper.disableAllSubtitles con lógica de selectedSubtitle diferente"
+    coupling: medium
+    files:
+      - src/view/video/components/skin/tv/TVAudioSubtitleSidebar.jsx
+      - src/view/video/helpers/subtitleHelper.js
+
+external:
+  - id: ass-html5
+    package: "ass-html5"
+    version: ">=1.0.0"
+    reason: "Renderer para pistas .ass/.ssa; reemplaza renderer nativo del browser que no soporta ASS"
+    risk: medium
+    note: "Si cambia el formato de encabezado ASS en herramientas como EZTitles, la normalización regex puede romperse"
+
+  - id: browser-texttrack-api
+    package: native
+    reason: "TextTrack.mode se muta in-place; el Proxy intercepta cambios para ASS y emite eventos synthetic"
+    risk: high
+    note: "Comportamiento del browser varía en cuándo dispara 'change' event; el proxy agrega setTimeout(0) para consistencia"
+
+  - id: jotai-effect
+    package: "jotai-effect"
+    reason: "trackChangeAtomEffect conecta eventos del emitter con estado Jotai; subtitleUiRevisionAtom fuerza re-render manual"
+    risk: low

@@ -1,0 +1,152 @@
+version: "1.0"
+module: error-handling
+last_updated: "2026-06-08"
+
+acceptance_criteria:
+  - id: ERR-AC-001
+    priority: MUST
+    scenario: "El evento 'error' se emite con un objeto PlayerError bien formado"
+    given: "un player inicializado que encuentra un fallo de reproducción o de carga"
+    when: "ocurre cualquier condición de error (red, media, init)"
+    then:
+      - "se emite el evento público 'error' a los suscriptores externos"
+      - "el payload es un objeto Error con propiedades 'message' (string no vacío), 'type' (string del enum ErrorType) y 'fatal' (boolean)"
+      - "si el error trae contexto adicional, expone 'data' (objeto)"
+
+  - id: ERR-AC-002
+    priority: MUST
+    scenario: "El getter público 'error' devuelve el último error FATAL"
+    given: "un player que sufrió un error fatal (ej. config 403)"
+    when: "el integrador lee la propiedad 'error'"
+    then:
+      - "devuelve el objeto PlayerError del último fallo fatal"
+      - "el objeto tiene fatal === true"
+      - "antes de cualquier error fatal, 'error' es null"
+
+  - id: ERR-AC-003
+    priority: MUST
+    scenario: "Un error de red transitorio dispara recovery automático sin marcar fatal"
+    given: "playback en curso con HLS y una interrupción de pocos segmentos dentro del retry budget de hls.js"
+    when: "fallan N segmentos transitoriamente (N <= retry budget)"
+    then:
+      - "el player invoca el recovery del SDK (hls.startLoad para red, recoverMediaError para media)"
+      - "los errores emitidos durante la recuperación son no-fatales (fatal === false)"
+      - "el player vuelve a estado 'playing' y continúa la reproducción"
+      - "el getter 'error' NO se actualiza con el error transitorio"
+
+  - id: ERR-AC-004
+    priority: MUST
+    scenario: "Fallo persistente de red emite error fatal tras agotar retries"
+    given: "playback con HLS donde todos los segmentos fallan (abort / 503 / 404 persistente)"
+    when: "hls.js agota su retry budget con backoff exponencial"
+    then:
+      - "el player emite 'error' con fatal === true"
+      - "el status del player pasa a 'error'"
+      - "el player NO queda colgado en buffering indefinido"
+
+  - id: ERR-AC-005
+    priority: MUST
+    scenario: "Content config 403 produce error init_player fatal con código de status"
+    given: "un contenido cuya config (/media|/episode|/live-stream .json) responde 403"
+    when: "el player intenta cargar la configuración del contenido"
+    then:
+      - "loadConfig lanza un PlayerInitError fatal"
+      - "el error expone data.status === 403"
+      - "el evento 'error' o el estado 'error' es observable por el integrador"
+      - "el player no crashea ni deja la UI en estado indeterminado"
+
+  - id: ERR-AC-006
+    priority: MUST
+    scenario: "DRM no soportado es siempre fatal con causa identificable"
+    given: "un contenido protegido en un dispositivo/navegador sin el módulo DRM requerido"
+    when: "el plugin DRM detecta ausencia de soporte"
+    then:
+      - "se emite 'error' con type 'init_player' y fatal === true"
+      - "el error expone data === 'DRM_NOT_SUPPORTED' (o data.data equivalente)"
+      - "el mensaje no es vacío y permite distinguir el caso DRM de otros init errors"
+
+  - id: ERR-AC-007
+    priority: MUST
+    scenario: "Manifest inalcanzable o malformado es NetworkError fatal"
+    given: "un manifest HLS que devuelve error de carga/parse (MANIFEST_LOAD_ERROR, MANIFEST_PARSING_ERROR, MANIFEST_LOAD_TIMEOUT)"
+    when: "hls.js reporta el fallo de manifest como fatal"
+    then:
+      - "el player emite 'error' con type 'network_error' y fatal === true"
+      - "el message refleja el detalle de hls.js (ej. 'manifestLoadError')"
+
+  - id: ERR-AC-008
+    priority: MUST
+    scenario: "Formato no disponible al forzar HLS o DASH es init_player fatal"
+    given: "format=dash solicitado pero el contenido no tiene fuente mpd (o format=hls sin fuente hls en video)"
+    when: "loadConfig resuelve la fuente"
+    then:
+      - "se lanza PlayerInitError fatal"
+      - "el error expone data === 'FORMAT_NOT_AVAILABLE'"
+
+  - id: ERR-AC-009
+    priority: SHOULD
+    scenario: "Source no soportada en handler native mapea a MediaError fatal"
+    given: "reproducción nativa (sin MSE) donde HTMLMediaElement.error.code === 4"
+    when: "el elemento de video emite su evento 'error'"
+    then:
+      - "el player emite MediaError con message 'MEDIA_ERR_SRC_NOT_SUPPORTED' y fatal === true"
+      - "para códigos != 4, se emite el error nativo tal cual (no necesariamente fatal)"
+
+  - id: ERR-AC-010
+    priority: SHOULD
+    scenario: "Un error de ad NO afecta el estado de error del contenido"
+    given: "reproducción de contenido con un ad break que falla (VAST vacío, MediaFile no encontrado, VPAID error)"
+    when: "el ads-manager produce un AdError"
+    then:
+      - "el AdError tiene su propio código VAST/VMAP (getErrorCode entre 100 y 2025)"
+      - "el getter 'error' del contenido permanece null (el AdError no es un PlayerError fatal)"
+      - "el contenido continúa o reanuda tras el fallo del ad"
+
+  - id: ERR-AC-011
+    priority: SHOULD
+    scenario: "Autoplay bloqueado no marca el player como error fatal"
+    given: "un player con autoplay donde el navegador bloquea play() sin interacción del usuario"
+    when: "la promesa de play() es rechazada"
+    then:
+      - "se emite 'error' con un Error genérico cuyo message contiene 'Autoplay failed'"
+      - "el status del player vuelve a 'pause' (no 'error')"
+      - "el getter 'error' NO se actualiza (el Error genérico no tiene fatal === true)"
+
+  - id: ERR-AC-012
+    priority: SHOULD
+    scenario: "El evento error se propaga cross-frame vía postMessage"
+    given: "un player embebido cuyo evento error debe llegar a un frame contenedor"
+    when: "se emite 'error' internamente"
+    then:
+      - "se publica window.postMessage con event 'msp:error' al mismo origin"
+      - "solo eventos presentes en el enum Events se re-emiten externamente"
+
+  - id: ERR-AC-013
+    priority: SHOULD
+    scenario: "Segmento faltante mid-stream emite error tras retries"
+    given: "una playlist HLS con un segmento 404 entre segmentos válidos"
+    when: "hls.js falla al cargar el segmento faltante tras agotar reintentos"
+    then:
+      - "el player emite 'error'"
+      - "el harness QA observa el fallo vía getErrors() (window.__qa.errors) o eventData.error"
+      - "el player no queda en buffering indefinido"
+
+  - id: ERR-AC-014
+    priority: COULD
+    scenario: "DASH distingue NetworkError de MediaError según el origen"
+    given: "reproducción con dash.js que emite un evento ERROR"
+    when: "el error contiene request/url (red) o no (media)"
+    then:
+      - "si hay request/url → NetworkError; sino → MediaError"
+      - "el flag fatal se deriva de error.fatal (default true si ausente)"
+      - "errores no-fatales de red entran a estado buffering para recovery"
+
+  - id: ERR-AC-015
+    priority: COULD
+    scenario: "AdError clasifica AdLoad vs AdPlay por rango de código"
+    given: "un AdError generado por el ads-manager"
+    when: "el integrador consulta getType()"
+    then:
+      - "códigos 100–399 devuelven 'AdLoad'"
+      - "el resto devuelve 'AdPlay'"
+      - "getVastErrorCode() devuelve el código si está en 100–999, sino 900 (UNKNOWN_ERROR)"

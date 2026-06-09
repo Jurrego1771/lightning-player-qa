@@ -4,7 +4,9 @@ import { PlayerWithState } from './StateMixin'
 export class PlayerWithPlayback extends PlayerWithState {
 
   async play(): Promise<void> {
-    await this.page.evaluate(() => (window as any).__player?.play())
+    await expect(async () => {
+      await this.page.evaluate(() => (window as any).__player?.play())
+    }).toPass({ timeout: 8_000 })
   }
 
   /**

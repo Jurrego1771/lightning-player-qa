@@ -1,0 +1,12 @@
+module: ui-radio
+criticality: medium
+last_reviewed: "2026-06-05"
+paths: ["src/view/radio/"]
+depends_on: [events, state, controls-api, metadata]
+depended_by: []
+breaks_if_changed:
+  - "Vista de radio no renderiza"
+  - "Now-playing metadata no se muestra"
+test_suites_required: [visual, a11y]
+negative_cases:
+  - "Metadata no disponible → placeholder visual, no crash"

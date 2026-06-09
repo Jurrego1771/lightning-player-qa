@@ -1,0 +1,56 @@
+version: "1.0"
+module: ads-dai
+last_updated: "2026-06-08"
+
+internal:
+  - id: ads-manager
+    reason: "GoogleDAIManager llama setHandler(this) para tomar control de la API del player durante ad breaks. Durante AD_BREAK_STARTED se registra como handler activo; en AD_BREAK_ENDED se limpia con setHandler(null)."
+    coupling: high
+    files:
+      - "src/ads/api.js"
+
+  - id: controls-api
+    reason: "Durante AD_BREAK_STARTED, el plugin llama controls.addOverride(manager) para deshabilitar controles de seek/pause. En AD_BREAK_ENDED llama controls.removeOverride(manager). Si este contrato se rompe, los controles quedan bloqueados o el usuario puede hacer seek durante un ad."
+    coupling: high
+    files:
+      - "src/controls/"
+
+  - id: events
+    reason: "GoogleDAIManager suscribe internalEmitter._volumechange para sincronizar vpmute. También emite todos los eventos de ads via internalEmitter (_adsStarted, _adsComplete, _adsFirstQuartile, etc.). MediaTailorDAIManager emite _adsStarted."
+    coupling: high
+    files:
+      - "src/events/index.js"
+      - "src/constants/index.js"
+
+  - id: hls
+    reason: "El stream DAI (HLS o DASH) es reproducido por hls.js o dash.js igual que cualquier stream de contenido. GoogleDAI no interactúa directamente con hls.js pero depende de que el player cargue el stream modificado. La metadata ID3 (TXXX cues) del stream es procesada por GoogleDAIManager para onTimedMetadata."
+    coupling: medium
+    files:
+      - "src/plugins/hls/"
+
+  - id: drm
+    reason: "Integración compleja DAI+DRM: el plugin GoogleDAI lee drm._daiDeferredManifestUrl y drm.vkeySystem para coordinar con DRMPlugin. Para DASH+DRM, el init del DAI se bloquea hasta que drm._candidateUrls esté resuelto. stripDrmForPlayerState() limpia credenciales DRM del estado al hacer fallback."
+    coupling: high
+    files:
+      - "src/plugins/drm/"
+
+  - id: platform-config
+    reason: "Context mapper lee ctx.ads.googleDAI, ctx.type (live/dvr/vod), ctx.id, ctx.googleImaPpid, ctx.custom, ctx.metadata.MDSTRMPID. Si la plataforma no devuelve la config DAI correctamente, el plugin no inicia."
+    coupling: medium
+    files:
+      - "src/context/"
+
+external:
+  - id: google-ima-dai-sdk
+    package: "https://imasdk.googleapis.com/js/sdkloader/ima3_dai.js (CDN)"
+    version: "v3 (versión controlada por Google; actualización automática en CDN)"
+    reason: "SDK principal para Google DAI. Provee StreamManager, LiveStreamRequest, VODStreamRequest y todos los StreamEvent.Type (LOADED, ERROR, AD_BREAK_STARTED, etc.). Cargado via importExternal() lazy al inicializar el plugin."
+    risk: high
+    note: "El SDK se actualiza automáticamente en la CDN de Google. Cambios breaking ocurren ocasionalmente (ej: v3.697.0 removió ViewMode, v3.724.0 removió setCookiesEnabled). El player NO tiene control sobre la versión del SDK en producción. No hay lock de versión."
+
+  - id: aws-mediatailor
+    package: "API REST propia de AWS MediaTailor (no npm)"
+    version: "AWS MediaTailor v1 (endpoint /v1/session)"
+    reason: "Para MediaTailor DAI: provee la sesión SSAI con manifest_url, session_id y tracking_url. El manager hace polling al trackingUrl para detectar avails y disparar beacons."
+    risk: medium
+    note: "Solo activo para type=live o type=dvr. Requiere un endpoint interno de Mediastream (/live-stream/{id}/ssai-session.json) que actúa como proxy hacia AWS MediaTailor."

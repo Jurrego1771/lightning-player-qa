@@ -1,0 +1,128 @@
+version: "1.0"
+module: quality-selector
+last_updated: "2026-06-08"
+
+existing_tests:
+  - spec_file: "tests/integration/hls-abr.spec.ts"
+    description: >
+      ABR en HLS con CDP throttling: degradación bajo bandwidth limitado, recovery al restaurar
+      red, reintento ante error de segmento, startup time. Bloque adicional 'nextLevel vs level':
+      nextLevel===-1 al inicio, setNextLevel(0) refleja nextLevel inmediato, level alcanza
+      nextLevel tras levelchanged, nextLevel y level distintos durante transición.
+    ac_coverage:
+      - QUAL-AC-002
+      - QUAL-AC-006
+      - QUAL-AC-007
+      - QUAL-AC-010
+
+  - spec_file: "tests/integration/dash-abr.spec.ts"
+    description: >
+      ABR en DASH con dash.js: emisión de evento de cambio de representación al inicio,
+      degradación bajo bandwidth limitado (skip si no Chromium), recovery con >=2 levelchanged.
+    ac_coverage:
+      - QUAL-AC-006
+      - QUAL-AC-007
+
+coverage_gaps:
+  - id: GAP-QUAL-001
+    priority: MUST
+    ac_ref: QUAL-AC-001
+    title: "player.levels retorna array válido (>=2 elementos, index/height/bitrate/label) tras ready"
+    suggested_spec: "tests/integration/quality-selector.spec.ts"
+    notes: >
+      No hay test que valide la forma del array levels (index 0-based consecutivo, campos height/
+      width/bitrate/label). Cubrir HLS y DASH con stream local multi-bitrate.
+    industry_note: "El array levels alimenta el selector UI; su forma es el contrato base del módulo."
+
+  - id: GAP-QUAL-002
+    priority: MUST
+    ac_ref: QUAL-AC-003
+    title: "setLevel(-1) re-habilita ABR (autoLevelEnabled vuelve a true) en HLS"
+    suggested_spec: "tests/integration/quality-selector.spec.ts"
+    notes: >
+      Existe cobertura de fijar nivel pero no de volver a Auto. Validar que tras level=N y luego
+      level=-1, autoLevelEnabled===true y se emite levelchange sintético (QUAL-DEF-003).
+
+  - id: GAP-QUAL-003
+    priority: MUST
+    ac_ref: QUAL-AC-004
+    title: "Selección manual de calidad en DASH conmuta representación y emite levelchanged"
+    suggested_spec: "tests/integration/dash-abr.spec.ts"
+    notes: >
+      dash-abr.spec.ts cubre ABR automático pero NO la selección manual (player.level = N).
+      Validar setRepresentationForTypeByIndex + autoLevelEnabled===false + level===N tras
+      levelchanged. Recordar el setTimeout(0) async (QUAL-DEF-004).
+    industry_note: "Crítico porque player_system.md afirmaba erróneamente que DASH no soporta selección manual (QUAL-LEARN-001)."
+
+  - id: GAP-QUAL-004
+    priority: MUST
+    ac_ref: QUAL-AC-005
+    title: "setLevel(-1) re-habilita ABR en DASH (autoSwitchBitrate=true)"
+    suggested_spec: "tests/integration/dash-abr.spec.ts"
+    notes: "Validar retorno a Auto en DASH: autoLevelEnabled===true y levelchange(-1)."
+
+  - id: GAP-QUAL-005
+    priority: MUST
+    ac_ref: QUAL-AC-008
+    title: "setLevel con índice fuera de rango: HLS lanza, DASH no-op"
+    suggested_spec: "tests/integration/quality-selector.spec.ts"
+    notes: >
+      Validar el comportamiento divergente (QUAL-DEF-002): en HLS Error('Invalid level') y nivel
+      sin cambiar; en DASH sin error, sin levelchange, nivel sin cambiar. Test crítico de
+      consistencia de API.
+
+  - id: GAP-QUAL-006
+    priority: MUST
+    ac_ref: QUAL-AC-012
+    title: "bandwidth/bitrate son null antes del primer segmento y número (bits/seg) después"
+    suggested_spec: "tests/integration/quality-selector.spec.ts"
+    notes: >
+      Validar QUAL-DEF-005: lectura inmediata tras ready → null; tras varios segundos de
+      reproducción → número positivo en bits/seg. Cubrir HLS y DASH.
+    industry_note: "Consumidores (analytics) asumen número; el contrato null debe estar testeado."
+
+  - id: GAP-QUAL-007
+    priority: SHOULD
+    ac_ref: QUAL-AC-011
+    title: "bitrate === levels[level].bitrate y cambia con el nivel activo"
+    suggested_spec: "tests/integration/quality-selector.spec.ts"
+    notes: "Fijar level=K, assert bitrate===levels[K].bitrate. Cambiar a otro nivel y verificar que bitrate cambia."
+
+  - id: GAP-QUAL-008
+    priority: SHOULD
+    ac_ref: QUAL-AC-002
+    title: "Persistencia del nivel fijo: ABR NO reajusta mientras hay nivel manual"
+    suggested_spec: "tests/integration/quality-selector.spec.ts"
+    notes: >
+      Con nivel fijo y red variable (CDP), verificar que no se emiten levelchanged por ABR
+      (autoLevelEnabled permanece false). Confirma QUAL-LEARN-009 (override total).
+
+  - id: GAP-QUAL-009
+    priority: SHOULD
+    ac_ref: QUAL-AC-009
+    title: "DASH ignora índice fuera de rango sin lanzar ni emitir evento"
+    suggested_spec: "tests/integration/dash-abr.spec.ts"
+    notes: "Complementa GAP-QUAL-005 desde el lado DASH (no-op silencioso)."
+
+  - id: GAP-QUAL-010
+    priority: COULD
+    ac_ref: QUAL-AC-013
+    title: "Selector UI de calidad: 'Auto' primero, orden descendente, ausente con un solo nivel"
+    suggested_spec: "tests/visual/quality-selector-ui.spec.ts"
+    notes: >
+      Validar render del LevelsAccordionItem (QUAL-LEARN-008): 'Auto' arriba, niveles ordenados
+      mayor→menor, check en el seleccionado, item ausente sin niveles. Test visual/e2e con skin.
+
+  - id: GAP-QUAL-011
+    priority: COULD
+    ac_ref: QUAL-AC-015
+    title: "API legacy postMessage: playbackLevels (get) y playbackLevel (set)"
+    suggested_spec: "tests/e2e/embed-legacy-api.spec.ts"
+    notes: "Cubrir el puente legacy de iframe (legacyApiCompat.js): playbackLevels retorna array, playbackLevel fija level."
+
+  - id: GAP-QUAL-012
+    priority: COULD
+    ac_ref: QUAL-AC-014
+    title: "droppedFrames acumulativo y no decreciente"
+    suggested_spec: "tests/performance/quality-qoe.spec.ts"
+    notes: "Leer droppedFrames en dos momentos; assert >=0 y monotónico. HLS (FPS_DROP) y DASH (getCurrentDroppedFrames)."

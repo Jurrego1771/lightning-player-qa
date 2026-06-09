@@ -1,0 +1,10 @@
+module: ui-podcast
+criticality: medium
+last_reviewed: "2026-06-05"
+paths: ["src/view/podcast/", "src/view/podcast2/"]
+depends_on: [events, state, controls-api]
+depended_by: []
+breaks_if_changed:
+  - "Vista podcast no renderiza"
+test_suites_required: [visual]
+negative_cases: []

@@ -1,0 +1,104 @@
+version: "1.0"
+module: ads-dai
+last_updated: "2026-06-08"
+
+risks:
+  - id: DAI-RISK-001
+    severity: high
+    title: "Stream request falla sin que el player detecte el error correctamente"
+    description: "Si el SDK DAI no carga (CDN bloqueada, red lenta) o si requestStream() falla, el player puede quedar esperando indefinidamente sin mostrar contenido. El flujo de fallback depende de que el evento ERROR del SDK se emita correctamente — pero si el SDK mismo no cargó, ese evento nunca llega."
+    affected_files:
+      - "src/ads/googleDAI/plugin.jsx"
+    trigger: "CDN imasdk.googleapis.com bloqueada por ad blocker, firewall corporativo, o error de red"
+    mitigation: "sdkLoader usa importExternal().catch(() => {}); si el SDK no carga, el set #sdk dispara emit('error') y destroy(). El componente GoogleDAI tiene onError que llama setData({ src: backup }). Sin embargo, el timeout depende de la promesa de importExternal."
+    industry_note: "Google recomienda siempre configurar un backup stream. Las mejores prácticas de la industria indican que el 15-30% de usuarios premium tienen ad blockers que pueden bloquear imasdk.googleapis.com."
+    test_priority: MUST
+
+  - id: DAI-RISK-002
+    severity: high
+    title: "vpmute stale — replaceAdTagParameters sobre StreamManager reseteado"
+    description: "Existe una race condition entre manager.reset() (llamado en destroy()) e internalEmitter.off(_volumechange). Si un evento _volumechange llega en esa ventana, replaceAdTagParameters se invoca sobre un StreamManager ya reseteado. El try/catch interno silencia el error pero el comportamiento puede ser impredecible."
+    affected_files:
+      - "src/ads/googleDAI/plugin.jsx"
+    trigger: "El usuario cambia el volumen exactamente cuando el player está siendo destruido (cambio de contenido, unmount React)"
+    mitigation: "try/catch en replaceAdTagParameters que silencia el error. El destroy() limpia ambos listeners pero el orden reset() → off() crea la ventana crítica."
+    industry_note: "Race condition documentada en el codebase (CCGAP-3). Tests en Suite 4 de ads-dai-vpmute-sync.spec.ts."
+    test_priority: MUST
+
+  - id: DAI-RISK-003
+    severity: high
+    title: "Listener stale de _volumechange tras reinit sin unmount completo"
+    description: "Si el player se reinicializa via goto() sin desmontaje completo de React, el listener de _volumechange del ciclo anterior puede quedar activo. Resultado: replaceAdTagParameters se llama 2 veces (una por el manager viejo, una por el nuevo) en el siguiente toggle de mute."
+    affected_files:
+      - "src/ads/googleDAI/plugin.jsx"
+    trigger: "Flujo de cambio de contenido sin recarga de página (uso típico en SPA)"
+    mitigation: "destroy() llama internalEmitter.off(Events._volumechange, this.#_onVolumeChange). Solo funciona si destroy() se ejecuta antes del nuevo init."
+    industry_note: "Patrón de riesgo común en players SPA. Tests: Suite 3 de ads-dai-vpmute-sync.spec.ts (CCGAP-1-DAI)."
+    test_priority: MUST
+
+  - id: DAI-RISK-004
+    severity: high
+    title: "Desync entre timestamps del stream DAI y el contenido original"
+    description: "En streams DAI, los timestamps en el manifest son del stream con ads insertados, no del contenido original. Si el player o cualquier componente asume que currentTime corresponde al tiempo del contenido, habrá desync en features como resume, live edge, DVR scrubbing."
+    affected_files:
+      - "src/ads/googleDAI/plugin.jsx"
+    trigger: "Acceso a player.currentTime durante reproducción de ads en stream DAI live"
+    mitigation: "El plugin no expone la diferencia de timestamps externamente. La API pública currentTime refleja el tiempo del stream DAI (correcto para la reproducción). Features que dependen del tiempo del contenido original deben considerar este offset."
+    industry_note: "Problema bien documentado en la industria SSAI. Los timestamps DAI incluyen la duración de todos los ad breaks anteriores sumada al contenido. Esto afecta snapshots de posición para resume de VOD."
+    test_priority: SHOULD
+
+  - id: DAI-RISK-005
+    severity: high
+    title: "Config de subtítulos perdida al hacer setData con DAI stream URL"
+    description: "Al recibir el stream DAI (evento LOADED), el plugin llama setData({ src: url, ...stripDrmForPlayerState(drm) }). Esta llamada no preserva la configuración de subtítulos del estado anterior. Si el usuario tenía subtítulos activos antes del load del stream DAI, se pierden."
+    affected_files:
+      - "src/ads/googleDAI/plugin.jsx"
+    trigger: "Player inicializado con subtítulos habilitados + stream DAI configurado"
+    mitigation: "Ninguna actualmente. stripDrmForPlayerState() solo preserva DRM state, no subtítulos ni otros config."
+    industry_note: "Bug documentado en el módulo subtitles. Ver defects.yaml."
+    test_priority: SHOULD
+
+  - id: DAI-RISK-006
+    severity: medium
+    title: "SCTE35 markers causan freeze de video en segundo ad break (HLS live)"
+    description: "En streams HLS DAI live, si el segmento inmediatamente después de un ad break contiene un ID3 tag con un SCTE35 marker generado por el servidor de origen, el segundo ad break puede mostrar video congelado mientras el audio continúa."
+    affected_files:
+      - "src/ads/googleDAI/plugin.jsx"
+      - "src/plugins/hls/"
+    trigger: "Stream live con SCTE35 markers en los segmentos post-ad-break; segundo o posterior ad break"
+    mitigation: "Ninguna en el código del player. Requiere configuración del servidor de origen para no emitir SCTE35 en el primer segmento post-break."
+    industry_note: "Issue documentado en ExoPlayer (google/ExoPlayer#8095). Afecta múltiples implementaciones de DAI live HLS."
+    test_priority: COULD
+
+  - id: DAI-RISK-007
+    severity: medium
+    title: "SDK DAI actualización silenciosa rompe integración"
+    description: "El SDK de Google DAI se carga desde CDN sin lock de versión. Google actualiza el SDK sin notice (ej: v3.697.0 removió ViewMode, v3.724.0 removió setCookiesEnabled). Un cambio breaking en la API del StreamManager o StreamEvent.Type puede romper el plugin sin ninguna alerta."
+    affected_files:
+      - "src/ads/googleDAI/plugin.jsx"
+    trigger: "Google publica una nueva versión del SDK en la CDN de imasdk.googleapis.com"
+    mitigation: "El error se detectaría en producción cuando el plugin falla. No hay versión locked. No hay smoke test automático post-deploy."
+    industry_note: "Riesgo inherente del modelo CDN sin versión. La alternativa sería self-host el SDK (no recomendado por Google por tracking)."
+    test_priority: SHOULD
+
+  - id: DAI-RISK-008
+    severity: medium
+    title: "MediaTailor DAI solo funciona para live/DVR — VOD sin cobertura"
+    description: "MediaTailorDAIGuard bloquea explícitamente la inicialización para type !== 'live' y type !== 'dvr'. No hay soporte para VOD SSAI con MediaTailor. Si se configura mediaTailorDAI para un stream VOD, el plugin no se activa sin error ni fallback visible."
+    affected_files:
+      - "src/ads/mediaTailorDAI/plugin.jsx"
+    trigger: "Operador configura ads.mediaTailorDAI para un stream type='media' (VOD)"
+    mitigation: "El Guard simplemente no monta el Runner. El player reproduce el VOD sin ads de MediaTailor. No hay error explícito al operador."
+    industry_note: "AWS MediaTailor soporta VOD pero requiere integración diferente (sin sesión live)."
+    test_priority: COULD
+
+  - id: DAI-RISK-009
+    severity: low
+    title: "cuePoints property siempre retorna array vacío en GoogleDAIManager"
+    description: "La propiedad pública cuePoints de GoogleDAIManager siempre retorna []. Los cuepoints internos (#cuePoints) se actualizan via evento CUEPOINTS_CHANGED pero no se exponen en la API pública. Cualquier feature que intente leer cuePoints del manager DAI recibirá un array vacío."
+    affected_files:
+      - "src/ads/googleDAI/plugin.jsx"
+    trigger: "Código externo accede a manager.cuePoints"
+    mitigation: "Los cuepoints se usan internamente en #handleSeeked para forzar reproducción de breaks. La API pública no los necesita actualmente."
+    industry_note: "Limitación de diseño intencional. No exponer posiciones de ad breaks es una práctica común para evitar que el usuario se salte manualmente los ads."
+    test_priority: COULD

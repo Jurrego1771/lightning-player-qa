@@ -1,0 +1,171 @@
+version: "1.0"
+module: events
+last_updated: "2026-06-08"
+
+user_stories:
+
+  - id: US-EVT-001
+    persona: Integrator
+    narrative:
+      as: "desarrollador que integra el Lightning Player en una SPA React"
+      want: "suscribirme a eventos de playback (play, pause, ended) para actualizar el estado de mi aplicación"
+      so_that: "mi UI refleja el estado real del player en tiempo real sin polling"
+    business_value: HIGH
+    risk_area:
+      - "memory leak por listeners no eliminados en unmount"
+      - "race condition si el player emite ready antes de que el componente monte"
+    related_features:
+      - "playback-core"
+      - "controls-api"
+    acceptance:
+      - "EVT-AC-001"
+      - "EVT-AC-003"
+      - "EVT-AC-011"
+    notes: >
+      El riesgo principal es en SPAs donde el componente del player se monta/desmonta
+      repetidamente. Cada mount debe registrar los listeners y cada unmount debe llamar
+      player.off() con las referencias correctas o el player destruirse.
+
+  - id: US-EVT-002
+    persona: Integrator
+    narrative:
+      as: "desarrollador que implementa analytics propios (además de Youbora)"
+      want: "escuchar todos los eventos de ads (adsStarted, adsImpression, adsComplete) para reportar a mi sistema de métricas"
+      so_that: "puedo medir viewability y engagement de anuncios de forma independiente"
+    business_value: HIGH
+    risk_area:
+      - "orden de eventos en secuencia de fin de ad"
+      - "eventos duplicados en multi-instancia"
+    related_features:
+      - "ads-ima"
+      - "ads-dai"
+      - "ads-sgai"
+    acceptance:
+      - "EVT-AC-001"
+      - "EVT-AC-004"
+      - "EVT-AC-007"
+    notes: >
+      Los eventos de ads son los más sensibles a cambios de timing entre versiones
+      del player y del SDK de Google IMA. El integrador debe verificar el orden
+      esperado (adsLoaded → adsStarted → adsImpression → adsFirstQuartile → ...).
+
+  - id: US-EVT-003
+    persona: Integrator
+    narrative:
+      as: "desarrollador que embebe el player en un iframe dentro de mi página"
+      want: "recibir todos los eventos del player vía window.postMessage en mi página host"
+      so_that: "puedo actualizar elementos fuera del iframe (UI de la página, navegación) en respuesta a eventos del player"
+    business_value: HIGH
+    risk_area:
+      - "postMessage bloqueado por same-origin policy en integraciones cross-origin"
+      - "eventos de instancias múltiples mezclados sin filtro por uniqueId"
+    related_features:
+      - "embed"
+    acceptance:
+      - "EVT-AC-007"
+      - "EVT-AC-008"
+      - "EVT-AC-009"
+    notes: >
+      El prefijo 'msp:' en los eventos de postMessage permite filtrar mensajes del player
+      de otros mensajes en la página. El campo 'id' en el payload permite identificar
+      la instancia que emitió el evento cuando hay múltiples players en la misma página.
+
+  - id: US-EVT-004
+    persona: Integrator
+    narrative:
+      as: "desarrollador que implementa la funcionalidad de 'siguiente episodio' en mi plataforma OTT"
+      want: "recibir el evento nextEpisodeLoadRequested para saber cuándo el usuario quiere avanzar al siguiente episodio, y enviar nextEpisodePlayNext para cargar el siguiente desde mi sistema"
+      so_that: "tengo control total sobre qué episodio se carga y cuándo, incluyendo lógica de paywall o disponibilidad"
+    business_value: HIGH
+    risk_area:
+      - "race condition entre nextEpisodeIncoming y ended"
+      - "evento externo nextEpisodePlayNext no procesado si el player ya fue destruido"
+    related_features:
+      - "playback-core"
+    acceptance:
+      - "EVT-AC-001"
+      - "EVT-AC-016"
+    notes: >
+      nextEpisodePlayNext y nextEpisodeKeepWatching son eventos que fluyen en dirección
+      inversa (host → player via postMessage). Son los únicos eventos externos documentados
+      en el catálogo. El integrador los envía via window.postMessage con prefijo 'msp:'.
+
+  - id: US-EVT-005
+    persona: Viewer
+    narrative:
+      as: "usuario que está mirando un video en una página web"
+      want: "que los controles de la página (ej: barra de progreso, botón de volumen fuera del player) respondan instantáneamente cuando pauso o cambio el volumen"
+      so_that: "tengo una experiencia de usuario consistente entre los controles del player y los controles de la página"
+    business_value: MEDIUM
+    risk_area:
+      - "latencia en propagación de eventos desde el iframe al host"
+      - "eventos volumechange no emitidos en todos los browsers"
+    related_features:
+      - "controls-api"
+    acceptance:
+      - "EVT-AC-007"
+      - "EVT-AC-005"
+    notes: >
+      El viewer no interactúa con el sistema de eventos directamente, pero se beneficia
+      de que el integrador haya implementado la suscripción correctamente. La latencia
+      del postMessage es despreciable (<1ms en same-origin) pero puede ser visible si
+      el handler del integrador hace trabajo pesado.
+
+  - id: US-EVT-006
+    persona: Operator
+    narrative:
+      as: "operador de plataforma que necesita detectar cuando un usuario bloquea anuncios"
+      want: "recibir el evento adblockerDetected para mostrar un mensaje de desactivación de adblock"
+      so_that: "puedo proteger el modelo de negocio basado en publicidad sin degradar la experiencia de usuarios sin adblock"
+    business_value: HIGH
+    risk_area:
+      - "falsos positivos en detección de adblock"
+      - "evento no emitido si la detección es asíncrona y el integrador escucha tarde"
+    related_features:
+      - "ads-manager"
+    acceptance:
+      - "EVT-AC-001"
+    notes: >
+      adblockerDetected se emite una sola vez por sesión cuando se detecta el bloqueo.
+      El integrador debe registrar el listener ANTES de loadMSPlayer() para garantizar
+      que no se pierde el evento (ver BR-EVT-011).
+
+  - id: US-EVT-007
+    persona: Integrator
+    narrative:
+      as: "desarrollador que integra el player en un Smart TV con skin personalizado"
+      want: "recibir el evento dismissButton cuando el usuario presiona el botón de volver del control remoto"
+      so_that: "puedo implementar la navegación de vuelta dentro de mi aplicación TV sin que el sistema operativo intercepte el evento"
+    business_value: MEDIUM
+    risk_area:
+      - "evento solo disponible en skin TV — no emitido en vistas de video/radio"
+      - "incompatibilidad de nombre de evento entre versiones del player"
+    related_features:
+      - "controls-api"
+    acceptance:
+      - "EVT-AC-001"
+      - "EVT-AC-004"
+    notes: >
+      dismissButton está en el catálogo UI_EVENTS del contrato (contracts/player-api.ts).
+      Es el único evento de UI específico para plataformas TV. El test de contrato
+      player-api.spec.ts verifica que su nombre no cambie entre versiones del player.
+
+  - id: US-EVT-008
+    persona: Integrator
+    narrative:
+      as: "desarrollador que integra con Chromecast en una aplicación web"
+      want: "recibir los eventos castStateChange, castConnected y castDisconnected para actualizar el ícono de Chromecast en mi UI"
+      so_that: "el usuario puede ver el estado actual de la conexión Chromecast en todo momento"
+    business_value: MEDIUM
+    risk_area:
+      - "castStateChange puede emitirse múltiples veces con el mismo estado"
+      - "eventos de cast no emitidos en browsers sin soporte de Chromecast SDK"
+    related_features:
+      - "chromecast"
+    acceptance:
+      - "EVT-AC-001"
+      - "EVT-AC-004"
+    notes: >
+      Los eventos de Chromecast requieren que el SDK de Google Cast esté disponible
+      y que el usuario tenga dispositivos Chromecast en su red. En CI headless estos
+      eventos no se emiten por falta de hardware.

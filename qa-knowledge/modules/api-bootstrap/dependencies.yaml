@@ -1,0 +1,108 @@
+version: "1.0"
+module: api-bootstrap
+last_updated: "2026-06-08"
+
+internal:
+  - id: platform-config
+    reason: "Fetcha la config de contenido (src, ads, DRM, subtitles, poster) desde la plataforma Mediastream. Usado tanto en bootstrap inicial como en player.load() para cambio de contenido dinámico."
+    coupling: high
+    files:
+      - "src/platform/loadConfig.js"
+
+  - id: events
+    reason: "internalEmitter: bus de eventos interno usado para _controlsReady (wait gate), reset en destroy(), debug flag. externalEmitter: expuesto como métodos on/once/off de la API pública del player."
+    coupling: high
+    files:
+      - "src/events/index.js"
+
+  - id: context
+    reason: "React Context Provider que distribuye el estado del player a todos los componentes internos. Montado directamente por player.jsx en el árbol React."
+    coupling: high
+    files:
+      - "src/context/index.jsx"
+
+  - id: view
+    reason: "Árbol de UI del player (controles, video element, overlays). Montado como hijo del ContextProvider. El tipo de vista (video/audio/radio/reels) determina qué componentes se renderizan."
+    coupling: high
+    files:
+      - "src/view/index.jsx"
+
+  - id: plugins
+    reason: "Plugins del player (ads-ima, youbora, chromecast, etc.) cargados via React Suspense en PluginLoader. Las opciones de configuración de ads, analytics, DRM se pasan a los plugins."
+    coupling: medium
+    files:
+      - "src/plugins/index.js"
+
+  - id: error
+    reason: "ErrorHandler componente montado en el árbol React. PlayerInitError lanzado por loadConfig cuando el type es inválido o el request falla."
+    coupling: medium
+    files:
+      - "src/error/index.jsx"
+      - "src/error/error.js"
+
+  - id: chromecast
+    reason: "cleanupChromecast() llamado explícitamente en player.destroy() para liberar recursos del Cast SDK."
+    coupling: low
+    files:
+      - "src/view/video/atoms/chromecast/index.js"
+
+  - id: controls-api
+    reason: "InternalEvents._controlsReady es el gate que el bootstrap espera antes de resolver la inicialización (excepto en player=dynamic). Si los controles tardan en montarse, el bootstrap espera."
+    coupling: medium
+    files:
+      - "src/components/register.js"
+
+  - id: helper-request
+    reason: "Módulo GET usado en loadConfig para fetch HTTP a la plataforma. También usado directamente en api.js para GET de UI config del player."
+    coupling: medium
+    files:
+      - "src/helper/request.js"
+
+  - id: legacy-api-compat
+    reason: "Importado condicionalmente (solo en iframes bajo .mdstrm.com). Relay de eventos a parent window vía postMessage. Activa también un listener de mensajes entrantes para comandos del parent."
+    coupling: low
+    files:
+      - "src/api/legacyApiCompat.js"
+
+external:
+  - id: react
+    package: "react@18.3.1 + react-dom@18.3.1"
+    version: "18.3.1"
+    reason: "Framework UI del player. LightningPlayer usa createRoot() de React 18 para montar el árbol. El ciclo de render async de React implica que cambios de estado no son síncronos."
+    risk: high
+    note: "React 18 usa concurrent rendering. Los updates de estado son asíncronos — tests deben usar expect.poll() nunca assert directo post-acción."
+
+  - id: lodash-merge
+    package: "lodash/merge"
+    version: "bundled con lodash"
+    reason: "Usado en api.js para merge profundo de configs: config local + platform config + ads override."
+    risk: low
+    note: "merge() muta el primer argumento. api.js lo invoca siempre con {} como primer arg para evitar mutación."
+
+  - id: uuid
+    package: "uuid@^9"
+    version: "9.x"
+    reason: "Genera el _id único por instancia del player para el React root (identifierPrefix). Evita colisiones de IDs en SSR o múltiples instancias."
+    risk: low
+    note: "Usado en _mount(). Si falla, el root se monta igualmente pero sin prefijo de IDs."
+
+  - id: mediastream-platform-api
+    package: "https://embed.mdstrm.com (prod) / develop.mdstrm.com (dev)"
+    version: "n/a (API externa)"
+    reason: "Fuente de verdad de: src del stream, config de ads, DRM, subtitles, metadata. Sin este endpoint el player no puede inicializar contenido."
+    risk: high
+    note: "En tests: interceptar con page.route() al dominio correcto según PLAYER_ENV. No mockear con URLs reales de producción."
+
+  - id: mediastream-cdn
+    package: "https://player.cdn.mdstrm.com"
+    version: "n/a (CDN)"
+    reason: "Sirve api.js y sus chunks lazy-loaded. api.js tiene TTL corto (short-lived cache), el resto tiene TTL largo (content-addressed hashes)."
+    risk: high
+    note: "CORS policy del CDN es crítica — api.js falla en load si el CDN no está accesible o CORS rechaza la request del browser."
+
+  - id: federation-sdk
+    package: "https://platform-static.cdn.mdstrm.com/client/embed-federation/sdk.js"
+    version: "n/a (externo)"
+    reason: "SDK de federación para obtener customer ID. Usado por loadConfig para personalización y resume position. Si falla, el player continúa sin customer federation."
+    risk: medium
+    note: "Failure handled gracefully: getCustomer() tiene .catch(() => null). El player funciona sin federation aunque puede perder funcionalidades como resume."

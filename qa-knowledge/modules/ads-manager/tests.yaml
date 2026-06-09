@@ -1,0 +1,126 @@
+version: "1.0"
+module: ads-manager
+last_updated: "2026-06-08"
+
+existing_tests:
+  - spec_file: "tests/integration/ads-manager-degradation.spec.ts"
+    description: "VAST Wrapper chain de un nivel: adsLoaded o adsStarted se emite. VAST Wrapper: beacons de impression del Wrapper y del creativo final se disparan. VAST endpoint 503: content reproduce sin ads, sin crashes JS, sin error fatal del player."
+    ac_coverage:
+      - "ADMGR-AC-003"
+      - "ADMGR-AC-004"
+
+  - spec_file: "tests/e2e/ads-ima-tag-params.spec.ts"
+    description: "Verifica parámetros del ad tag URL: macros, custom params, listenerid. Cubre inicialización del ciclo IMA con config ads.map."
+    ac_coverage:
+      - "ADMGR-AC-002"
+      - "ADMGR-AC-015"
+
+  - spec_file: "tests/e2e/vod-playback.spec.ts"
+    description: "Playback VOD básico sin ads configuradas. Verifica que el player reproduce content inmediatamente sin adsRequested."
+    ac_coverage:
+      - "ADMGR-AC-001"
+
+coverage_gaps:
+  - id: GAP-ADMGR-001
+    priority: MUST
+    ac_ref: "ADMGR-AC-001"
+    title: "Player con ads.map=null o config sin ads — adsRequested NO se emite"
+    suggested_spec: "tests/integration/ads-manager-no-ads.spec.ts"
+    notes: "Actualmente solo cubierto implícitamente en vod-playback.spec.ts que no verifica explícitamente la ausencia del evento adsRequested. Necesita un test dedicado que afirme player.ad === null y ausencia de eventos _ads*."
+    industry_note: "Critical path: el 100% de los views sin config de ads deben garantizar cero overhead del sistema de ads."
+
+  - id: GAP-ADMGR-002
+    priority: MUST
+    ac_ref: "ADMGR-AC-002"
+    title: "Ciclo completo pre-roll: adsRequested → adsLoaded → adsStarted → adsImpression → adsAllAdsCompleted → contentResumeRequested"
+    suggested_spec: "tests/integration/ads-manager-preroll-lifecycle.spec.ts"
+    notes: "ads-ima-tag-params.spec.ts verifica parámetros de URL pero no el ciclo completo de eventos de un pre-roll. Necesita test con mock-vast server que verifique la secuencia completa de eventos en orden."
+    industry_note: "El ciclo completo de eventos es el contrato con NPAW/Youbora y otros sistemas de analytics que dependen del orden correcto de adsStarted, adsImpression, etc."
+
+  - id: GAP-ADMGR-003
+    priority: MUST
+    ac_ref: "ADMGR-AC-005"
+    title: "VMAP con mid-roll — pausa en t correcto, reanuda desde t correcto"
+    suggested_spec: "tests/integration/ads-manager-vmap-midroll.spec.ts"
+    notes: "No hay ningún test de VMAP midroll en el repo. Es un gap crítico dado que VMAP es el formato principal para multi-break scheduling. Usar mock-vast server con endpoint /vast/vmap?midroll=5 (offset de 5 segundos para mantener el test corto). Verificar: cue points disponibles via player.ad.cuePoints, pausa en t=5, reanuda desde t=5."
+    industry_note: "Midroll timing es el caso de error más reportado en producción (seeking over ad break, wrong resume point). La industria lo considera must-test."
+
+  - id: GAP-ADMGR-004
+    priority: MUST
+    ac_ref: "ADMGR-AC-004"
+    title: "Autoplay bloqueado — NotAllowedError no crashea el player, contenido reproduce"
+    suggested_spec: "tests/integration/ads-manager-autoplay-blocked.spec.ts"
+    notes: "Usar Playwright browser context sin permisos de autoplay. Verificar que el player finaliza en un estado reproducible aunque ads no se cargaron. Este caso ocurre frecuentemente en mobile browsers."
+    industry_note: "AUTOPLAY_DISALLOWED (error 1205 IMA) es uno de los errores más comunes en mobile. La degradación graceful es esencial para retención de usuarios."
+
+  - id: GAP-ADMGR-005
+    priority: MUST
+    ac_ref: "ADMGR-AC-007"
+    title: "ErrorBoundary (IS_PRODUCTION): React error fuerza resume del player"
+    suggested_spec: "tests/integration/ads-manager-error-boundary.spec.ts"
+    notes: "Simular un React error en el componente AdsManager inyectando un throw en el render (usando page.evaluate para dispararlo). Verificar que el player reanuda contenido. Este test requiere ejecutar en modo IS_PRODUCTION=true (el ErrorBoundary solo activa en producción)."
+    industry_note: "El ErrorBoundary es el último failsafe. Si no funciona, el usuario queda con pantalla en negro."
+
+  - id: GAP-ADMGR-006
+    priority: MUST
+    ac_ref: "ADMGR-AC-008"
+    title: "reset() entre contenidos — cue points anteriores no contaminan nuevo ciclo"
+    suggested_spec: "tests/integration/ads-manager-source-change.spec.ts"
+    notes: "Cargar player con VMAP (mid-rolls). Cambiar source sin recargar la página. Verificar que player.ad.cuePoints del nuevo ciclo no incluye cue points del ciclo anterior. Verificar que adsRequested se emite nuevamente."
+    industry_note: "SPA (Single Page Application) players son el caso de uso principal. El source change sin reload de página es el default en OTT apps."
+
+  - id: GAP-ADMGR-007
+    priority: SHOULD
+    ac_ref: "ADMGR-AC-006"
+    title: "Ad skippable — adsSkippableStateChanged se emite al alcanzar skipOffset"
+    suggested_spec: "tests/integration/ads-manager-skip.spec.ts"
+    notes: "Mock VAST con skipTimeOffset=3 (3 segundos). Esperar 3 segundos de reproducción del ad. Verificar adsSkippableStateChanged=true. Llamar player.ad.skip(). Verificar adsSkipped y resume del contenido."
+    industry_note: "El skip es un feature crítico para UX. Un bug aquí (skip no disponible cuando debería) lleva a rebote de usuarios."
+
+  - id: GAP-ADMGR-008
+    priority: SHOULD
+    ac_ref: "ADMGR-AC-009"
+    title: "VAST vacío (empty response) — adsError + contenido reproduce sin bloqueo"
+    suggested_spec: "tests/integration/ads-manager-empty-vast.spec.ts"
+    notes: "mock-vast server con endpoint /vast/empty que retorna VAST válido XML sin Ad elements. Verificar que adsError se emite, content reproduce. Nota: diferenciar de 503 (error HTTP) vs VAST vacío (200 con XML sin ads)."
+    industry_note: "Fill rate < 100% es normal en exchanges de ads (e.g., 60% fill rate = 40% de requests vacíos). El player debe manejar esto sin impacto en el viewer."
+
+  - id: GAP-ADMGR-009
+    priority: SHOULD
+    ac_ref: "ADMGR-AC-010"
+    title: "VMAP post-roll — se ejecuta cuando contenido termina"
+    suggested_spec: "tests/integration/ads-manager-vmap-postroll.spec.ts"
+    notes: "Mock VAST con VMAP que incluye post-roll. Usar contenido de corta duración (< 10s). Esperar el evento ended del contenido. Verificar adsContentPauseRequested del post-roll y adsAllAdsCompleted posterior."
+    industry_note: "Post-rolls tienen tasa de completado > pre-rolls en OTT porque el viewer que llegó al final tiene mayor intención. Importante testear."
+
+  - id: GAP-ADMGR-010
+    priority: SHOULD
+    ac_ref: "ADMGR-AC-013"
+    title: "Viewable impression beacon — 2 segundos continuos al 50% viewport"
+    suggested_spec: "tests/integration/ads-manager-viewable-impression.spec.ts"
+    notes: "Requiere mock de IntersectionObserver en Playwright (page.evaluate para simular threshold=0.5 intersecting). Avanzar 2 segundos de reproducción del ad. Verificar beacon /track/viewable fue disparado en mock-vast server."
+    industry_note: "El viewable impression es la base del billing en muchos modelos CPM de video advertising (pago por ad visto, no solo por ad solicitado)."
+
+  - id: GAP-ADMGR-011
+    priority: SHOULD
+    ac_ref: "ADMGR-AC-002"
+    title: "Quartile beacons — firstQuartile, midpoint, thirdQuartile, complete disparados"
+    suggested_spec: "tests/integration/ads-manager-quartile-beacons.spec.ts"
+    notes: "Usar mock-vast server con tracking URLs para cada quartile. Reproducir el ad completo. Verificar que los 4 beacons (adsFirstQuartile, adsMidpoint, adsThirdQuartile, adsComplete) se emiten en orden."
+    industry_note: "Los quartile beacons son la base del reporting de ad completion para DSPs y medición de brand safety. Un bug aquí tiene impacto en revenue del publisher."
+
+  - id: GAP-ADMGR-012
+    priority: COULD
+    ac_ref: "ADMGR-AC-014"
+    title: "Audio player — videoFallback como container del ad"
+    suggested_spec: "tests/integration/ads-manager-audio-player.spec.ts"
+    notes: "Player con type='audio' y ads.map configurado. Verificar que el elemento <video> fallback es montado y que el ad usa ese elemento como container. Este es un edge case específico del player para radio/podcast con video ads."
+    industry_note: "Audio players con video ads son un caso de uso de audio-first streaming platforms con monetización via video."
+
+  - id: GAP-ADMGR-013
+    priority: COULD
+    ac_ref: "ADMGR-AC-015"
+    title: "Macros custom.* — parámetros custom añadidos al ad tag URL para mdstrm.com"
+    suggested_spec: "tests/integration/ads-manager-macros.spec.ts"
+    notes: "Configurar ads.map con URL de dominio mdstrm.com y custom={key:'value'}. Interceptar la request con Playwright route. Verificar que custom.key está presente en la URL del request."
+    industry_note: "Las macros de targeting son críticas para la monetización personalizada. Un bug en macros puede reducir el CPM efectivo del publisher."

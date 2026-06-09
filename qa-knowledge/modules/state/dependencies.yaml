@@ -1,0 +1,75 @@
+version: "1.0"
+module: state
+last_updated: "2026-06-08"
+
+internal:
+  - id: events
+    reason: "internalEmitter es el bus central que alimenta los átomos Jotai — sin eventos no hay actualizaciones de currentTime, duration, playerStatus, etc."
+    coupling: high
+    files:
+      - "src/events/index.js"
+    note: "Todos los atomEffect suscriben y desunscriben handlers de internalEmitter en mount/unmount. Si internalEmitter falla o se resetea, todos los átomos quedan stale."
+
+  - id: playback-core
+    reason: "Los handlers HLS/DASH/Native son la fuente real del estado — emiten los eventos HTML5 que los átomos consumen (timeupdate, canplay, pause, etc.)"
+    coupling: high
+    files:
+      - "src/player/base.js"
+      - "src/player/handler/"
+    note: "BasePlayer._setStatus() actualiza playerStatus vía setData(). Los handlers llaman play()/pause() en el video element y emiten los eventos correspondientes."
+
+  - id: controls-api
+    reason: "Controls expone player.currentTime, player.paused, player.status via Object.defineProperty en LightningPlayer.prototype. Es el intermediario entre estado interno y API pública."
+    coupling: high
+    files:
+      - "src/controls/index.js"
+      - "src/controls/methods.js"
+    note: "Controls.get() tiene lógica de override: si hay adsManager activo, devuelve el estado del ad, no del contenido principal. Esto afecta player.paused y player.currentTime durante ads."
+
+  - id: ads-manager
+    reason: "Durante reproducción de ads, el adsManager puede interceptar get('paused'), get('currentTime') y get('status') — el estado del player refleja el del ad, no el del contenido"
+    coupling: medium
+    files:
+      - "src/ads/manager/manager/index.js"
+    note: "currentTimeAtom silencia actualizaciones cuando isAdsPlayingAtom === true. durationAtom preserva el último valor durante ads para evitar race conditions."
+
+  - id: context-react
+    reason: "ContextProvider (React class component) es la fuente de verdad para playerStatus, volume (inicial), src, type, drm. setData() actualiza el Context que luego se sincroniza a los átomos Jotai."
+    coupling: high
+    files:
+      - "src/context/index.jsx"
+      - "src/context/useContext.js"
+
+  - id: dvr
+    reason: "dvrWindowStartAtom transforma currentTime absoluto a offset relativo en streams DVR. El módulo state debe tener conocimiento del tipo de stream para calcular currentTime correctamente."
+    coupling: medium
+    files:
+      - "src/view/video/atoms/dvrState.js"
+
+  - id: hls
+    reason: "levelAtom, levelsAtom, selectedLevelAtom son átomos de estado relevantes solo para HLS. El módulo state gestiona el estado de ABR (nivel activo, próximo nivel, autoLevel)."
+    coupling: low
+    files:
+      - "src/view/video/atoms/level.js"
+
+external:
+  - id: jotai
+    package: "jotai"
+    version: "2.8.0"
+    reason: "Motor de átomos reactivos — primitivo de estado del player. Todos los átomos de la carpeta atoms/ usan jotai."
+    risk: medium
+    note: "Jotai v2.x usa WeakMap internamente para registrar subscriptores. Actualizaciones de átomos son síncronas dentro del store pero el re-render de React es async. Tests deben usar expect.poll() siempre para propiedades de estado."
+
+  - id: jotai-effect
+    package: "jotai-effect"
+    version: "compatibible con jotai 2.8.0"
+    reason: "atomEffect — permite ejecutar side effects cuando átomos cambian, con cleanup automático al desmontar. Usado en TODOS los átomos de estado del player (volumeAtomEffect, timeUpdateEffectAtom, etc.)"
+    risk: medium
+    note: "atomEffect no es parte del core de jotai — es una librería separada (pmndrs/jotai-effect). Su versión debe mantenerse compatible con la versión de jotai. El cleanup del effect (función de retorno) es crítico para evitar memory leaks y event listeners duplicados."
+
+  - id: react
+    package: "react"
+    version: "18.3.1"
+    reason: "React es el motor de rendering. ContextProvider es un React.PureComponent class. Los átomos se consumen via useAtomValue/useSetAtom dentro del árbol React."
+    risk: low
+    note: "React 18 Concurrent Mode puede hacer que renders sean interrumpidos y reiniciados — puede causar que un efecto se limpie y re-ejecute. Tener en cuenta en tests de timing."

@@ -1,0 +1,83 @@
+version: "1.0"
+module: chromecast
+last_updated: "2026-06-08"
+
+internal:
+  - id: events
+    reason: "internalEmitter.emit() para propagar todos los eventos _cast* al sistema de eventos del player"
+    coupling: high
+    files:
+      - "src/chromecast/CastManager.js"
+      - "src/view/video/atoms/chromecast.js"
+    note: "Todos los eventos públicos (castConnected, castDisconnected, castError, castMediaLoaded, castMediaEnded, castTracksLoaded, castActiveTracksChanged) se emiten vía internalEmitter"
+
+  - id: subtitles
+    reason: "Integración bidireccional: cuando se está casting, el módulo subtitles redirige las acciones de texto al Cast SDK en vez del player local. CastManager filtra formatos incompatibles (ASS/SSA) al cargar media."
+    coupling: high
+    files:
+      - "src/chromecast/subtitles.js"
+      - "src/chromecast/CastManager.js"
+      - "src/view/video/atoms/subtitle.js"
+    note: "subtitle.js atoms verifican castConnectedAtom antes de decidir si actúan en local o en Cast. Cambios en el módulo subtitles pueden romper la selección de tracks durante casting."
+
+  - id: controls-api
+    reason: "expose() registra player.cast, player.isCasting, player.castDeviceName en la API pública del player"
+    coupling: high
+    files:
+      - "src/view/video/atoms/chromecast.js"
+    note: "La exposeCastApiAtomEffect depende de la API de expose(). Si cambia el contrato de expose(), el objeto player.cast puede dejar de estar disponible."
+
+  - id: playback-core
+    reason: "Al conectar Cast: api.pause() se llama en el player local. Al desconectar: api.currentTime y api.play() se restauran. getComponent('api') se usa como puente."
+    coupling: high
+    files:
+      - "src/view/video/atoms/chromecast.js"
+    note: "La lógica de resume al desconectar compara base URLs (sin query params). Si el formato de src cambia, la detección de 'mismo contenido' puede fallar."
+
+  - id: metadata
+    reason: "buildMediaInfoFromApi() lee api.metadata (título, poster, descripción) para incluirlo en el MediaInfo enviado al Cast device"
+    coupling: medium
+    files:
+      - "src/chromecast/MediaBuilder.js"
+    note: "Si la estructura de api.metadata cambia, el título y poster en el Cast device pueden quedar vacíos."
+
+  - id: platform-config
+    reason: "contextValueFamily('view.chromecast') y contextValueFamily('view.chromecastReceiverAppId') controlan si el módulo está habilitado y qué receiver usar"
+    coupling: medium
+    files:
+      - "src/view/video/atoms/chromecast.js"
+    note: "El integrador puede deshabilitar Cast via view.chromecast=false en la config del player"
+
+  - id: helper
+    reason: "importExternal() se usa en loader.js para cargar el script del SDK desde gstatic.com"
+    coupling: low
+    files:
+      - "src/chromecast/loader.js"
+
+external:
+  - id: google-cast-sdk-caf-v3
+    package: "https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1"
+    version: "CAF v3 (latest — no versión fija, se sirve siempre la más reciente)"
+    reason: "SDK oficial de Google para la integración Chromecast en el sender web. Provee CastContext, RemotePlayer, RemotePlayerController, SessionManager."
+    risk: high
+    note: >
+      El SDK se carga de forma lazy (no en el bundle) desde gstatic.com con un timeout de 10s.
+      Google sirve siempre la versión más reciente — una actualización silenciosa puede romper
+      comportamientos sin previo aviso. CAF v3 reemplaza el SDK v2 deprecated.
+      El SDK solo funciona en contextos seguros (HTTPS o localhost) y en browsers Chromium.
+      No hay NPM package oficial para web sender — siempre se carga desde CDN.
+      Historial de cambios: https://developers.google.com/cast/docs/release-notes
+
+  - id: jotai
+    package: "jotai@2.x + jotai-effect"
+    version: ">=2.8.0"
+    reason: "Estado reactivo del módulo Chromecast en la vista de video. Los atoms de Jotai gestionan el estado de Cast y disparan efectos cuando el usuario inicia/termina sesión."
+    risk: medium
+    note: "Se usa atomEffect de jotai-effect (no incluido en Jotai core). Actualizar Jotai sin actualizar jotai-effect puede romper los efectos de Cast."
+
+  - id: react
+    package: "react@18.x"
+    version: ">=18.3.1"
+    reason: "useChromecast hook (view-agnostic) y useChromecastVideo (video-specific) son hooks React"
+    risk: low
+    note: "Sin dependencia directa a APIs experimentales de React. Compatible con React 18."

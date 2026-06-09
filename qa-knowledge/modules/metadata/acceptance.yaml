@@ -1,0 +1,151 @@
+version: "1.0"
+module: metadata
+last_updated: "2026-06-08"
+
+acceptance_criteria:
+  - id: META-AC-001
+    priority: MUST
+    scenario: "player.metadata expone metadata de contenido tras ready"
+    given: "Un VoD cargado con título, póster y tipo en la config de plataforma"
+    when: "El player alcanza el estado ready y se lee player.metadata"
+    then:
+      - "player.metadata.title coincide con el título de la plataforma"
+      - "player.metadata.type refleja el tipo de contenido (video/audio/live)"
+      - "player.metadata NO incluye las funciones goPrevItem ni goNextItem"
+
+  - id: META-AC-002
+    priority: MUST
+    scenario: "metadatachanged se emite una sola vez por item (dedup)"
+    given: "Un solo item de contenido cargado (sin cambios de fuente)"
+    when: "El player se estabiliza durante varios segundos post-playing"
+    then:
+      - "metadatachanged se emite como máximo 1 vez para ese item"
+      - "Re-renders internos NO producen emisiones adicionales (dedup por isEqual)"
+      - "El conteo de metadatachanged no sube durante la ventana de estabilización"
+
+  - id: META-AC-003
+    priority: MUST
+    scenario: "metadatachanged se re-emite al cambiar de contenido"
+    given: "Un player reproduciendo un item A"
+    when: "Se hace load() de un item B distinto (manual o automático)"
+    then:
+      - "Se emite metadatachanged con la metadata de B"
+      - "player.metadata refleja el nuevo título/póster/id de B"
+      - "No quedan residuos del contexto de A en player.metadata"
+
+  - id: META-AC-004
+    priority: MUST
+    scenario: "duration es 0/NaN antes de loadedmetadata y válida después"
+    given: "Un VoD recién cargado"
+    when: "Se lee player.duration antes y después del evento loadedmetadata"
+    then:
+      - "Antes de loadedmetadata duration puede ser 0 o NaN (no confiable)"
+      - "Tras loadedmetadata duration refleja la duración real del VoD en segundos"
+      - "Tests de duración solo asertan tras esperar loadedmetadata/durationchange"
+
+  - id: META-AC-005
+    priority: MUST
+    scenario: "Media Session: duration reportada como Infinity en live"
+    given: "Un stream live reproduciéndose con Media Session disponible"
+    when: "Se invoca setPositionState desde updatePosition()"
+    then:
+      - "Para type==='live' setPositionState recibe duration: Infinity"
+      - "La posición/velocidad se actualizan en eventos timeupdate/durationchange"
+      - "El SO renderiza la sesión como live (sin scrubber de duración finita)"
+
+  - id: META-AC-006
+    priority: MUST
+    scenario: "Media Session refleja título y artista del contenido actual"
+    given: "Media Session API disponible y un contenido con título y subtítulo"
+    when: "El player llega a playing y se actualiza la MediaMetadata"
+    then:
+      - "navigator.mediaSession.metadata.title coincide con player.metadata.title"
+      - "navigator.mediaSession.metadata.artist coincide con player.metadata.subtitle"
+      - "La actualización ocurre poco después (~100 ms) de player.metadata"
+
+  - id: META-AC-007
+    priority: SHOULD
+    scenario: "Now-playing de radio actualiza metadata en tiempo real"
+    given: "Player tipo 'radio' (useID3Sync:false) con estación que provee now-playing"
+    when: "Se hace POST a la API de nowplaying con nueva canción"
+    then:
+      - "player.metadata.title se actualiza al título de la canción"
+      - "player.metadata.subtitle se actualiza al artista"
+      - "Se emite metadatachanged con title y subtitle nuevos"
+
+  - id: META-AC-008
+    priority: SHOULD
+    scenario: "Media Session expone action handlers según el contenido"
+    given: "Media Session disponible y contenido VoD (seekable)"
+    when: "El player está activo y se inspeccionan los action handlers"
+    then:
+      - "play, pause y stop están registrados"
+      - "seekbackward, seekforward y seekto están registrados solo si type!=='live'"
+      - "skipad solo se registra cuando hay un ad reproduciéndose y skippable"
+
+  - id: META-AC-009
+    priority: SHOULD
+    scenario: "Media Session: posición se neutraliza durante un ad"
+    given: "Un ad linear reproduciéndose con Media Session disponible"
+    when: "updatePosition() corre mientras ad.info está presente"
+    then:
+      - "setPositionState recibe position: 0 y duration: 0 durante el ad"
+      - "handleSeek se ignora mientras ad.info está presente (no permite scrub en ad)"
+
+  - id: META-AC-010
+    priority: SHOULD
+    scenario: "programdatetime se emite en streams HLS live que lo proveen"
+    given: "Un stream HLS live cuyos segmentos llevan PROGRAM-DATE-TIME"
+    when: "El player reproduce el live y procesa los segmentos"
+    then:
+      - "Se emite programdatetime con la fecha/hora del wallclock del segmento"
+      - "Streams sin PROGRAM-DATE-TIME no emiten el evento (ausencia es válida)"
+
+  - id: META-AC-011
+    priority: SHOULD
+    scenario: "Multi-instancia: solo un player controla la Media Session"
+    given: "Dos instancias del player en la misma página"
+    when: "Una instancia entra en playing mientras la otra ya estaba activa"
+    then:
+      - "La instancia que arranca toma la Media Session (isCurrent=true)"
+      - "La otra instancia libera la sesión al recibir msp:playing (isCurrent=false)"
+      - "navigator.mediaSession.metadata refleja el contenido de la instancia activa"
+
+  - id: META-AC-012
+    priority: SHOULD
+    scenario: "Artwork de Media Session se genera en múltiples tamaños"
+    given: "Contenido con póster (URL http/https, no blob/data)"
+    when: "Se construye la MediaMetadata"
+    then:
+      - "artwork contiene entradas para 96,128,192,256,384,512 px"
+      - "cada src añade w/h/fit=crop/q/auto=format al póster con el separador correcto (?/&)"
+      - "pósters blob:/data: NO se redimensionan (artwork queda vacío)"
+
+  - id: META-AC-013
+    priority: COULD
+    scenario: "Replay reinicia la metadata correctamente"
+    given: "Un VoD que terminó (ended)"
+    when: "El usuario repite el mismo contenido"
+    then:
+      - "player.metadata mantiene los campos del contenido tras el replay"
+      - "La Media Session se re-activa y setPositionState refleja position desde 0"
+
+  - id: META-AC-014
+    priority: COULD
+    scenario: "Firestore no disponible no rompe la reproducción"
+    given: "Player radio con backend de now-playing inaccesible"
+    when: "onSnapshot falla o no entrega datos"
+    then:
+      - "El player sigue reproduciendo el audio sin crash"
+      - "player.metadata conserva la metadata estática de plataforma"
+      - "No se emite metadatachanged con datos corruptos"
+
+  - id: META-AC-015
+    priority: COULD
+    scenario: "Browser sin Media Session degrada con gracia"
+    given: "Un navegador donde 'mediaSession' no existe en navigator"
+    when: "El módulo metadata se monta"
+    then:
+      - "useMediaSession degrada a useSetBindings (sin tocar navigator.mediaSession)"
+      - "player.metadata sigue exponiéndose y metadatachanged sigue emitiéndose"
+      - "No se lanza ninguna excepción por ausencia de la API"

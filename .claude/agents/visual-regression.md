@@ -1,24 +1,6 @@
 ---
 name: visual-regression
-description: "Captura screenshots del player en 7 estados clave y los compara con baselines/. Corre en paralelo con el test runner. Delegar cuando se quiere validar que los cambios de UI no introdujeron regresiones visuales.
-
-<example>
-Context: El pipeline está corriendo y se quiere validar visualmente el player en paralelo.
-user: \"Corre la validación visual del player mientras corren los tests de integración.\"
-assistant: \"Lanzaré visual-regression en paralelo con el test runner para capturar y comparar los 7 estados del player contra los baselines.\"
-<commentary>
-visual-regression (A9) corre en PARALELO con A6 (Test Runner). No bloquea el pipeline — sus resultados se incluyen en el reporte para revisión humana.
-</commentary>
-</example>
-
-<example>
-Context: Se realizaron cambios intencionales de UI y hay que actualizar los baselines.
-user: \"Los cambios de UI son intencionales, actualiza los baselines.\"
-assistant: \"Correré visual-regression con --update-baselines para capturar los nuevos estados como referencia.\"
-<commentary>
-Usar --update-baselines después de cambios UI intencionales confirmados. El agente advertirá cuántos baselines fueron actualizados.
-</commentary>
-</example>"
+description: "Captura screenshots del player en 7 estados clave y los compara con baselines/. Corre en paralelo con el test runner. Delegar cuando se quiere validar que los cambios de UI no introdujeron regresiones visuales.\n\n<example>\nContext: El pipeline está corriendo y se quiere validar visualmente el player en paralelo.\nuser: \"Corre la validación visual del player mientras corren los tests de integración.\"\nassistant: \"Lanzaré visual-regression en paralelo con el test runner para capturar y comparar los 7 estados del player contra los baselines.\"\n<commentary>\nvisual-regression (A9) corre en PARALELO con A6 (Test Runner). No bloquea el pipeline — sus resultados se incluyen en el reporte para revisión humana.\n</commentary>\n</example>\n\n<example>\nContext: Se realizaron cambios intencionales de UI y hay que actualizar los baselines.\nuser: \"Los cambios de UI son intencionales, actualiza los baselines.\"\nassistant: \"Correré visual-regression con --update-baselines para capturar los nuevos estados como referencia.\"\n<commentary>\nUsar --update-baselines después de cambios UI intencionales confirmados. El agente advertirá cuántos baselines fueron actualizados.\n</commentary>\n</example>"
 tools: Bash Read Glob
 model: claude-sonnet-4-6
 color: teal

@@ -42,6 +42,14 @@ const LOWER_IS_WORSE = new Set([
 /** Porcentaje de degradación relativa que dispara una regresión */
 const REGRESSION_THRESHOLD  = 0.20   // 20%
 
+/**
+ * Thresholds específicos por métrica. Sobreescribe REGRESSION_THRESHOLD.
+ * bufferedAhead_sec bajo red degradada es noisy (sample único, varianza alta en CI).
+ */
+const METRIC_THRESHOLDS: Record<string, number> = {
+  bufferedAhead_sec: 0.60,  // 60% — red throttled en CI tiene alta varianza
+}
+
 /** Porcentaje de mejora relativa que se reporta como mejora notable */
 const IMPROVEMENT_THRESHOLD = 0.10   // 10%
 
@@ -130,16 +138,17 @@ function main(): void {
         continue
       }
 
-      const delta = (currentValue - baselineValue) / baselineValue
-      const unit  = unitOf(metric)
-      const label = `${key}.${metric}`
-      const line  = `  ${label}: ${fmt(baselineValue, unit)} → ${fmt(currentValue, unit)} (${pct(delta)})`
+      const delta     = (currentValue - baselineValue) / baselineValue
+      const unit      = unitOf(metric)
+      const label     = `${key}.${metric}`
+      const line      = `  ${label}: ${fmt(baselineValue, unit)} → ${fmt(currentValue, unit)} (${pct(delta)})`
+      const threshold = METRIC_THRESHOLDS[metric] ?? REGRESSION_THRESHOLD
 
       // Determinar si es regresión, mejora o sin cambio
       const isRegression = HIGHER_IS_WORSE.has(metric)
-        ? delta > REGRESSION_THRESHOLD
+        ? delta > threshold
         : LOWER_IS_WORSE.has(metric)
-          ? delta < -REGRESSION_THRESHOLD
+          ? delta < -threshold
           : false
 
       const isImprovement = HIGHER_IS_WORSE.has(metric)

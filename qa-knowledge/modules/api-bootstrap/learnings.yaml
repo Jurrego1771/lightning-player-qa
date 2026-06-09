@@ -1,0 +1,82 @@
+version: "1.0"
+module: api-bootstrap
+last_updated: "2026-06-08"
+
+learnings:
+  - id: BOOT-LEARN-001
+    title: "El bootstrap es completamente asíncrono — la instancia del player no está disponible síncronamente"
+    discovery: "código fuente: src/api/api.js — IIFE async, loadDependencies() usa Promise.all"
+    detail: "api.js envuelve todo en una IIFE async. El player NO está disponible síncronamente después de que el script tag se ejecuta. El único mecanismo confiable para obtener la instancia es: (a) data-loaded callback, (b) playerloaded CustomEvent, o (c) await window.loadMSPlayer(). Cualquier código que intente acceder al player síncronamente después del script tag recibirá undefined."
+    impact_on_tests: "Los tests deben esperar el evento 'playerloaded' o usar el fixture de isolatedPlayer que ya maneja esta async. No hacer acceso síncrono a window.__player después de appendear el script."
+
+  - id: BOOT-LEARN-002
+    title: "InternalEvents._controlsReady es el gate real de bootstrap — no el evento 'ready' del player"
+    discovery: "código fuente: src/api/api.js línea 235-244, src/constants (InternalEvents._controlsReady)"
+    detail: "El bootstrap espera InternalEvents._controlsReady antes de invocar los callbacks de carga (data-loaded, playerloaded). Este evento es emitido cuando los controles de UI están montados y listos. Esto significa que el playerloaded event garantiza que la UI está completamente montada, no solo que React empezó a renderizar. La excepción es player=dynamic, donde este wait se bypasea."
+    impact_on_tests: "playerloaded es el evento correcto para saber que el player está completamente inicializado. No confiar en 'ready' alone para tests de UI interactions."
+
+  - id: BOOT-LEARN-003
+    title: "api.js tiene TTL de caché corto por diseño — cambios en api.js invalidan todo el bundle"
+    discovery: "código fuente: src/api/README.md"
+    detail: "El README del api/ explicita que api.js es el ÚNICO archivo con TTL corto en CDN. Si cambia api.js, apunta a nuevas versiones hasheadas de todas sus dependencias lazy-loaded. Esto es el mecanismo de cache busting del player. El implication: api.js debe mantenerse mínimo para minimizar el tiempo de cache invalidation en producción."
+    impact_on_tests: "En tests de CI que interceptan network requests, usar el dominio correcto (develop/staging/prod según PLAYER_ENV) porque la URL de api.js cambia entre ambientes."
+
+  - id: BOOT-LEARN-004
+    title: "data-* attributes son parseados a camelCase con una regex — data-ads-map → adsMap"
+    discovery: "código fuente: src/api/api.js línea 193 — regex /-+[^-]{1}/g"
+    detail: "La conversión de kebab-case a camelCase usa: attr.replace('data-', '').replace(/-+[^-]{1}/g, match => match.replace(/-*/, '').toUpperCase()). Esto significa que data-my-long-key → myLongKey. La excepción es data-custom-* que va a config.custom.* (sin camelCase en la sub-key). data-loaded NO se incluye en _config (filtrado explícitamente)."
+    impact_on_tests: "Testear que data-ads-map se convierte en adsMap que luego se normaliza a ads.map (hay una segunda normalización en _loadConfig). La cadena es: data-ads-map → adsMap → ads.map."
+
+  - id: BOOT-LEARN-005
+    title: "_loadConfig normaliza adsMap → ads.map y 'null' → null"
+    discovery: "código fuente: src/api/api.js líneas 141-149"
+    detail: "Hay dos normalizaciones adicionales en _loadConfig(): (1) Si config.adsMap existe, se mueve a config.ads.map y se elimina adsMap. (2) Si config.ads.map === 'null' (string), se setea a null. Esto permite que data-ads-map='null' desactive los ads. La config de ads del script tag SIEMPRE sobreescribe la config de plataforma (línea 135-138)."
+    impact_on_tests: "Test BOOT-AC-016: verificar que data-ads-map='null' resulta en ads.map === null (no el string 'null')."
+
+  - id: BOOT-LEARN-006
+    title: "legacyApiCompat solo activa en iframes en dominio .mdstrm.com"
+    discovery: "código fuente: src/api/api.js líneas 3-14"
+    detail: "La condición es: window.self !== window.top (está en iframe) AND /(\.|^)mdstrm\.com/.test(window.location.hostname). El import es lazy (dynamic import) y solo se ejecuta si se cumplen las dos condiciones. Fuera de iframes o en dominios no-mdstrm, legacyApiCompat nunca carga. El módulo hace relay de eventos via window.parent.postMessage y también escucha mensajes del parent para comandos (play, pause, seekTo, etc.)."
+    impact_on_tests: "Tests de legacyApiCompat requieren el harness de cross-origin iframe (tests/e2e/embed-cross-origin ya existente). No testeable en el harness estándar."
+
+  - id: BOOT-LEARN-007
+    title: "WeakMap para datos privados de LightningPlayer — internals no accesibles desde tests"
+    discovery: "código fuente: src/api/player.jsx líneas 132-137"
+    detail: "LightningPlayer usa un WeakMap (privateData) para almacenar datos privados (_ref, _props, _root, _loadConfig). Estos datos NO son accesibles desde fuera de la clase. getOption(), getOptions(), setOption() son las APIs públicas para leer/mutar config. Intentar acceder a player._ref o player._props desde un test resultará en undefined."
+    impact_on_tests: "Solo usar API pública: getOption(), getOptions(), métodos on/off/play/pause/destroy. No asumir que hay propiedades _ accesibles en la instancia."
+
+  - id: BOOT-LEARN-008
+    title: "React 18 createRoot + identifierPrefix por instancia evita colisiones de IDs"
+    discovery: "código fuente: src/api/player.jsx líneas 142-146"
+    detail: "Cada instancia de LightningPlayer genera un UUID v4 y lo pasa como identifierPrefix al createRoot(). Esto evita colisiones de IDs de React en SSR y cuando hay múltiples instancias del player en la misma página. El UUID también se usa como key prop del LightningPlayerInterface para forzar unmount/remount limpio en loadConfig()."
+    impact_on_tests: "Múltiples instancias en la misma página no deberían tener conflictos de IDs de React. Testeable con el chaos test o tests de múltiples instancias."
+
+  - id: BOOT-LEARN-009
+    title: "msvid y msm query params son inyectados automáticamente en la config del player"
+    discovery: "código fuente: src/api/player.jsx líneas 171-173 en constructor de LightningPlayer"
+    detail: "Al construir la instancia, el player lee window.location.search para extraer msvid (ID de video para deep links sociales, debe ser hexadecimal de 24 chars) y msm (timestamp numérico). Estos se inyectan en _options y son usados para lógica de social sharing. Se validan con regex/isNaN antes de usarse."
+    impact_on_tests: "Tests de social sharing deben inyectar msvid y msm como query params en la URL del harness, no en la config del player."
+
+  - id: BOOT-LEARN-010
+    title: "Industria: init sin licencia/accountId válido debe fallar rápido y con mensaje claro"
+    discovery: "investigación web: Bitmovin (domain allowlisting), JW Player (license key setup), docs.jwplayer.com/players/reference/player-initiation"
+    detail: "Tanto Bitmovin como JW Player tienen mecanismos de licencia/key que fallan rápido con mensajes descriptivos si la key no es válida o el dominio no está allowlisteado. Lightning Player usa accountId/player config ID implícito en el endpoint de plataforma — si el player ID no existe, el GET 404 falla en loadDependencies. El error message debería ser claro para el integrador."
+    impact_on_tests: "Testear el mensaje de error de BOOT-AC-007 y BOOT-AC-008 para verificar que son descriptivos."
+
+  - id: BOOT-LEARN-011
+    title: "Industria: dispose/destroy DEBE remover todos los event listeners para evitar memory leaks"
+    discovery: "investigación web: Video.js issue #6537 (memory leak en dispose), hls.js issue #1220 (multiple instances leak), videojs.org/guides/player-workflows/"
+    detail: "La industria ha documentado extensamente que players que no remueven listeners en destroy() acumulan listeners 'zombie'. Video.js tuvo bugs específicos donde EventListeners pileaban en Chrome's heap. Lightning Player resetea internalEmitter en destroy() y desmonta el React root, lo que debería limpiar todos los listeners de React. El risk es en listeners registrados en window o document directamente (legacyApiCompat lo hace)."
+    impact_on_tests: "Tests de destroy() deben verificar que no quedan listeners activos. Usar Chrome DevTools memory profiler o verificar que player.on() registrado antes de destroy() no fires después."
+
+  - id: BOOT-LEARN-012
+    title: "Industria: script tag embed vs programmatic API — ambos patrones son estándares"
+    discovery: "investigación web: JW Player (jwplayer().setup()), Bitmovin (new Player(container, config)), api.video (apivideo-player-sdk)"
+    detail: "Los dos patrones de bootstrap de Lightning (script tag con data-* y loadMSPlayer()) son los patrones estándar de la industria. JW Player usa setup() programático. Bitmovin usa constructor programático. api.video usa módulo ES. El script tag embed de Lightning es más cercano al patrón de JW Player self-hosted. La diferencia clave: Lightning hace el fetch de config de plataforma durante el bootstrap, lo que agrega latencia pero centraliza la configuración."
+    impact_on_tests: "Mantener cobertura de ambos patrones de bootstrap — no optimizar solo para loadMSPlayer()."
+
+  - id: BOOT-LEARN-013
+    title: "renderAs='audio' es el default en loadConfig — el player es audio por defecto"
+    discovery: "código fuente: src/platform/loadConfig.js línea 35 — renderAs = 'audio'"
+    detail: "El parámetro renderAs tiene default 'audio' en loadConfig. Esto significa que sin configuración explícita, el player construye URLs de audio (mp3/m4a) y usa la vista de audio. Para video se necesita renderAs='video' explícito o que la config de plataforma lo determine via playerType. También afecta el default aspect ratio: si renderAs=video y no hay height ni aspectRatio, se setea 16/9 automáticamente."
+    impact_on_tests: "Tests que esperan video deben asegurar que el player config tiene renderAs='video' o type/player que resulta en video. Testear el default 16/9 aspect ratio."

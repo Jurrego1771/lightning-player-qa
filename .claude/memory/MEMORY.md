@@ -39,5 +39,5 @@
 
 ## Skills disponibles
 
-- `/sync-knowledge` — sincroniza conocimiento del QA suite con el player repo tras un release
+- `qa-knowledge-writer` — genera/actualiza los 9 archivos canónicos de un módulo (código + internet)
 - `/session-review` — protocolo de cierre de sesión

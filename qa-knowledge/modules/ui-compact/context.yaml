@@ -1,0 +1,11 @@
+module: ui-compact
+criticality: medium
+last_reviewed: "2026-06-05"
+paths: ["src/view/compact/"]
+depends_on: [events, state, controls-api]
+depended_by: []
+breaks_if_changed:
+  - "Vista compacta no renderiza"
+  - "Controles de audio en vista compacta no responden"
+test_suites_required: [visual]
+negative_cases: []

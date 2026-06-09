@@ -6,23 +6,21 @@
 |---|---|
 | **Proyecto** | `lightning-player-qa` — suite QA independiente para Mediastream Lightning Player |
 | **Stack** | Playwright · TypeScript · axe-core · Express (mock VAST) |
-| **Repo QA** | `D:\repos\jurrego1771\lightning-player-qa` |
+| **Repo QA** | `D:\Dev\Repos\jurrego1771\lightning-player-qa` |
 | **Repo Player (SUT)** | `$PLAYER_LOCAL_REPO` (configurar en `.env`) |
-| **Player version** | `1.0.62` · branch `develop` |
+| **Player version** | `1.0.75` · branch `develop` |
 
 ## Reglas duras
 
-- No generar tests sin documentación de la feature en `context/features/{feature}.md`.
 - Solo API pública del player. Nunca internals ni clases CSS internas.
 - Importar siempre desde `fixtures/` — nunca de `@playwright/test` directamente.
 - `player_system.md` tiene precedencia sobre este archivo en caso de conflicto.
 
 ## Conocimiento del proyecto
 
-La fuente de verdad vive en `context/` y `.claude/memory/`. Leer antes de trabajar:
+La fuente de verdad vive en `qa-knowledge/` y `.claude/memory/`. Leer antes de trabajar:
 
-- [`context/player_architecture.md`](context/player_architecture.md) — arquitectura del player: flujo de init, eventos, DRM, ads, SGAI
-- [`context/features/`](context/features/) — contrato por feature: API, eventos, riesgos, edge cases
+- [`qa-knowledge/modules/`](qa-knowledge/modules/) — conocimiento por módulo: overview, acceptance, risks, defects, learnings, dependencies, tests, business-rules, user-stories
 - [`risk_map.yaml`](risk_map.yaml) — mapa de riesgo dinámico por módulo (calibrado por A11)
 - [`docs/core.md`](docs/core.md) — filosofía QA, reglas de aserción, anti-patrones, glosario
 - [`.claude/memory/player_system.md`](.claude/memory/player_system.md) — API pública verificada desde código fuente
@@ -33,9 +31,19 @@ La fuente de verdad vive en `context/` y `.claude/memory/`. Leer antes de trabaj
 
 ```
 lightning-player-qa/
-├── context/                ← fuente de verdad del player para agentes
-│   ├── player_architecture.md
-│   └── features/           ← playback · drm · ads · subtitles · quality_selector · chromecast
+├── qa-knowledge/           ← fuente de verdad del player para agentes
+│   ├── modules/            ← un directorio por módulo del player
+│   │   └── {module}/
+│   │       ├── overview.md
+│   │       ├── acceptance.yaml
+│   │       ├── dependencies.yaml
+│   │       ├── risks.yaml
+│   │       ├── learnings.yaml
+│   │       ├── defects.yaml
+│   │       ├── tests.yaml
+│   │       ├── business-rules.md
+│   │       └── user-stories.md
+│   └── schemas/            ← esquemas YAML de referencia
 ├── risk_map.yaml           ← mapa de riesgo dinámico (actualizado por A11 post-merge)
 ├── state/                  ← estado del pipeline en curso
 │   ├── session_state.json  ← diff → risk → plan → results → verdict
@@ -60,7 +68,7 @@ lightning-player-qa/
 ├── mock-vast/              ← servidor Express VAST
 ├── helpers/                ← qoe-metrics.ts · network-conditions.ts
 └── .claude/
-    ├── commands/           ← /pipeline · /session-review · /sync-knowledge
+    ├── commands/           ← /pipeline · /session-review · /write-test
     ├── agents/             ← A1–A11: diff-analyzer · risk-mapper · test-selector · coverage-auditor
     │                          test-generator · results-analyzer · issue-reporter · visual-regression
     │                          flaky-detector · risk-calibrator

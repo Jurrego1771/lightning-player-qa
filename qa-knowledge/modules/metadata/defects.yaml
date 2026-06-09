@@ -1,0 +1,91 @@
+version: "1.0"
+module: metadata
+last_updated: "2026-06-08"
+
+defects:
+  - id: META-DEF-001
+    status: known_limitation
+    severity: low
+    title: "duration es NaN/0 antes de loadedmetadata"
+    description: >
+      Inmediatamente tras load(), player.duration puede ser 0 o NaN hasta que el browser dispara
+      loadedmetadata. setPositionState entra en la rama setPositionState(null) durante ese lapso.
+    workaround: "Esperar el evento loadedmetadata/durationchange antes de leer/asertar duration."
+    source_comment: "src/metadata/mediaSession.js:112 (if (duration && !isNaN(duration)))"
+    industry_known: true
+    regression_risk: low
+
+  - id: META-DEF-002
+    status: known_limitation
+    severity: medium
+    title: "duration=Infinity en live (no DVR-aware en la metadata)"
+    description: >
+      Para type==='live' la Media Session recibe duration: Infinity. La metadata no distingue
+      DVR con ventana finita; consumidores que quieran el rango DVR deben usar player.seekable,
+      no duration ni la posición de la Media Session.
+    workaround: "Tratar live por separado; derivar la ventana DVR de player.seekable/buffered."
+    source_comment: "src/metadata/mediaSession.js:114 (type === 'live' ? Infinity : ...)"
+    industry_known: true
+    regression_risk: low
+
+  - id: META-DEF-003
+    status: fixed
+    severity: high
+    title: "metadatachanged duplicado en Reels (fix/issue-627)"
+    description: >
+      El mismo item de Reels re-emitía metadatachanged en re-renders internos, contaminando
+      analytics y disparando recargas en integradores. Resuelto con dedup por isEqual + debounce 100ms.
+    workaround: "Ninguno necesario tras el fix; el invariante es que el conteo no sube por re-render."
+    source_comment: "src/metadata/exposeMetadata.js:62 (isEqual + setTimeout 100ms)"
+    industry_known: false
+    regression_risk: medium
+
+  - id: META-DEF-004
+    status: known_limitation
+    severity: medium
+    title: "Now-playing no actualiza con useID3Sync:true sin tags ICY"
+    description: >
+      Con view.useID3Sync:true el matching usa ICY artist/title del stream HLS. Estaciones cuyo stream
+      emite {type:'ICY'} sin artist/title nunca matchean, y player.metadata.title no se actualiza desde
+      now-playing. Bloquea la suite radio-nowplaying-metadata.spec.ts.
+    workaround: "Usar estación con useID3Sync:false (o sin el campo) en la config de plataforma."
+    source_comment: "tests/e2e/radio-nowplaying-metadata.spec.ts:14-26 (cabecera BLOQUEADO)"
+    industry_known: true
+    regression_risk: low
+
+  - id: META-DEF-005
+    status: known_limitation
+    severity: low
+    title: "Cursores Firestore no se liberan (cleanup comentado)"
+    description: >
+      En useFirestore el cleanup por conteo de cursores (cursors[cursorHash]) está comentado, por lo
+      que los cursores cacheados persisten durante la vida del módulo. El listener onData sí hace
+      unsubscribe, pero el cursor cache puede acumular entradas tras cambios de estación.
+    workaround: "Ninguno a nivel app; impacto limitado en sesiones radio largas con cambios de estación."
+    source_comment: "src/metadata/firestore/useFirestore.js:140-148 (bloque comentado)"
+    industry_known: false
+    regression_risk: low
+
+  - id: META-DEF-006
+    status: known_limitation
+    severity: low
+    title: "Artwork no se genera para pósters blob:/data:"
+    description: >
+      El generador de artwork filtra pósters blob:/data: (no les añade params de resize), dejando
+      el array artwork vacío. El SO entonces cae a iconos del documento o no muestra artwork.
+    workaround: "Proveer póster como URL http(s) servida por un CDN que soporte resize."
+    source_comment: "src/metadata/mediaSession.js:235 (if (!/^(blob|data):/.test(_poster)))"
+    industry_known: true
+    regression_risk: low
+
+  - id: META-DEF-007
+    status: known_limitation
+    severity: low
+    title: "Media Session ausente degrada sin metadata enriquecida en SO"
+    description: >
+      En navegadores/WebViews sin navigator.mediaSession (algunos headless, iOS PWA en ciertos modos),
+      no hay metadata/controles a nivel SO. useMediaSession degrada a useSetBindings.
+    workaround: "Esperado; player.metadata y metadatachanged siguen disponibles vía API/eventos."
+    source_comment: "src/metadata/mediaSession.js:318 (hasMediaSession ? useMediaSessionInner : useSetBindings)"
+    industry_known: true
+    regression_risk: low

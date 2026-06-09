@@ -1,0 +1,64 @@
+version: "1.0"
+module: controls-api
+last_updated: "2026-06-08"
+
+learnings:
+  - id: CTRL-LEARN-001
+    title: "play() devuelve Promise — no es fire-and-forget"
+    discovery: "código fuente: src/controls/index.js líneas 250-287"
+    detail: "Controls.play() es un método async que devuelve Promise<void>. Llama internamente a await playerHandler.play() y await adsManager.play(). Si el caller no hace await, los errores de reproducción (incluyendo NotAllowedError por autoplay policy) quedan en promesas no manejadas (unhandled rejection). Esto puede causar logs de error en consola pero no crash visible, enmascarando problemas reales."
+    impact_on_tests: "Siempre usar await player.play() en los tests. Nunca llamar player.play() sin await y asumir que va a funcionar."
+
+  - id: CTRL-LEARN-002
+    title: "Race condition play()/pause() rápidos: guards _calledPlaying y _calledPause"
+    discovery: "código fuente: src/controls/index.js líneas 251, 290"
+    detail: "Controls tiene flags booleanos _calledPlaying y _calledPause para prevenir que dos llamadas concurrentes ambas lleguen a playerHandler. El segundo play() retorna early si _calledPlaying es true. El flag se resetea en el finally (o cuando la promesa se resuelve/rechaza). Sin este guard, dos play() concurrentes podrían causar doble buffer init o estado inconsistente en hls.js."
+    impact_on_tests: "Los tests de concurrencia deben verificar que solo un play() llega al estado 'playing', no que ambos fallen. El segundo play() retorna undefined (no error)."
+
+  - id: CTRL-LEARN-003
+    title: "_awaitViewReady() puede retardar play() en casos de SSR o rendering diferido"
+    discovery: "código fuente: src/controls/index.js líneas 239-248"
+    detail: "Antes de llamar playerHandler.play(), Controls espera que _viewReady sea true mediante polling recursivo (setTimeout 100ms). Si el componente View no está montado (ej: player en modo headless o con view: 'none' mal configurado), play() puede quedarse suspendido indefinidamente sin error visible."
+    impact_on_tests: "Si un test ve que play() nunca resuelve, verificar que el componente View está correctamente montado. No es un deadlock — es espera de rendering."
+
+  - id: CTRL-LEARN-004
+    title: "InternalEvents._controlsReady es el gate de loadMSPlayer()"
+    discovery: "código fuente: src/api/api.js líneas 235-243 y src/controls/index.js línea 43"
+    detail: "api.js espera InternalEvents._controlsReady antes de resolver la promesa de loadMSPlayer(). Controls emite este evento en componentDidMount solo cuando get('api') está disponible (chequeado cada 100ms). Si el integrador recibe el objeto player de loadMSPlayer(), Controls ya está montado y _exposeMethods() ya corrió. No hay gap de ready aquí."
+    impact_on_tests: "El fixture isolatedPlayer puede asumir que cuando loadMSPlayer() resuelve, play/pause/currentTime ya están expuestos en el prototype."
+
+  - id: CTRL-LEARN-005
+    title: "Seek a timestamp en HLS: precisión depende del GOP size, no del código del player"
+    discovery: "investigación web: hls.js issues #6649, #2327, #1708"
+    detail: "HLS.js busca el keyframe más cercano al timestamp solicitado. Con GOP de 2s, la precisión máxima es ±2s. Con GOP de 4-6s (común en streams de bajo costo), la precisión es ±6s. El jugador no puede hacer seek frame-accurate sin I-frames adicionales en el manifest. Esto no es un bug del player — es una limitación del protocolo HLS básico."
+    impact_on_tests: "Los tests de seek deben usar tolerancias generosas: ±2s mínimo para HLS. Un test que espera player.currentTime === exactamente 5.0 es frágil. Usar toBeGreaterThanOrEqual(4.5) + toBeLessThanOrEqual(7)."
+
+  - id: CTRL-LEARN-006
+    title: "autoplay policy: NotAllowedError es DOMException, no Error regular"
+    discovery: "investigación web: MDN HTMLMediaElement.play(), Chrome Autoplay Policy blog"
+    detail: "Cuando el browser bloquea autoplay, play() rechaza con DOMException cuyo name es 'NotAllowedError'. NO es una instancia de Error estándar. Algunos test frameworks verifican instanceof Error — esto puede fallar para NotAllowedError. Chrome permite muted autoplay siempre. El player ya captura este error y emite 'error' + cambia status a 'pause'."
+    impact_on_tests: "Tests de autoplay deben filtrar NotAllowedError de los uncaught errors del test (ver controls-api-edge.spec.ts línea 38). No es un bug del player, es el browser."
+
+  - id: CTRL-LEARN-007
+    title: "prototype mutation: Object.defineProperty en prototype comparte método entre instancias"
+    discovery: "código fuente: src/controls/methods.js + comentario TODO en línea 3"
+    detail: "El expose() helper de methods.js usa Object.defineProperty en LightningPlayer.prototype. Esto significa que el getter de play() en la instancia A retorna this.play donde 'this' es el Controls del último constructor que corrió expose(). Si hay dos instancias en la misma página, la primera instancia ejecuta los métodos de la segunda. Hay un TODO explícito en el código: 'Should use WeakMap'."
+    impact_on_tests: "Tests de multi-instancia deben verificar que los dos players son independientes. En el estado actual (v1.0.75), multi-instancia en la misma página es un caso de uso no soportado."
+
+  - id: CTRL-LEARN-008
+    title: "play() emite 'error' en caso de autoplay fallido — no rechaza la promesa pública"
+    discovery: "código fuente: src/controls/index.js líneas 175-188 (_checkPlayerReady)"
+    detail: "Cuando el player intenta autoplay y falla, Controls no deja que la excepción propague al integrador. En cambio: emite Events._error con un Error('Autoplay failed: ...') y cambia playerStatus a 'pause'. La promesa de play() sí se rechaza en _checkPlayerReady. El integrador puede manejar esto escuchando 'error' en lugar de catch del play()."
+    impact_on_tests: "Para testear el caso de autoplay bloqueado, verificar que: (1) el evento 'error' se emite, (2) player.status === 'pause', (3) el player NO está en estado de error permanente."
+
+  - id: CTRL-LEARN-009
+    title: "Industria: muted autoplay como patrón de UX estándar"
+    discovery: "investigación web: Chrome Autoplay Policy (developer.chrome.com/blog/autoplay)"
+    detail: "Facebook, Instagram, Twitter y YouTube usan muted autoplay con botón de unmute posterior. Chrome siempre permite autoplay muted. Esta es la estrategia recomendada para autoplay confiable. El player soporta esto: autoplay: true + volume: 0 (o muted: true) garantiza que play() no sea rechazado por política."
+    impact_on_tests: "Tests que necesitan autoplay confiable deben usar muted: true en el config del player o asegurar que hay un user gesture simulado."
+
+  - id: CTRL-LEARN-010
+    title: "setLoop(true) es no-op conocido en runtime — loop es config-only"
+    discovery: "código fuente: tests/contract/player-api-property.spec.ts línea 53 (test.fixme)"
+    detail: "fast-check descubrió que player.loop = true no se refleja en player.loop getter. El test está marcado como fixme con comentario: 'setLoop(true) funciona, setLoop(false) no'. La propiedad loop parece ser solo lectura en runtime. Loop debe configurarse al inicializar el player."
+    impact_on_tests: "No escribir tests que esperen que setLoop(true) tenga efecto en runtime. Si se necesita loop, configurar en la init config del player."

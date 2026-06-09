@@ -1,0 +1,133 @@
+version: "1.0"
+module: youbora
+last_updated: "2026-06-08"
+
+learnings:
+  - id: YBRA-LEARN-001
+    title: "El tracker es un adapter dual: contenido + ads, en plugins separados del SDK"
+    discovery: "código fuente: tracker.js:80-130 (registerDefaultAdsAdapter / registerDefaultAdapter)"
+    detail: >
+      init() registra PRIMERO el ads adapter (registerDefaultAdsAdapter) y DIFIERE el content adapter
+      a _initAdapter(), que solo corre en ready/firstPlay/playing/contentPauseRequested. Los getters
+      (getTitle, getDuration, getPlayhead, getRendition, getIsSkippable...) se sobreescriben con
+      closures que leen api en tiempo real. Esto significa que el tracker no 'empuja' datos: el SDK
+      'tira' (pull) llamando los getters cuando construye cada beacon.
+    impact_on_tests: >
+      No se puede mockear el SDK fácilmente; el contrato observable es el beacon HTTP. Hay que esperar
+      a que la sesión exista (start/joinTime) antes de assertear pause/seek/error, porque _adapter no
+      existe hasta _initAdapter().
+
+  - id: YBRA-LEARN-002
+    title: "Activación de plugin tiene tres guards y normalización truthy peculiar"
+    discovery: "código fuente: plugins/index.js:34,43,37,29,24"
+    detail: >
+      YouboraTracker se monta solo si `!!~[1,'1',true,'true'].indexOf(youboraEnabled)` (acepta 1/'1'/
+      true/'true', NO 'yes'/'on'). Además NO se carga ningún plugin si: hay error fatal en options,
+      la vista es 'reels', o dnt=1 (Do Not Track). Por separado, dentro de tracker.init() hay un
+      segundo guard `if (!accountCode) return`. Así hay dos capas: montar el componente y luego
+      inicializar el SDK.
+    impact_on_tests: >
+      Probar separadamente: (a) ausencia total de config, (b) enabled=true sin account_code,
+      (c) enabled=false con account_code, (d) account_code=''. Cada uno cae en un guard distinto.
+      dnt=1 y reels son rutas negativas adicionales no cubiertas.
+
+  - id: YBRA-LEARN-003
+    title: "El guard _inAdBreak silencia TODOS los eventos de contenido durante el ad"
+    discovery: "código fuente: tracker.js:148,164,176,181,186,191"
+    detail: >
+      onPlaying, onPause, onSeeking, onSeeked, onBuffering, onCanPlay revisan _inAdBreak y retornan
+      temprano. Durante un break, getPlayhead() del contenido devuelve _contentPlayheadAtBreak (valor
+      congelado) en lugar de api.currentTime. Esto evita que el playhead de contenido 'salte' por la
+      reproducción del ad y que el buffering del ad se reporte como buffering de contenido.
+    impact_on_tests: >
+      Para validar separación content/ads, observar que entre adsContentPauseRequested y
+      adsContentResumeRequested no aumentan beacons de contenido, y que tras el resume sí hay
+      fireResume. No intentar contar beacons absolutos (los pings añaden ruido).
+
+  - id: YBRA-LEARN-004
+    title: "El SDK 7.3.28 envía toda la metadata en el POST body JSON, no en query params"
+    discovery: "investigación + tests: youbora.spec.ts BODY_FIELD_ALIASES, parseBeaconParam"
+    detail: >
+      A diferencia de versiones antiguas (GET con params en query string), npaw-plugin@7.3.28 manda
+      content/ad metadata como JSON en el body del POST. Los campos usan camelCase (contentId,
+      mediaResource, joinDuration, bufferDuration, deviceInfo...). El query string solo lleva
+      timemark/code/sessionRoot/system/sessionId.
+    impact_on_tests: >
+      Para assertear un campo hay que leer el POST body (route.request().postData()) y traducir
+      dot-notation legacy (content.id) a camelCase (contentId) vía un mapa de alias. No parsear solo
+      la URL.
+
+  - id: YBRA-LEARN-005
+    title: "fireStart en pre-roll abre la View de contenido ANTES del ad"
+    discovery: "código fuente: tracker.js:195-208 (onContentPauseRequested)"
+    detail: >
+      Si llega adsContentPauseRequested sin sesión previa (_started=false), el tracker abre la View de
+      contenido (fireStart+fireJoin) y la pone en pausa (firePause) antes de que el ad reproduzca.
+      Es intencional: garantiza que los pings durante el ad tengan un playhead de contenido coherente
+      (playhead=0 al inicio).
+    impact_on_tests: >
+      En tests de pre-roll, NO esperar contentFirstPlay para confirmar la apertura de la View — la
+      View puede abrirse vía el ad break. Usar autoplay:false + play() para evitar el race HLS/IMA
+      que hace que el contenido empiece antes de que IMA esté listo (visto en TB-05/TB-06).
+
+  - id: YBRA-LEARN-006
+    title: "restart() difiere init con setTimeout(0); next-episode depende de re-emisión de _playing"
+    discovery: "código fuente: tracker.js:398-405; tests: 'Next Episode Session Chain'"
+    detail: >
+      restart() llama _cleanup() (que hace fireStop y clearTimeout del init pendiente) y agenda
+      init(opts) en setTimeout(0). Para que la NUEVA sesión emita /start, el player debe reemitir
+      Events._playing tras ese tick. Con contenido real (URLs de stream distintas por episodio) HLS.js
+      reinicializa y reemite _playing → nueva sesión OK. Con contenido mock (mismo stream URL) HLS.js
+      reutiliza la sesión, _playing no se reemite y restart() pierde el evento.
+    impact_on_tests: >
+      Tests de cambio de contenido/episodio deben usar contenido REAL de plataforma (IDs distintos con
+      streams distintos), no mocks con el mismo stream. Por eso 'Next Episode Chain' usa el fixture
+      `player` (no isolatedPlayer) con ContentIds.episodeWithNext.
+
+  - id: YBRA-LEARN-007
+    title: "Bug de adapter null: errores de arranque no producen /error"
+    discovery: "código fuente: tracker.js:224-225; tests: NPAW-8.1/8.6 (test.fixme)"
+    detail: >
+      onError retorna si _adapter es null. Como _adapter solo nace en _initAdapter() (ready o más
+      tarde), cualquier error fatal previo a ready (manifest/license/CDN) no genera beacon de error.
+      Esto contradice el AC NPAW-8.1 ('Start-up Error') que exige /error + /stop.
+    impact_on_tests: >
+      Los tests de error de arranque están en test.fixme con explicación del bug. Documentar como
+      defecto abierto (YBRA-DEF-001), no como flaky. Probar el camino feliz (error in-stream con
+      adapter ya creado) que SÍ funciona.
+
+  - id: YBRA-LEARN-008
+    title: "QoE: join time, rebuffering ratio y EBVS son las métricas estrella de la industria OTT"
+    discovery: "investigación web: ottverse.com, conviva.com, npaw.com blog"
+    detail: >
+      La industria OTT trata Video Startup Time (join time), Rebuffering Ratio y EBVS (Exit Before
+      Video Start) como las métricas QoE que más correlacionan con churn. EBVS es función directa del
+      join time: a mayor join time, mayor abandono. NPAW las modela como /joinTime, /bufferUnderrun y
+      Views cerradas sin /joinTime (EBVS), respectivamente.
+    impact_on_tests: >
+      Priorizar cobertura de /joinTime (YBRA-AC-004), /bufferUnderrun (YBRA-AC-008) y el escenario
+      EBVS (YBRA-AC-018). El bug de adapter-null (YBRA-DEF-001) degrada justamente EBVS/startup errors.
+
+  - id: YBRA-LEARN-009
+    title: "Posicionamiento de NPAW vs Conviva vs Mux (contexto de plataforma)"
+    discovery: "investigación web: vhd.me compare, conviva docs, streamingmedia.com"
+    detail: >
+      Conviva: broadcast-grade live ops, correlación cliente↔ISP↔CDN, builder no-code de QoE. NPAW:
+      dashboards flexibles por canal/owner, fuerte en audiencia/sesiones/regiones. Mux: client-side,
+      respuesta rápida a incidentes, el más económico. Lightning usa NPAW como tracker primario; el
+      loader soporta múltiples trackers en paralelo (Comscore, Google, Konodrac, StreamMetrics).
+    impact_on_tests: >
+      No asumir que Youbora es el único tracker activo: StreamMetrics se monta siempre que shouldTrack.
+      Los tests deben filtrar beacons por dominio NPAW (*.youboranqs01.com / *.youbora.com) para no
+      confundirlos con otros trackers.
+
+  - id: YBRA-LEARN-010
+    title: "Deprecated: no usar VPAID/Flash ni el viejo adapter GET — el SDK actual es POST 7.x"
+    discovery: "investigación web: npmjs youbora-adapter-html5, Dolby/THEO Youbora docs"
+    detail: >
+      Existen adapters legacy (youbora-adapter-html5 6.8.x con beacons GET) que NPAW reemplazó por el
+      'generic-js' integrado en npaw-plugin 7.x (POST body JSON). El player usa el moderno (7.3.28).
+      No introducir patrones del adapter 6.x (parseo de query params como contrato) en los tests.
+    impact_on_tests: >
+      Evitar asserts diseñados para el formato GET 6.x. Mantener el parser de POST body (LEARN-004).
+      Si en el futuro se actualiza a 8.x, revalidar endpoints y formato antes de confiar en los tests.

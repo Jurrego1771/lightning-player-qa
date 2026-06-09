@@ -1,0 +1,181 @@
+version: "1.0"
+module: events
+last_updated: "2026-06-08"
+
+existing_tests:
+
+  - spec_file: "tests/contract/player-api.spec.ts"
+    description: "Verifica que player.on() funciona y que eventos fundamentales (ready, play, playing, pause) se emiten en flujo básico. Test 9 verifica sistema player.on() vía __qa.events. Test 7 verifica ready→playing→pause."
+    ac_coverage:
+      - "EVT-AC-001"
+      - "EVT-AC-004"
+      - "EVT-AC-005"
+
+  - spec_file: "tests/integration/multi-instance.spec.ts"
+    description: "Verifica aislamiento de eventos entre dos instancias del player. Específicamente verifica que volumechange de player2 no activa listener de player1, y que eventos de playing de player1 no aparecen en __qaMulti.players[1].events."
+    ac_coverage:
+      - "EVT-AC-010"
+      - "EVT-AC-009"
+
+  - spec_file: "tests/integration/airplay.spec.ts"
+    description: "Verifica que player.on('airPlayAvailabilityChange', fn) no arroja error (API surface). Indirectamente cubre que eventos AirPlay son válidos en Events.*."
+    ac_coverage:
+      - "EVT-AC-004"
+
+  - spec_file: "tests/integration/sourcechange.spec.ts"
+    description: "Verifica que el evento 'sourcechange' se emite al llamar load() con src diferente, que el payload es la URL correcta, y que se emite antes de 'playing'."
+    ac_coverage:
+      - "EVT-AC-001"
+      - "EVT-AC-005"
+
+  - spec_file: "tests/integration/ad-beacons.spec.ts"
+    description: "Verifica que los eventos de ads (adsStarted, adsComplete, adsFirstQuartile, adsMidpoint, adsThirdQuartile, adsImpression) se emiten en el orden correcto durante reproducción de ads VAST/VMAP."
+    ac_coverage:
+      - "EVT-AC-001"
+      - "EVT-AC-007"
+
+  - spec_file: "tests/integration/fullscreen-pip.spec.ts"
+    description: "Verifica que los eventos enterpictureinpicture/leavepictureinpicture y fullscreenchange se emiten cuando el usuario entra/sale de PiP y fullscreen."
+    ac_coverage:
+      - "EVT-AC-001"
+
+  - spec_file: "tests/integration/embed.spec.ts"
+    description: "Verifica que los eventos del player llegan al host vía window.postMessage con prefijo msp: en contexto de iframe cross-origin."
+    ac_coverage:
+      - "EVT-AC-007"
+      - "EVT-AC-008"
+
+  - spec_file: "tests/e2e/vod-playback.spec.ts"
+    description: "Flujo completo de VOD — cubre indirectamente ready, play, playing, pause, ended, seeking, seeked como parte del flujo de usuario."
+    ac_coverage:
+      - "EVT-AC-005"
+
+coverage_gaps:
+
+  - id: GAP-EVT-001
+    priority: MUST
+    ac_ref: "EVT-AC-002"
+    title: "No existe test explícito de player.once() — verificar que se ejecuta exactamente una vez"
+    suggested_spec: "tests/integration/events-lifecycle.spec.ts"
+    notes: >
+      player.once() es API pública documentada pero no tiene test dedicado.
+      Test debe: registrar once('timeupdate', fn), esperar múltiples emissions del
+      evento, verificar que fn fue invocada exactamente 1 vez.
+    industry_note: "once() es crítico para listeners de inicialización (ej: primer frame decodificado). Sin test, un refactor puede convertirlo en on() inadvertidamente."
+
+  - id: GAP-EVT-002
+    priority: MUST
+    ac_ref: "EVT-AC-003"
+    title: "No existe test explícito de player.off() — verificar que el listener deja de ser invocado"
+    suggested_spec: "tests/integration/events-lifecycle.spec.ts"
+    notes: >
+      Test debe: registrar on('volumechange', fn), cambiar volumen (verifica fn se invoca),
+      llamar off('volumechange', fn), cambiar volumen de nuevo (verifica fn NO se invoca).
+      También cubrir: off() con handler no registrado es no-op seguro (EVT-AC-012).
+    industry_note: "Memory leak por off() no llamado es el bug #1 más reportado en integraciones de players en producción."
+
+  - id: GAP-EVT-003
+    priority: MUST
+    ac_ref: "EVT-AC-006"
+    title: "No existe test de player.on() con evento inválido — verificar comportamiento silencioso"
+    suggested_spec: "tests/integration/events-lifecycle.spec.ts"
+    notes: >
+      Test debe: player.on('eventoQueNoExiste', fn), verificar que no hay error,
+      emitir eventos reales y verificar que fn nunca fue invocada.
+      También cubrir: player.on('', fn) y player.on(null, fn) si aplica.
+    industry_note: "Comportamiento silencioso puede ocultar bugs de integración — documentado en context.yaml negative_cases."
+
+  - id: GAP-EVT-004
+    priority: MUST
+    ac_ref: "EVT-AC-011"
+    title: "No existe test de cleanup de listeners tras player.destroy()"
+    suggested_spec: "tests/integration/events-lifecycle.spec.ts"
+    notes: >
+      Test debe: registrar múltiples listeners, llamar destroy(), verificar que
+      eventos emitidos post-destroy no invocan ningún handler. Verificar que
+      destroy() no arroja error aunque haya listeners activos.
+    industry_note: "Cleanup en destroy() es crítico para aplicaciones SPA donde el player se monta/desmonta."
+
+  - id: GAP-EVT-005
+    priority: MUST
+    ac_ref: "EVT-AC-008"
+    title: "No existe test completo de filtro de postMessage por origin — origen diferente ignorado"
+    suggested_spec: "tests/integration/events-lifecycle.spec.ts"
+    notes: >
+      El test actual de embed.spec.ts verifica same-origin. Falta test que envíe
+      postMessage desde origen diferente y verifique que no activa listeners internos.
+      Requiere harness con iframe cross-origin o mocking de window.origin.
+    industry_note: "Seguridad crítica — postMessage sin filtro de origin es una vulnerabilidad XSS conocida."
+
+  - id: GAP-EVT-006
+    priority: MUST
+    ac_ref: "EVT-AC-013"
+    title: "No existe test que verifique que off() con referencia diferente no elimina listener original"
+    suggested_spec: "tests/integration/events-lifecycle.spec.ts"
+    notes: >
+      Este edge case documenta el comportamiento de igualdad de referencia.
+      Test debe: registrar on('playing', fn1), intentar off('playing', fn2) donde fn2 es
+      diferente referencia con mismo body, verificar que fn1 sigue siendo invocada.
+    industry_note: "Fuente de bugs silenciosos documentada en react-player issue #616."
+
+  - id: GAP-EVT-007
+    priority: SHOULD
+    ac_ref: "EVT-AC-007"
+    title: "Falta test de propagación postMessage para todos los eventos públicos principales"
+    suggested_spec: "tests/integration/events-postmessage.spec.ts"
+    notes: >
+      El test de embed.spec.ts cubre el mecanismo. Falta test que verifique el
+      catálogo completo de eventos msp: especialmente para ads, cast, y airplay.
+      Podría implementarse como loop sobre un subset representativo de eventos.
+
+  - id: GAP-EVT-008
+    priority: SHOULD
+    ac_ref: "EVT-AC-001"
+    title: "Falta test de acumulación de listeners por mount/unmount repetido (memory leak regression)"
+    suggested_spec: "tests/integration/events-lifecycle.spec.ts"
+    notes: >
+      Simular 5 ciclos de init/destroy del player, verificar que el contador de
+      listeners activos no crece. Requiere acceso al emitter (puede verificarse
+      indirectamente por número de invocaciones del handler).
+    industry_note: >
+      Vimeo player.js issue #500 documenta este patrón exacto. En SPAs con React/Vue,
+      el componente del player puede montarse/desmontarse múltiples veces.
+
+  - id: GAP-EVT-009
+    priority: SHOULD
+    ac_ref: "EVT-AC-015"
+    title: "No existe test de múltiples listeners para el mismo evento — todos son invocados"
+    suggested_spec: "tests/integration/events-lifecycle.spec.ts"
+    notes: >
+      Test debe: registrar fn1, fn2, fn3 para 'volumechange', cambiar volumen,
+      verificar que los 3 fueron invocados. También verificar orden fn1→fn2→fn3.
+
+  - id: GAP-EVT-010
+    priority: SHOULD
+    ac_ref: "EVT-AC-014"
+    title: "No existe test de disableMspEvents=true — verificar que postMessage se suprime"
+    suggested_spec: "tests/integration/events-lifecycle.spec.ts"
+    notes: >
+      Test debe: inicializar con disableMspEvents=true, registrar listener de window
+      para mensajes msp:, reproducir contenido, verificar que NO llegan mensajes
+      postMessage pero que player.on() sigue funcionando normalmente.
+
+  - id: GAP-EVT-011
+    priority: COULD
+    ac_ref: "EVT-AC-016"
+    title: "No existe test de eventos externos via postMessage (nextEpisodePlayNext, nextEpisodeKeepWatching)"
+    suggested_spec: "tests/integration/events-postmessage.spec.ts"
+    notes: >
+      Estos son eventos que fluyen en dirección inversa: del host al player via postMessage.
+      Test debe: enviar window.postMessage({ event: 'msp:nextEpisodePlayNext' }) y verificar
+      que el player procesa el evento internamente.
+
+  - id: GAP-EVT-012
+    priority: COULD
+    ac_ref: "EVT-AC-009"
+    title: "Falta test explícito de anti-loop de postMessage (instancia no procesa sus propios mensajes)"
+    suggested_spec: "tests/integration/multi-instance.spec.ts"
+    notes: >
+      El multi-instance.spec.ts cubre aislamiento entre instancias pero no verifica
+      explícitamente que una instancia no procesa sus propios mensajes msp:.
+      Agregar test específico de anti-loop al spec existente.

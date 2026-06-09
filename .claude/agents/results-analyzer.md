@@ -1,24 +1,6 @@
 ---
 name: results-analyzer
-description: "Analiza fallos confirmados de Playwright y emite veredicto SAFE_TO_MERGE / INVESTIGATE / DO_NOT_MERGE. Delegar cuando hay un playwright-report/report.json disponible y los fallos ya fueron filtrados por flaky-detector (A10).
-
-<example>
-Context: El pipeline corrió tests y flaky-detector ya filtró los fallos flaky.
-user: \"Los tests terminaron y flaky-detector pasó los fallos confirmados. Analiza los resultados.\"
-assistant: \"Usaré results-analyzer para cruzar los fallos confirmados con el risk_assessment y emitir un veredicto final.\"
-<commentary>
-Delegar a results-analyzer (A7) siempre DESPUÉS de flaky-detector (A10). El input viene de session_state.json con confirmed_failures ya poblado.
-</commentary>
-</example>
-
-<example>
-Context: Fallo en módulo de ads con error CONTRACT VIOLATION.
-user: \"Hay un CONTRACT VIOLATION en el test de ads, ¿qué veredicto emites?\"
-assistant: \"Un solo CONTRACT VIOLATION activa automáticamente DO_NOT_MERGE sin excepción.\"
-<commentary>
-CONTRACT VIOLATION es condición suficiente para DO_NOT_MERGE. No requiere análisis adicional.
-</commentary>
-</example>"
+description: "Analiza fallos confirmados de Playwright y emite veredicto SAFE_TO_MERGE / INVESTIGATE / DO_NOT_MERGE. Delegar cuando hay un playwright-report/report.json disponible y los fallos ya fueron filtrados por flaky-detector (A10).\n\n<example>\nContext: El pipeline corrió tests y flaky-detector ya filtró los fallos flaky.\nuser: \"Los tests terminaron y flaky-detector pasó los fallos confirmados. Analiza los resultados.\"\nassistant: \"Usaré results-analyzer para cruzar los fallos confirmados con el risk_assessment y emitir un veredicto final.\"\n<commentary>\nDelegar a results-analyzer (A7) siempre DESPUÉS de flaky-detector (A10). El input viene de session_state.json con confirmed_failures ya poblado.\n</commentary>\n</example>\n\n<example>\nContext: Fallo en módulo de ads con error CONTRACT VIOLATION.\nuser: \"Hay un CONTRACT VIOLATION en el test de ads, ¿qué veredicto emites?\"\nassistant: \"Un solo CONTRACT VIOLATION activa automáticamente DO_NOT_MERGE sin excepción.\"\n<commentary>\nCONTRACT VIOLATION es condición suficiente para DO_NOT_MERGE. No requiere análisis adicional.\n</commentary>\n</example>"
 tools: Read Glob Grep Bash
 model: claude-sonnet-4-6
 color: blue
@@ -139,12 +121,12 @@ Aplicar reglas en orden de precedencia (la primera que aplique define el veredic
 Se activa si CUALQUIERA de estas condiciones es verdadera:
 - Existe al menos 1 fallo con clasificación `PLAYER_REGRESSION`
 - Existe al menos 1 fallo con `CONTRACT VIOLATION` en el error
-- Existe al menos 1 fallo en módulo con `risk_level: CRITICAL` o `risk_level: HIGH` (clasificación `INVESTIGATE`)
 - Tests de smoke (`tests/smoke/`) fallaron
 
 ### INVESTIGATE
 Se activa si (y no aplica DO_NOT_MERGE):
-- Existen fallos `INFRASTRUCTURE` o `BROWSER_LIMIT` que impidieron validar módulos MEDIUM
+- Existen fallos `INVESTIGATE` en módulos CRITICAL o HIGH (causa ambigua — puede ser infra o regresión real)
+- Existen fallos `INFRASTRUCTURE` o `BROWSER_LIMIT` que impidieron validar módulos HIGH o CRITICAL
 - Existen fallos `TEST_ISSUE` cuya causa raíz no está confirmada
 - Existen módulos HIGH o MEDIUM sin cobertura de tests en esta ejecución
 

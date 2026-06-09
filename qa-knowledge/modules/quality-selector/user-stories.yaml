@@ -1,0 +1,145 @@
+version: "1.0"
+module: quality-selector
+last_updated: "2026-06-08"
+
+user_stories:
+  - id: US-QUAL-001
+    persona: Viewer
+    narrative:
+      as: "espectador con conexión variable"
+      want: "que el player ajuste automáticamente la calidad según mi ancho de banda"
+      so_that: "puedo ver sin buffering aunque mi red fluctúe"
+    business_value: HIGH
+    risk_area:
+      - "abr-degradacion"
+      - "qoe-rebuffer"
+    related_features:
+      - hls
+      - dash
+    acceptance:
+      - QUAL-AC-006
+      - QUAL-AC-007
+    notes: "ABR auto (level=-1) es el estado por defecto. Cubre HLS y DASH."
+
+  - id: US-QUAL-002
+    persona: Viewer
+    narrative:
+      as: "espectador que prefiere calidad consistente"
+      want: "fijar manualmente una resolución específica"
+      so_that: "evito las fluctuaciones de calidad del ABR"
+    business_value: HIGH
+    risk_area:
+      - "manual-override"
+      - "stall-bandwidth-insuficiente"
+    related_features:
+      - controls-api
+      - hls
+      - dash
+    acceptance:
+      - QUAL-AC-002
+      - QUAL-AC-004
+    notes: "Fijar nivel deshabilita ABR (override total). Riesgo de stall si el bitrate excede el bandwidth (QUAL-RISK-002)."
+
+  - id: US-QUAL-003
+    persona: Viewer
+    narrative:
+      as: "espectador que fijó una calidad manual"
+      want: "volver a la calidad automática"
+      so_that: "el player retome la adaptación cuando mi red cambie"
+    business_value: MEDIUM
+    risk_area:
+      - "manual-a-auto"
+    related_features:
+      - hls
+      - dash
+    acceptance:
+      - QUAL-AC-003
+      - QUAL-AC-005
+    notes: "level=-1 re-habilita ABR. En HLS hay un levelchange sintético (QUAL-DEF-003)."
+
+  - id: US-QUAL-004
+    persona: Viewer
+    narrative:
+      as: "espectador"
+      want: "ver y elegir las resoluciones disponibles en un menú de calidad"
+      so_that: "tengo control visual sobre la calidad de mi reproducción"
+    business_value: MEDIUM
+    risk_area:
+      - "ui-selector"
+    related_features:
+      - controls-api
+    acceptance:
+      - QUAL-AC-001
+      - QUAL-AC-013
+    notes: "Selector UI antepone 'Auto', ordena de mayor a menor, oculto si no hay niveles (QUAL-LEARN-008)."
+
+  - id: US-QUAL-005
+    persona: Integrator
+    narrative:
+      as: "integrador que embebe el player"
+      want: "leer y fijar el nivel de calidad vía la API pública (player.level / player.levels)"
+      so_that: "puedo construir mi propio selector o forzar una calidad por defecto"
+    business_value: HIGH
+    risk_area:
+      - "api-contrato"
+      - "consistencia-hls-dash"
+    related_features:
+      - controls-api
+      - events
+    acceptance:
+      - QUAL-AC-001
+      - QUAL-AC-008
+      - QUAL-AC-010
+    notes: "API por propiedades (no métodos). Cuidado con la inconsistencia HLS lanza / DASH no-op ante índice inválido (QUAL-DEF-002)."
+
+  - id: US-QUAL-006
+    persona: Integrator
+    narrative:
+      as: "integrador usando el embed legacy por iframe"
+      want: "controlar la calidad vía postMessage (playbackLevel / playbackLevels)"
+      so_that: "mi integración legacy sigue funcionando sin reescribir a la API moderna"
+    business_value: LOW
+    risk_area:
+      - "api-legacy"
+      - "embed-iframe"
+    related_features:
+      - controls-api
+    acceptance:
+      - QUAL-AC-015
+    notes: "Puente legacyApiCompat.js: playbackLevel→set level, playbackLevels→get levels."
+
+  - id: US-QUAL-007
+    persona: Operator
+    narrative:
+      as: "operador de QoE / analytics"
+      want: "monitorear bandwidth, bitrate, nivel activo y frames descartados"
+      so_that: "puedo medir la calidad de experiencia y detectar problemas de red o decodificación"
+    business_value: HIGH
+    risk_area:
+      - "telemetria-qoe"
+      - "null-handling"
+    related_features:
+      - youbora
+      - events
+    acceptance:
+      - QUAL-AC-011
+      - QUAL-AC-012
+      - QUAL-AC-014
+    notes: "bandwidth/bitrate en bits/seg, pueden ser null antes del primer segmento (QUAL-DEF-005). droppedFrames acumulativo."
+
+  - id: US-QUAL-008
+    persona: Viewer
+    narrative:
+      as: "espectador de un stream DASH"
+      want: "que la selección de calidad y el ABR funcionen igual que en HLS"
+      so_that: "tengo la misma experiencia sin importar el protocolo de entrega"
+    business_value: HIGH
+    risk_area:
+      - "paridad-dash-hls"
+    related_features:
+      - dash
+    acceptance:
+      - QUAL-AC-004
+      - QUAL-AC-005
+      - QUAL-AC-006
+    notes: "DASH (dash.js 5.1.1) SÍ soporta calidad/ABR — corrige la afirmación legacy obsoleta (QUAL-LEARN-001)."

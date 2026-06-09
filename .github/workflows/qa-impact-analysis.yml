@@ -1,0 +1,326 @@
+name: QA — Test Impact Analysis
+
+# ─── Cuándo corre ──────────────────────────────────────────────────────────────
+#
+#  TRIGGER                   Uso
+#  ─────────────────────────────────────────────────────────────────────────────
+#  workflow_dispatch          Manual: ingresar PR number del player repo
+#  repository_dispatch        Automático: player repo envía evento 'player-pr'
+#
+#  El player repo puede disparar este workflow con:
+#
+#    gh api repos/$QA_REPO/dispatches \
+#      -f event_type=player-pr \
+#      -f client_payload='{"pr_number":"42","player_repo":"org/lightning-player"}'
+#
+#  Agregar ese paso al CI del player (en on: pull_request) con secret QA_DISPATCH_TOKEN.
+
+on:
+  workflow_dispatch:
+    inputs:
+      player_pr_number:
+        description: 'Player repo PR number (e.g. 42)'
+        required: true
+        type: string
+      player_repo:
+        description: 'Player GitHub repo override (owner/repo) — defaults to env var'
+        required: false
+        default: ''
+
+  repository_dispatch:
+    types: [player-pr]
+
+env:
+  CI: true
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  MOCK_VAST_PORT: 9999
+  MOCK_VAST_BASE_URL: http://localhost:9999
+
+jobs:
+  # ── JOB 1: Risk analysis + test plan ─────────────────────────────────────────
+  analyze:
+    name: Risk Analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      risk_label: ${{ steps.plan.outputs.risk_label }}
+      run_contract: ${{ steps.plan.outputs.run_contract }}
+      run_integration: ${{ steps.plan.outputs.run_integration }}
+      run_e2e: ${{ steps.plan.outputs.run_e2e }}
+      run_visual: ${{ steps.plan.outputs.run_visual }}
+      pr_number: ${{ steps.resolve.outputs.pr_number }}
+      player_repo: ${{ steps.resolve.outputs.player_repo }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Cache node_modules
+        id: nm-cache
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: nm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install dependencies
+        if: steps.nm-cache.outputs.cache-hit != 'true'
+        run: npm ci
+
+      # Resolve inputs from workflow_dispatch or repository_dispatch payload
+      - name: Resolve PR number and repo
+        id: resolve
+        run: |
+          if [[ "${{ github.event_name }}" == "repository_dispatch" ]]; then
+            PR="${{ github.event.client_payload.pr_number }}"
+            REPO="${{ github.event.client_payload.player_repo }}"
+          else
+            PR="${{ inputs.player_pr_number }}"
+            REPO="${{ inputs.player_repo }}"
+          fi
+
+          # Fall back to env var if not provided
+          if [[ -z "$REPO" ]]; then
+            REPO="${PLAYER_GITHUB_REPO}"
+          fi
+
+          echo "pr_number=$PR" >> $GITHUB_OUTPUT
+          echo "player_repo=$REPO" >> $GITHUB_OUTPUT
+          echo "Analyzing PR #$PR in repo $REPO"
+        env:
+          PLAYER_GITHUB_REPO: ${{ vars.PLAYER_GITHUB_REPO }}
+
+      # Run prepare-diff.ts against the player PR
+      - name: Prepare diff
+        run: npx ts-node scripts/prepare-diff.ts ${{ steps.resolve.outputs.pr_number }}
+        env:
+          PLAYER_GITHUB_REPO: ${{ steps.resolve.outputs.player_repo }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+
+      # Run select-tests.ts — outputs test-plan.json
+      - name: Compute test plan
+        id: plan
+        run: |
+          npx ts-node scripts/select-tests.ts
+
+          RISK=$(cat tmp/pipeline/test-plan.json | jq -r '.risk_label')
+          echo "risk_label=$RISK" >> $GITHUB_OUTPUT
+
+          # Set boolean flags for downstream jobs
+          case "$RISK" in
+            critical)
+              echo "run_contract=true"     >> $GITHUB_OUTPUT
+              echo "run_integration=true"  >> $GITHUB_OUTPUT
+              echo "run_e2e=true"          >> $GITHUB_OUTPUT
+              echo "run_visual=true"       >> $GITHUB_OUTPUT
+              ;;
+            high)
+              echo "run_contract=false"    >> $GITHUB_OUTPUT
+              echo "run_integration=true"  >> $GITHUB_OUTPUT
+              echo "run_e2e=true"          >> $GITHUB_OUTPUT
+              echo "run_visual=false"      >> $GITHUB_OUTPUT
+              ;;
+            medium)
+              echo "run_contract=false"    >> $GITHUB_OUTPUT
+              echo "run_integration=true"  >> $GITHUB_OUTPUT
+              echo "run_e2e=false"         >> $GITHUB_OUTPUT
+              echo "run_visual=false"      >> $GITHUB_OUTPUT
+              ;;
+            *)
+              echo "run_contract=false"    >> $GITHUB_OUTPUT
+              echo "run_integration=false" >> $GITHUB_OUTPUT
+              echo "run_e2e=false"         >> $GITHUB_OUTPUT
+              echo "run_visual=false"      >> $GITHUB_OUTPUT
+              ;;
+          esac
+
+      - name: Upload test plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-plan
+          path: tmp/pipeline/
+          retention-days: 7
+
+  # ── JOB 2: Smoke (always) ────────────────────────────────────────────────────
+  smoke:
+    name: Smoke
+    runs-on: ubuntu-latest
+    needs: analyze
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-qa
+        with:
+          browser: chromium
+      - name: Smoke tests
+        run: npx playwright test tests/smoke/ --project=chromium
+        env:
+          PLATFORM_API_TOKEN: ${{ secrets.PLATFORM_API_TOKEN }}
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: smoke-report
+          path: playwright-report/
+          retention-days: 7
+
+  # ── JOB 3: Contract (critical only) ──────────────────────────────────────────
+  contract:
+    name: Contract
+    runs-on: ubuntu-latest
+    needs: analyze
+    if: needs.analyze.outputs.run_contract == 'true'
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-qa
+        with:
+          browser: chromium
+          fixtures: 'false'
+      - name: Contract tests
+        run: npx playwright test tests/contract/ --project=chromium
+        env:
+          PLATFORM_API_TOKEN: ${{ secrets.PLATFORM_API_TOKEN }}
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: contract-report
+          path: playwright-report/
+          retention-days: 7
+
+  # ── JOB 4: Integration (medium+) ─────────────────────────────────────────────
+  integration:
+    name: Integration
+    runs-on: ubuntu-latest
+    needs: [analyze, smoke]
+    if: needs.analyze.outputs.run_integration == 'true'
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-qa
+        with:
+          browser: chromium
+      - name: Download test plan
+        uses: actions/download-artifact@v4
+        with:
+          name: test-plan
+          path: tmp/pipeline/
+      - name: Integration tests (scoped by plan)
+        run: |
+          # Use the command from test-plan.json (integration step)
+          CMD=$(cat tmp/pipeline/test-plan.json | \
+            jq -r '.test_commands[] | select(contains("integration"))' | head -1)
+          echo "Running: $CMD"
+          eval "$CMD"
+        env:
+          PLATFORM_API_TOKEN: ${{ secrets.PLATFORM_API_TOKEN }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: integration-report
+          path: playwright-report/
+          retention-days: 14
+
+  # ── JOB 5: E2E (high+) ───────────────────────────────────────────────────────
+  e2e:
+    name: E2E
+    runs-on: ubuntu-latest
+    needs: [analyze, smoke]
+    if: needs.analyze.outputs.run_e2e == 'true'
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-qa
+        with:
+          browser: chromium
+      - name: Download test plan
+        uses: actions/download-artifact@v4
+        with:
+          name: test-plan
+          path: tmp/pipeline/
+      - name: E2E tests (scoped by plan)
+        run: |
+          CMD=$(cat tmp/pipeline/test-plan.json | \
+            jq -r '.test_commands[] | select(contains("e2e"))' | head -1)
+          echo "Running: $CMD"
+          eval "$CMD"
+        env:
+          PLATFORM_API_TOKEN: ${{ secrets.PLATFORM_API_TOKEN }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-report
+          path: playwright-report/
+          retention-days: 14
+
+  # ── JOB 6: Post result summary to PR ─────────────────────────────────────────
+  report:
+    name: Report to PR
+    runs-on: ubuntu-latest
+    needs: [analyze, smoke, contract, integration, e2e]
+    if: always() && needs.analyze.outputs.pr_number != ''
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download test plan
+        uses: actions/download-artifact@v4
+        with:
+          name: test-plan
+          path: tmp/pipeline/
+
+      - name: Post PR comment
+        run: |
+          RISK="${{ needs.analyze.outputs.risk_label }}"
+          PR_NUM="${{ needs.analyze.outputs.pr_number }}"
+          PLAYER_REPO="${{ needs.analyze.outputs.player_repo }}"
+
+          SMOKE="${{ needs.smoke.result }}"
+          CONTRACT="${{ needs.contract.result }}"
+          INTEGRATION="${{ needs.integration.result }}"
+          E2E="${{ needs.e2e.result }}"
+
+          status_emoji() {
+            case "$1" in
+              success) echo "✅" ;;
+              failure) echo "❌" ;;
+              skipped) echo "⏭️" ;;
+              *) echo "⚪" ;;
+            esac
+          }
+
+          OVERALL="✅ SAFE TO MERGE"
+          if [[ "$SMOKE" == "failure" || "$CONTRACT" == "failure" || \
+                "$INTEGRATION" == "failure" || "$E2E" == "failure" ]]; then
+            OVERALL="❌ DO NOT MERGE — tests failed"
+          fi
+
+          MODULES=$(cat tmp/pipeline/test-plan.json | jq -r '.modules_affected | join(", ")')
+          MINUTES=$(cat tmp/pipeline/test-plan.json | jq -r '.estimated_minutes')
+
+          BODY="## QA Impact Analysis — \`$RISK\` risk
+
+          **Modules affected:** \`$MODULES\`
+          **Suite ran:** ~${MINUTES} min (targeted, not full suite)
+
+          | Suite | Result |
+          |-------|--------|
+          | Smoke | $(status_emoji $SMOKE) $SMOKE |
+          | Contract | $(status_emoji $CONTRACT) ${CONTRACT:-skipped} |
+          | Integration | $(status_emoji $INTEGRATION) ${INTEGRATION:-skipped} |
+          | E2E | $(status_emoji $E2E) ${E2E:-skipped} |
+
+          **$OVERALL**
+
+          [Full run →](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+
+          if [[ -n "$PLAYER_REPO" && -n "$PR_NUM" ]]; then
+            gh pr comment "$PR_NUM" \
+              --repo "$PLAYER_REPO" \
+              --body "$BODY"
+          else
+            echo "$BODY"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}

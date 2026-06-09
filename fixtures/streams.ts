@@ -114,6 +114,16 @@ export const Streams = ExternalStreams
 // el player recibe JSON local apuntando a streams en localhost:9001.
 // Estos IDs pueden ser cualquier string válido — no tienen que existir en la plataforma.
 
+// ── Player IDs para tests de analytics ───────────────────────────────────
+//
+// Player configs en la plataforma que tienen tracking (Youbora, etc.) configurado.
+// Usar con fixture `player` (sin mock) para tests de analytics con contenido real.
+
+export const PlayerIds = {
+  /** Player con Youbora habilitado — usar con ContentIds.episodeWithNext para tests de sesión */
+  youboraTest: process.env.PLAYER_ID_YOUBORA_TEST || '69f11623472377eda39c266e',
+} as const
+
 export const MockContentIds = {
   vod: 'mock-vod-1',
   live: 'mock-live-1',
@@ -134,6 +144,7 @@ export const LocalStreams = {
     vod: 'http://localhost:9001/vod/master.m3u8',
     audio: 'http://localhost:9001/audio/index.m3u8',
     withError: 'http://localhost:9001/vod-with-error/index.m3u8',
+    withDiscontinuity: 'http://localhost:9001/vod-with-discontinuity/index.m3u8',
   },
 } as const
 

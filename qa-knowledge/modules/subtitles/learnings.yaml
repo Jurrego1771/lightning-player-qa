@@ -1,0 +1,64 @@
+version: "1.0"
+module: subtitles
+last_updated: "2026-06-08"
+
+learnings:
+
+  - id: SUB-LEARN-001
+    title: "TextTrack.mode se muta in-place — Jotai no detecta el cambio"
+    discovery: "Código fuente: subtitle.js línea 22-24"
+    detail: >
+      El browser muta TextTrack.mode directamente en el objeto existente.
+      Jotai solo re-ejecuta suscriptores si el átomo primitivo cambia.
+      subtitleUiRevisionAtom (contador que se incrementa) fue añadido como
+      workaround para forzar re-renders cuando mode cambia sin que el átomo
+      cambie de referencia.
+    impact_on_tests: >
+      Al testear subtítulos, no basta con verificar que mode cambió.
+      Verificar que la UI refleja el estado correcto requiere esperar
+      el ciclo de render de Jotai (usar waitForEvent o waitForSelector).
+
+  - id: SUB-LEARN-002
+    title: "ASS tracks son Proxy — instanceof TextTrack falla"
+    discovery: "Código fuente: textTracks.js línea 52-62"
+    detail: >
+      Pistas ASS (.ass en el id) reciben un Proxy que intercepta get/set de 'mode'.
+      Si el código de test intenta verificar instanceof TextTrack en una pista ASS,
+      puede obtener false o resultados inesperados según el browser.
+      La comparación segura es por track.id o track.label, no por clase.
+    impact_on_tests: >
+      No comparar con instanceof. Usar track.id.includes('.ass') para distinguir tipo.
+
+  - id: SUB-LEARN-003
+    title: "TV skin: selectedSubtitle !== null aunque subtítulos estén desactivados"
+    discovery: "subtitleHelper.js + atom subtitle.js línea 59-61"
+    detail: >
+      En TV, cuando mode es 'disabled', selectedSubAtom mantiene la referencia
+      a la pista (no se setea null). Esto es intencional para que al re-activar
+      la UI recuerde cuál pista estaba seleccionada.
+      En web, selectedSubtitle sí puede ser null al desactivar.
+    impact_on_tests: >
+      Tests en contexto TV deben verificar mode === 'disabled', no selectedSubtitle === null.
+
+  - id: SUB-LEARN-004
+    title: "Chromecast track IDs son 1-based"
+    discovery: "chromecast/subtitles.js normalizeSubtitles, subtitle.js effectiveSubtitleListAtom"
+    detail: >
+      El Cast SDK requiere trackIds empezando en 1. El índice 0 es inválido.
+      Los objetos de pista remotos tienen _trackId (1-based) y _castIndex (0-based).
+      remoteActiveTrackIdsAtom contiene IDs 1-based.
+    impact_on_tests: >
+      Al mockear Chromecast, usar trackId=1 para primera pista.
+      Nunca trackId=0.
+
+  - id: SUB-LEARN-005
+    title: "disableAllSubtitles con silent=true no dispara subtitlechange"
+    discovery: "subtitleHelper.js línea 32"
+    detail: >
+      El parámetro { silent: true } suprime el evento subtitlechange.
+      Se usa para desactivaciones automáticas (cambio de source, destrucción del player)
+      donde el evento no debe propagarse externamente.
+      Tests que escuchan subtitlechange no deben llamar disable con silent=true.
+    impact_on_tests: >
+      Para testear flujos de desactivación explícita del usuario, no pasar silent=true.
+      Para testear que eventos no se emiten en cleanup, usar el flag y verificar ausencia.

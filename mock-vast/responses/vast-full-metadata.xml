@@ -35,7 +35,7 @@
             </VideoClicks>
             <MediaFiles>
               <MediaFile delivery="progressive" type="video/mp4" width="640" height="360" bitrate="400" scalable="true" maintainAspectRatio="true">
-                <![CDATA[https://storage.googleapis.com/interactive-media-ads/media/android.mp4]]>
+                <![CDATA[http://localhost:9001/ads/preroll.mp4]]>
               </MediaFile>
             </MediaFiles>
           </Linear>

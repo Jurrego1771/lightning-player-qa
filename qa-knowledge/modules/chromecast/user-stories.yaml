@@ -1,0 +1,174 @@
+version: "1.0"
+module: chromecast
+last_updated: "2026-06-08"
+
+user_stories:
+  - id: US-CAST-001
+    persona: Viewer
+    narrative:
+      as: "Viewer viendo contenido VOD en su laptop"
+      want: "Enviar el video a su Chromecast con un click"
+      so_that: "Pueda ver el contenido en su TV sin interrumpir la reproducción"
+    business_value: HIGH
+    risk_area:
+      - "session management"
+      - "media load"
+      - "position transfer"
+    related_features:
+      - "playback-core"
+      - "subtitles"
+    acceptance:
+      - CAST-AC-006
+      - CAST-AC-008
+      - CAST-AC-011
+    notes: "El player pausa el audio local, envía el media al dispositivo con la posición actual (BR-CAST-007, BR-CAST-010). El Viewer no debe notar salto ni duplicación de audio."
+
+  - id: US-CAST-002
+    persona: Viewer
+    narrative:
+      as: "Viewer casting un video con subtítulos en español"
+      want: "Que los subtítulos que tenía activos se mantengan en el dispositivo Chromecast"
+      so_that: "No tenga que reconfigurar los subtítulos después de iniciar Cast"
+    business_value: HIGH
+    risk_area:
+      - "subtitle transfer"
+      - "text tracks"
+    related_features:
+      - "subtitles"
+    acceptance:
+      - CAST-AC-014
+      - CAST-AC-010
+      - CAST-AC-013
+    notes: "El subtítulo activo (mode=showing) se detecta y transfiere vía activeTrackId en el LoadRequest. ASS/SSA se filtran silenciosamente (BR-CAST-011)."
+
+  - id: US-CAST-003
+    persona: Viewer
+    narrative:
+      as: "Viewer que termina de ver en TV y quiere continuar en el laptop"
+      want: "Que al desconectar el Chromecast, el video continúe exactamente donde estaba en la TV"
+      so_that: "No pierda su lugar en el contenido"
+    business_value: HIGH
+    risk_area:
+      - "session disconnect"
+      - "position restore"
+    related_features:
+      - "playback-core"
+    acceptance:
+      - CAST-AC-007
+      - CAST-AC-017
+    notes: "Al desconectar, se comparan base URLs. Si coinciden, currentTime se restaura desde el Cast device (BR-CAST-009). Si estaba en play, el local player reanuda automáticamente."
+
+  - id: US-CAST-004
+    persona: Viewer
+    narrative:
+      as: "Viewer usando Firefox o Safari"
+      want: "No ver un botón de Cast roto o un error en la consola"
+      so_that: "La experiencia de reproducción no sea degradada por una feature que no puede usar"
+    business_value: MEDIUM
+    risk_area:
+      - "browser support detection"
+      - "graceful degradation"
+    related_features:
+      - "controls-api"
+    acceptance:
+      - CAST-AC-004
+      - CAST-AC-005
+    notes: "isChromecastSupported() retorna false → SDK no se carga → player.cast no existe. Sin errores de consola. El botón Cast simplemente no aparece (castAvailableAtom=false)."
+
+  - id: US-CAST-005
+    persona: Viewer
+    narrative:
+      as: "Viewer que regresa a la pestaña del player con una sesión Cast activa"
+      want: "Que el tiempo del Cast device sea el correcto (no el tiempo de cuando se fue)"
+      so_that: "La UI del player muestre el progreso real del video en la TV"
+    business_value: HIGH
+    risk_area:
+      - "bfcache"
+      - "session resume"
+      - "time sync"
+    related_features:
+      - "playback-core"
+    acceptance:
+      - CAST-AC-016
+    notes: "Workaround de bfcache: ignoreTimeUpdates 5s + forceTimeSync() via GetStatusRequest (CAST-DEF-001, CAST-LEARN-001, CAST-LEARN-002)."
+
+  - id: US-CAST-006
+    persona: Viewer
+    narrative:
+      as: "Viewer en un contexto embebido (iframe) bajo HTTP"
+      want: "Que el player no muestre errores ni intente cargar el Cast SDK innecesariamente"
+      so_that: "La carga de la página no sea afectada por intentos fallidos del SDK"
+    business_value: MEDIUM
+    risk_area:
+      - "secure context"
+      - "iframe"
+    related_features:
+      - "platform-config"
+    acceptance:
+      - CAST-AC-005
+    notes: "isSecureContext() = false en HTTP → isChromecastSupported() = false → SDK no se carga. Sin request a gstatic.com."
+
+  - id: US-CAST-007
+    persona: Viewer
+    narrative:
+      as: "Viewer viendo un stream en vivo (DVR)"
+      want: "Poder enviar el live stream a Chromecast manteniendo la capacidad de DVR"
+      so_that: "Pueda ver el live en la TV con la opción de retroceder en el tiempo"
+    business_value: HIGH
+    risk_area:
+      - "DVR"
+      - "live stream"
+      - "StreamType.LIVE"
+    related_features:
+      - "playback-core"
+    acceptance:
+      - CAST-AC-015
+    notes: "DVR e isLive usan StreamType.LIVE en el MediaInfo. El receiver de Cast soporta seeking en streams LIVE si el protocolo lo permite (HLS with DVR window)."
+
+  - id: US-CAST-008
+    persona: Integrator
+    narrative:
+      as: "Integrador que despliega el player en un sitio con su propio Custom CAF Receiver"
+      want: "Poder especificar el receiverAppId de mi Custom Receiver en la config del player"
+      so_that: "Mi Custom Receiver sea usado en vez del Default Media Receiver de Google"
+    business_value: MEDIUM
+    risk_area:
+      - "custom receiver"
+      - "configuration"
+    related_features:
+      - "platform-config"
+    acceptance:
+      - CAST-AC-020
+    notes: "view.chromecastReceiverAppId en la config del player se pasa al CastManager. Custom Receivers permiten DRM, UI personalizada, analytics propios. Requieren hosting y registro en Google Cast SDK Developer Console."
+
+  - id: US-CAST-009
+    persona: Integrator
+    narrative:
+      as: "Integrador que quiere deshabilitar Chromecast en un embed específico"
+      want: "Poder desactivar el módulo Chromecast sin tocar el código del player"
+      so_that: "Mi embed no tenga el botón Cast ni cargue el SDK de Google"
+    business_value: MEDIUM
+    risk_area:
+      - "configuration"
+      - "privacy"
+    related_features:
+      - "platform-config"
+    acceptance:
+      - CAST-AC-021
+    notes: "view.chromecast=false deshabilita el módulo. No se carga el SDK (sin request a gstatic.com). Útil para embeds en contextos de privacidad estrictos o donde Cast no es deseado."
+
+  - id: US-CAST-010
+    persona: Operator
+    narrative:
+      as: "Operador responsable del monitoreo de la plataforma"
+      want: "Poder detectar cuando el Cast SDK falla en cargar y cuántos usuarios son afectados"
+      so_that: "Pueda reaccionar a outages del CDN de Google Cast o problemas de compatibilidad"
+    business_value: MEDIUM
+    risk_area:
+      - "SDK load failure"
+      - "observability"
+    related_features:
+      - "events"
+    acceptance:
+      - CAST-AC-009
+    notes: "castError se emite cuando el SDK falla. El integrador puede suscribirse a player.on('castError', handler) para logging/alerting. hasCastSDKFailed() provee un flag de estado sincrónico. Sin métricas automáticas de éxito/fallo en el player."

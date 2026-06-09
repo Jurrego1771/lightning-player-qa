@@ -1,0 +1,158 @@
+version: "1.0"
+module: state
+last_updated: "2026-06-08"
+
+acceptance_criteria:
+
+  - id: STATE-AC-001
+    priority: MUST
+    scenario: "player.paused refleja estado correcto después de play() y pause()"
+    given: "Player listo con VOD cargado (ready event emitido)"
+    when: "Se llama player.pause() y luego player.play()"
+    then:
+      - "player.paused === true inmediatamente tras pause() (con expect.poll)"
+      - "player.paused === false inmediatamente tras play() (con expect.poll)"
+      - "El estado no se queda en paused si play() tiene éxito"
+
+  - id: STATE-AC-002
+    priority: MUST
+    scenario: "player.status transiciona correctamente: waiting → playing → pause"
+    given: "Player inicializado con autoplay: false"
+    when: "Se llama player.play()"
+    then:
+      - "player.status === 'playing' después de play() (con expect.poll, max 3s)"
+      - "player.status === 'pause' después de player.pause() (con expect.poll)"
+      - "El valor nunca es undefined o null mientras el player está activo"
+
+  - id: STATE-AC-003
+    priority: MUST
+    scenario: "player.currentTime refleja la posición de reproducción"
+    given: "Player reproduciendo VOD"
+    when: "Transcurren al menos 2 segundos de playback"
+    then:
+      - "player.currentTime > 0 (con expect.poll)"
+      - "player.currentTime es un número finito (Number.isFinite)"
+      - "player.currentTime <= player.duration"
+
+  - id: STATE-AC-004
+    priority: MUST
+    scenario: "player.volume acepta valores en [0, 1] y los refleja correctamente"
+    given: "Player inicializado"
+    when: "Se asigna player.volume = 0.5"
+    then:
+      - "player.volume === 0.5 (con expect.poll)"
+      - "El valor está siempre en el rango [0, 1]"
+      - "Asignar player.volume = 1.5 no produce error JS y el valor se mantiene en [0,1]"
+
+  - id: STATE-AC-005
+    priority: MUST
+    scenario: "Estado se resetea al cargar nuevo contenido con player.load()"
+    given: "Player que reprodujo un VOD hasta el final (ended === true)"
+    when: "Se llama player.load({ type: 'media', id: newId })"
+    then:
+      - "player.currentTime === 0 o cercano a 0 (con expect.poll)"
+      - "player.ended === false (con expect.poll)"
+      - "player.status !== 'error' (con expect.poll)"
+      - "player.duration refleja la duración del nuevo contenido cuando esté disponible"
+
+  - id: STATE-AC-006
+    priority: MUST
+    scenario: "player.status reporta 'error' tras error fatal"
+    given: "Player con source inválida o error fatal de DRM"
+    when: "El player no puede reproducir y lanza error fatal"
+    then:
+      - "player.status === 'error' (con expect.poll)"
+      - "player.error es un objeto Error no nulo"
+      - "El player no queda en estado 'playing' tras el error"
+
+  - id: STATE-AC-007
+    priority: MUST
+    scenario: "player.currentTime = N ejecuta seek a la posición N"
+    given: "Player reproduciendo VOD con duration > 30s"
+    when: "Se asigna player.currentTime = 15"
+    then:
+      - "player.currentTime refleja el valor cercano a 15 después del seeked event (expect.poll)"
+      - "El player continúa reproduciendo desde la nueva posición"
+      - "No se lanza ninguna excepción JS"
+
+  - id: STATE-AC-008
+    priority: MUST
+    scenario: "player.duration devuelve la duración del contenido actual"
+    given: "Player con VOD cargado y canplay emitido"
+    when: "Se lee player.duration"
+    then:
+      - "player.duration es un número > 0 y Number.isFinite (con expect.poll)"
+      - "player.duration no es NaN ni Infinity para VOD"
+
+  - id: STATE-AC-009
+    priority: MUST
+    scenario: "player.ended === true cuando el VOD termina"
+    given: "Player reproduciendo un VOD corto (< 5s) hasta el final"
+    when: "El evento 'ended' es emitido"
+    then:
+      - "player.ended === true (con expect.poll)"
+      - "player.paused === true (con expect.poll)"
+      - "player.status !== 'playing'"
+
+  - id: STATE-AC-010
+    priority: MUST
+    scenario: "Estado de volumen se preserva entre play() y pause()"
+    given: "Player con player.volume = 0.3"
+    when: "Se llama player.pause() y luego player.play()"
+    then:
+      - "player.volume === 0.3 después de pause() (no debe resetearse)"
+      - "player.volume === 0.3 después de play() (el volumen no cambia por play/pause)"
+
+  - id: STATE-AC-011
+    priority: SHOULD
+    scenario: "player.isLive === true para streams en vivo"
+    given: "Player inicializado con type: 'live'"
+    when: "El player está activo"
+    then:
+      - "player.isLive === true"
+      - "player.isDVR === false"
+
+  - id: STATE-AC-012
+    priority: SHOULD
+    scenario: "player.isDVR === true para streams DVR"
+    given: "Player inicializado con type: 'dvr'"
+    when: "El player está activo"
+    then:
+      - "player.isDVR === true"
+      - "player.currentTime devuelve el offset relativo (no tiempo absoluto del stream)"
+
+  - id: STATE-AC-013
+    priority: SHOULD
+    scenario: "player.isPlayingAd === true mientras se reproduce un ad lineal"
+    given: "Player con ads configurados y pre-roll activo"
+    when: "Un ad lineal está reproduciéndose (adsStarted emitido)"
+    then:
+      - "player.isPlayingAd === true (con expect.poll)"
+      - "player.isPlayingAd === false después de adsContentResumeRequested (con expect.poll)"
+
+  - id: STATE-AC-014
+    priority: SHOULD
+    scenario: "Estado interno y getter player.status son consistentes tras setData()"
+    given: "Player activo"
+    when: "El contexto React actualiza playerStatus via setData()"
+    then:
+      - "player.status refleja el nuevo valor en ≤ 200ms (debounce de 100ms + render cycle)"
+      - "No hay ventana donde player.status devuelve un valor obsoleto por más de 200ms"
+
+  - id: STATE-AC-015
+    priority: COULD
+    scenario: "player.version devuelve el número de versión del player"
+    given: "Player inicializado"
+    when: "Se lee player.version"
+    then:
+      - "player.version es un string no vacío"
+      - "Sigue el formato SemVer (e.g. '1.0.75')"
+
+  - id: STATE-AC-016
+    priority: COULD
+    scenario: "player.buffered refleja los rangos con buffer actuales"
+    given: "Player reproduciendo HLS con buffer activo"
+    when: "Se lee player.buffered después de progress event"
+    then:
+      - "player.buffered.length >= 1"
+      - "player.buffered.start(0) <= player.currentTime <= player.buffered.end(0)"

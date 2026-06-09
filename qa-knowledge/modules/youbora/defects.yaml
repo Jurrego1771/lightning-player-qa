@@ -1,0 +1,120 @@
+version: "1.0"
+module: youbora
+last_updated: "2026-06-08"
+
+defects:
+  - id: YBRA-DEF-001
+    status: open
+    severity: high
+    title: "Errores fatales de arranque no emiten /error (adapter null)"
+    description: >
+      onError tiene el guard `if (!this._adapter) return` (tracker.js:225). El _adapter solo se crea
+      en _initAdapter() (ready/firstPlay/playing/contentPauseRequested). Si el contenido falla ANTES
+      de ready (manifest 403, license error, CDN inaccesible), _adapter es null y no se envía ningún
+      beacon /error — se pierde la métrica de startup errors. También impide que NPAW-8.6 (nueva View
+      tras recovery) reporte correctamente, porque la sesión nunca se inicializó.
+    workaround: >
+      Ninguno desde QA. Fix sugerido en el player: en onError, si _adapter es null y el error es fatal
+      de startup, llamar _initAdapter() y luego fireError/fireFatalError (no fireStart). Tests
+      NPAW-8.1 y NPAW-8.6 están marcados test.fixme(true) con la explicación.
+    source_comment: "src/analytics/youbora/tracker.js:224-225; youbora.spec.ts NPAW-8.1/8.6"
+    industry_known: true
+    regression_risk: medium
+
+  - id: YBRA-DEF-002
+    status: known_limitation
+    severity: medium
+    title: "La ingesta/render en la NPAW Suite no es verificable en CI"
+    description: >
+      QA solo puede observar la EMISIÓN de beacons HTTP. La verificación de que un beacon se ingesta y
+      renderiza correctamente (View detail, SmartTracking, SmartAds, valores de joinDuration/bitrate)
+      requiere un accountCode real y acceso al dashboard de la NPAW Suite. En CI se usa accountCode
+      dummy (qa_dummy) y un mock de lma.npaw.com, por lo que no hay end-to-end real contra NPAW.
+    workaround: >
+      Verificación periódica manual en la NPAW Suite con un deployment real (p.ej. el ciclo Caracol TV
+      2026-04 registrado en los ACs NPAW). Los tests automatizados validan presencia/secuencia de
+      beacons y campos del POST body, no la correctitud semántica en el backend de NPAW.
+    source_comment: "youbora.spec.ts cabecera (estrategia de observabilidad); .env YOUBORA_ACCOUNT_CODE=qa_dummy"
+    industry_known: true
+    regression_risk: low
+
+  - id: YBRA-DEF-003
+    status: known_limitation
+    severity: low
+    title: "Métricas reportadas como -1 / playhead 0 en ciertos handlers (Caracol TV 2026-04)"
+    description: >
+      En el ciclo de QA Caracol TV (2026-04) se observó: bitrate=-1 (NPAW-6.4), throughput=-1
+      (NPAW-6.7), diffTime < 4s (NPAW-6.3), y playhead=0 en /bufferUnderrun (NPAW-4.1). Son valores
+      técnicamente válidos por contrato NPAW (-1 = 'no reportado') pero degradan la calidad analítica.
+    workaround: >
+      Ninguno requerido — la View se abre y los eventos se emiten. El bitrate depende de que el handler
+      (HLS/DASH) exponga api.bitrate; si no lo hace, -1 es el fallback correcto.
+    source_comment: "behavior.json AC-YOUBORA-NPAW-4.1/6.3/6.4/6.7 (notes Caracol TV)"
+    industry_known: true
+    regression_risk: low
+
+  - id: YBRA-DEF-004
+    status: known_workaround
+    severity: low
+    title: "next-episode con mismo stream URL no reabre sesión (HLS no reemite _playing)"
+    description: >
+      restart() difiere init() con setTimeout(0) y depende de que el player reemita Events._playing.
+      Con contenido mock que reutiliza el mismo stream URL, HLS.js no reinicializa, _playing no se
+      reemite, y la nueva sesión nunca emite /start. Con contenido real (URLs distintas por episodio)
+      HLS.js reinicializa y funciona.
+    workaround: >
+      En tests de cambio de contenido/episodio usar contenido REAL de plataforma con IDs/streams
+      distintos (fixture `player`, ContentIds.episodeWithNext, PlayerIds.youboraTest), no mocks con el
+      mismo stream. Documentado en el test 'Next Episode Session Chain'.
+    source_comment: "src/analytics/youbora/tracker.js:398-405; youbora.spec.ts 'Next Episode Session Chain'"
+    industry_known: false
+    regression_risk: medium
+
+  - id: YBRA-DEF-005
+    status: known_limitation
+    severity: low
+    title: "user.type (userType) no reportado en algunos deployments"
+    description: >
+      AC NPAW-2.17 (userType) salió FAILED en Caracol TV 2026-04: 'Not reported'. userType solo se
+      envía si contextMapper recibe options['customer_extras.type'] (issue-706). Si la plataforma no
+      provee customer_extras, el campo se omite por el guard `if (userType) opts['user.type']=...`.
+    workaround: >
+      Configurar customer_extras.type en el player config. El test NPAW-2.17a verifica que con
+      customer_extras.type='premium' el campo user.type aparece en /start.
+    source_comment: "src/analytics/youbora/tracker.js:39; index.jsx:51; behavior.json AC-YOUBORA-NPAW-2.17"
+    industry_known: false
+    regression_risk: low
+
+  - id: YBRA-DEF-007
+    status: open
+    severity: medium
+    title: "EBVS imposible: fireStart() siempre llama fireJoin() de inmediato"
+    description: >
+      En _bindContentEvents, fireStart() ejecuta this._adapter.fireStart() seguido inmediatamente de
+      this._adapter.fireJoin() en la misma función (tracker.js:133-137). Por tanto /start y /joinTime
+      siempre se emiten juntos. Esto hace IMPOSIBLE el escenario EBVS (Exit Before Video Start), que
+      requiere una View con /start pero SIN /joinTime. EBVS es una métrica QoE clave para medir
+      frustración del usuario en el arranque.
+    workaround: >
+      Ninguno desde QA. Fix sugerido: llamar fireJoin() solo cuando el primer frame realmente se
+      renderiza (readyState >= 2 o timeupdate con progreso), no en la misma llamada que fireStart().
+      Test NPAW-3.2 marcado test.fixme(true) con esta explicación.
+    source_comment: "src/analytics/youbora/tracker.js:133-137; youbora.spec.ts NPAW-3.2"
+    industry_known: true
+    regression_risk: medium
+
+  - id: YBRA-DEF-006
+    status: known_limitation
+    severity: low
+    title: "_pendingInit timing flaky en Linux CI (setTimeout(0) vs destroy)"
+    description: >
+      El test GAP-5 (_pendingInit cleared if destroy() during restart()) es sensible al timing del
+      setTimeout(0). Bajo carga en Linux CI, el init diferido puede resolverse antes del _cleanup de
+      destroy(), produciendo un fireStart espurio.
+    workaround: >
+      Test marcado test.fixme cuando CI=true && platform=linux, y test.slow() en otros entornos. El
+      código sí hace clearTimeout(_pendingInit) en _cleanup; el problema es la ventana de carrera, no
+      la lógica.
+    source_comment: "youbora.spec.ts GAP-5; src/analytics/youbora/tracker.js:412-414"
+    industry_known: false
+    regression_risk: low

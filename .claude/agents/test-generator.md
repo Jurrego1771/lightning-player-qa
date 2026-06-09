@@ -25,6 +25,32 @@ cat state/session_state.json 2>/dev/null | python3 -c \
 
 ---
 
+## PASO 0 — Consultar behavior oracle para cada módulo MUST (PRIMER PASO)
+
+Para cada módulo con gap MUST, consultar el behavior oracle:
+
+```bash
+MUST_MODULES=$(python3 -c "
+import sys,json
+d=json.load(open('state/session_state.json'))
+mods=list(set(g['module'] for g in d['coverage_gaps']['gaps'] if g['priority']=='MUST'))
+print(' '.join(mods))
+" 2>/dev/null)
+npx ts-node scripts/query-context.ts behavior $MUST_MODULES 2>/dev/null
+```
+
+Si `scripts/query-context.ts` existe y responde, extraer para cada módulo:
+- `acceptance_criteria[]` → lista de ACs con `id`, `given`, `when`, `then`, `priority`, `covered_by`
+  - ACs con `covered_by` vacío = tests a generar (mapean directamente al gap)
+- `events[]` → eventos con `name`, `when`, `payload_shape`, `must_precede`, `must_follow`
+  - Usar para aserciones de secuencia en tests de lifecycle
+- `test_anti_patterns[]` → lista de prohibiciones específicas del módulo (complementa las globales)
+- `known_bugs[]` → bugs abiertos → **NO** generar test que falle por un bug conocido; documentar con `test.skip`
+
+Si query-context no está disponible → continuar al PASO 2 (modo básico).
+
+---
+
 ## PASO 1 — Leer inputs necesarios
 
 En paralelo, leer:
@@ -44,37 +70,35 @@ Construir mentalmente la lista de métodos y fixtures disponibles ANTES de gener
 
 ---
 
-## PASO 2 — Para cada gap MUST: leer docs del feature
+## PASO 2 — Para cada gap MUST: leer docs del feature (complementario)
 
-Para cada gap en `coverage_gaps.gaps[]` con `priority: "MUST"`:
+Si PASO 0 encontró ACs completos para el módulo → este paso es opcional pero recomendado para contexto adicional.
+
+Si PASO 0 no encontró datos → este paso es **obligatorio** (modo básico):
 
 ```bash
 MODULE="ads-sgai"  # tomado de gap.module
-FEATURE="${gap.module}"  # usar el nombre del módulo como clave
 
 # Buscar docs en context/features/ (arquitectura del pipeline)
 ls context/features/ 2>/dev/null
-cat "context/features/${FEATURE}.md" 2>/dev/null
+cat "context/features/${MODULE}.md" 2>/dev/null
 
 # Fallback: buscar por nombre parcial en context/features/
-find context/features/ -name "*${FEATURE}*" -o -name "*${MODULE}*" 2>/dev/null
+find context/features/ -name "*${MODULE}*" 2>/dev/null
 ```
 
-**Si existen docs** → leer para extraer:
-- Qué eventos emite el módulo y en qué orden
-- Qué condiciones activan el comportamiento que cambió
-- Qué casos edge están documentados
-- Qué NO testear (si está especificado)
+**Si existen docs** → complementar con:
+- Condiciones específicas que activan el comportamiento
+- Casos edge documentados adicionales a los ACs del oracle
 
-**Si NO existen docs** → generar en modo básico basándose en:
-- El `gap.description` del session_state.json
-- El `gap.symbols_uncovered[]` y `gap.events_uncovered[]`
-- El diff real del archivo modificado (leer el archivo en el player repo si es accesible)
+**Si NO existen docs Y PASO 0 no respondió** → modo básico:
+- Usar `gap.description`, `gap.symbols_uncovered[]`, `gap.events_uncovered[]`
+- Leer el archivo en el player repo si accesible
 
-Marcar en el output final:
+Marcar en el output final cuando ambas fuentes fallan:
 ```
-⚠️ Sin docs para [módulo] — spec generado en modo básico.
-   Considerar crear context/features/[módulo].md para documentar el contrato.
+⚠️ Sin oracle ni docs para [módulo] — spec generado en modo básico.
+   Considerar crear qa-knowledge/modules/[módulo]/behavior.json.
 ```
 
 ---
@@ -125,6 +149,22 @@ Gap con beacons/analytics (konodrac, ads-tracking):
 ---
 
 ## PASO 5 — Generar el spec
+
+**Si PASO 0 produjo ACs:** Usar cada AC como plantilla de test:
+- `ac.given` → comentario `// Arrange` + setup code
+- `ac.when` → comentario `// Act` + action code
+- `ac.then` → comentario `// Assert` + assertion code
+- `ac.id` → incluir como `// Covers: AC-SGAI-001` en el test
+- `test_anti_patterns` del módulo → verificar que ninguna línea generada viola las prohibiciones
+
+**Si PASO 0 produjo `events[]` ordenados:** Para tests de lifecycle, generar aserciones de secuencia:
+```typescript
+// Para eventos con must_precede / must_follow
+const received: string[] = []
+await page.exposeFunction('__captureEvent', (e: string) => received.push(e))
+// Assert secuencia correcta
+expect(received.indexOf('adsStarted')).toBeLessThan(received.indexOf('adsImpression'))
+```
 
 Para cada gap MUST, generar el spec completo siguiendo estas convenciones OBLIGATORIAS:
 
@@ -313,11 +353,15 @@ Leer `state/session_state.json`, agregar `generated_specs` dentro de `coverage_g
 
 ## REGLAS
 
-1. **Solo gaps MUST** — los gaps SHOULD son opcionales y no se generan automáticamente.
-2. **SIEMPRE importar desde `fixtures/`** — nunca desde `@playwright/test` directamente. Esta regla es crítica para que la suite funcione.
-3. **SIEMPRE validar con `--list`** antes de reportar éxito. Un spec que no pasa `--list` no cuenta como generado.
-4. **Leer los fixtures reales** antes de generar — no asumir que existen métodos `waitForEvent`, `assertIsPlaying`, etc. sin verificarlo en `fixtures/player.ts`.
-5. **No crear features docs** — si no hay docs del feature, generar en modo básico y reportarlo. No crear archivos `.md` adicionales.
-6. **MERGE** — preservar todos los campos existentes de `diff`, `risk_assessment`, `test_plan`, `coverage_gaps.gaps` al actualizar `session_state.json`.
-7. **Gaps SHOULD** → mencionar en el reporte como recomendación manual, pero no generar specs para ellos.
-8. Si el spec generado no pasa `--list` después de 2 intentos de corrección → reportar el error al usuario con el mensaje exacto de TypeScript y no marcar como exitoso.
+1. **PASO 0 es el primer paso** — consultar `query-context.ts behavior` antes de leer cualquier otro archivo. ACs del oracle son la plantilla primaria.
+2. **Solo gaps MUST** — los gaps SHOULD son opcionales y no se generan automáticamente.
+3. **ACs como plantilla** — si el oracle tiene ACs para el módulo, cada AC con `covered_by` vacío = un test. Usar given/when/then del AC como estructura.
+4. **`test_anti_patterns` del módulo** — verificar que el spec no viola prohibiciones específicas del módulo (del oracle) además de las globales.
+5. **`known_bugs[]` del oracle** — si el AC toca un bug conocido abierto → `test.skip` con el bug ID en el mensaje, no un test que falla.
+6. **SIEMPRE importar desde `fixtures/`** — nunca desde `@playwright/test` directamente. Esta regla es crítica para que la suite funcione.
+7. **SIEMPRE validar con `--list`** antes de reportar éxito. Un spec que no pasa `--list` no cuenta como generado.
+8. **Leer los fixtures reales** antes de generar — no asumir que existen métodos `waitForEvent`, `assertIsPlaying`, etc. sin verificarlo en `fixtures/player.ts`.
+9. **No crear features docs** — si no hay docs del feature, generar en modo básico y reportarlo. No crear archivos `.md` adicionales.
+10. **MERGE** — preservar todos los campos existentes de `diff`, `risk_assessment`, `test_plan`, `coverage_gaps.gaps` al actualizar `session_state.json`.
+11. **Gaps SHOULD** → mencionar en el reporte como recomendación manual, pero no generar specs para ellos.
+12. Si el spec no pasa `--list` después de 2 intentos → reportar error con mensaje exacto de TypeScript, no marcar como exitoso.

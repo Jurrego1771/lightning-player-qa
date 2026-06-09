@@ -1,0 +1,109 @@
+version: "1.0"
+module: airplay
+last_updated: "2026-06-08"
+
+learnings:
+  - id: APLY-LEARN-001
+    title: "El soporte de AirPlay se detecta SOLO por webkitShowPlaybackTargetPicker"
+    discovery: "código fuente: src/airplay/isSupported.js"
+    detail: >
+      isAirPlaySupported() solo verifica que
+      window.HTMLVideoElement.prototype.webkitShowPlaybackTargetPicker sea una función.
+      No verifica navegador, user-agent ni receptores. Es la única condición de
+      activación de todo el módulo. Cualquier mock de AirPlay en tests debe stubear
+      esta propiedad en el prototipo de HTMLVideoElement.
+    impact_on_tests: >
+      Para simular soporte/no-soporte en tests, definir o borrar
+      HTMLVideoElement.prototype.webkitShowPlaybackTargetPicker. test.skip debe basarse
+      en browserName==='webkit', no en user-agent.
+
+  - id: APLY-LEARN-002
+    title: "El player desactiva ManagedMediaSource por completo en dispositivos AirPlay"
+    discovery: "código fuente: src/player/handler/hls/handler.js línea ~183 (preferManagedMediaSource: !isAirPlaySupported())"
+    detail: >
+      En vez de pelear con disableRemotePlayback, el player elige NO usar MMS en
+      dispositivos AirPlay-capaces y vuelve a MSE clásico. El comentario en el código lo
+      explica - MMS llama removeSourceChildren() (borra el <source> fallback) y setea
+      disableRemotePlayback=true (oculta el botón). Es la mitigación primaria del bug
+      hls.js #6197.
+    impact_on_tests: >
+      En Safari 17.1+ verificar que NO se usa ManagedMediaSource cuando AirPlay está
+      soportado, y que el botón AirPlay permanece visible. Comprobar mediante el estado
+      del handler o la presencia/ausencia de MMS en el flujo.
+
+  - id: APLY-LEARN-003
+    title: "Doble mitigación: además de desactivar MMS, hay un workaround de segundo <source>"
+    discovery: "código fuente: src/view/video/atoms/airplay.js líneas 75-86; WebKit blog 15036"
+    detail: >
+      Aun cuando MMS esté presente (window.ManagedMediaSource existe), el atom añade un
+      segundo elemento <source> con la URL .m3u8 real (type='application/x-mpegurl')
+      después del blob de MSE. Esto coincide exactamente con la guía oficial de WebKit -
+      Safari prioriza el MediaSource para reproducir localmente, pero al activar AirPlay
+      cambia a la URL AirPlay-compatible. El <source> se elimina en el cleanup (detach).
+    impact_on_tests: >
+      Verificar que, con ManagedMediaSource presente y un hlsSrc disponible, existe un
+      segundo <source> con type application/x-mpegurl; y que se elimina al destruir el
+      player. Verificar que no se duplican <source> al cambiar de fuente.
+
+  - id: APLY-LEARN-004
+    title: "AirPlay (WebKit) vs Remote Playback API (W3C) son APIs distintas e incompatibles"
+    discovery: "investigación web: w3c/remote-playback issues #1 y #114; suikawiki webkitplaybacktargetavailabilitychanged"
+    detail: >
+      El estándar W3C Remote Playback API (video.remote.prompt(), remote.watchAvailability())
+      es el camino moderno y estandarizado, pero Safari NO lo implementa para AirPlay -
+      usa exclusivamente las APIs webkit-prefijadas. Chrome implementa Remote Playback API
+      para Cast, no AirPlay. El player usa correctamente la API webkit (única opción para
+      AirPlay), no la W3C. Migrar a remote.* NO habilitaría AirPlay en Safari.
+    impact_on_tests: >
+      No esperar que video.remote.* funcione para AirPlay. Los tests deben usar los
+      eventos webkit-prefijados / la API del player. No es un bug que el player no use
+      remote.* para AirPlay; es lo correcto.
+
+  - id: APLY-LEARN-005
+    title: "El atributo x-webkit-airplay está deprecado y el player NO lo setea"
+    discovery: "investigación web: Apple AirPlay Guide (OptingInorOutofAirPlay); búsqueda en código sin coincidencias"
+    detail: >
+      x-webkit-airplay='allow'|'deny' (iOS 5.0) está deprecado por Apple, aunque el valor
+      'deny' sigue respetándose para opt-out. El player no setea este atributo en ningún
+      lugar del código. AirPlay está habilitado por defecto en Safari; el control real lo
+      hace disableRemotePlayback y el flag de contexto view.airplay, no x-webkit-airplay.
+    impact_on_tests: >
+      El test que verifica x-webkit-airplay debe tolerar su ausencia (ya lo hace con una
+      anotación). NO afirmar que el atributo deba existir. Si en el futuro se necesita
+      bloquear AirPlay para cierto contenido, x-webkit-airplay='deny' o disableRemotePlayback
+      son las palancas, no la ausencia del atributo.
+
+  - id: APLY-LEARN-006
+    title: "El estado de conexión AirPlay alimenta analytics como ext_pb"
+    discovery: "código fuente: src/api/player.jsx línea ~363 (ext_pb: getAirPlayManager()?.isConnected ? 1 : 0)"
+    detail: >
+      El player reporta ext_pb=1 a StreamMetrics cuando AirPlay está conectado. 'ext_pb'
+      = external playback. Es un punto de acoplamiento entre AirPlay y analytics que puede
+      romperse silenciosamente si cambia el shape del manager o el getter isConnected.
+    impact_on_tests: >
+      Donde se pueda forzar isConnected (mock del manager), verificar que el beacon de
+      analytics incluye ext_pb correcto. Relacionado con el módulo analytics-streammetrics.
+
+  - id: APLY-LEARN-007
+    title: "showPicker fuerza unmute antes de abrir el picker nativo"
+    discovery: "código fuente: src/airplay/AirPlayManager.js líneas 40-43"
+    detail: >
+      Antes de webkitShowPlaybackTargetPicker(), showPicker() setea el.volume=1 y
+      el.muted=false. Es un comportamiento deliberado para que el contenido sea audible
+      en el receptor (un video muteado localmente seguiría muteado al hacer handoff).
+    impact_on_tests: >
+      Si se testea el botón AirPlay con contenido muteado, verificar que tras invocar el
+      picker el video queda muted=false / volume=1. Considerar el impacto en UX
+      (autoplay muteado que de repente suena).
+
+  - id: APLY-LEARN-008
+    title: "El availabilityChange inicial se dispara automáticamente al registrar el listener"
+    discovery: "investigación web: Apple Developer 'Adding an AirPlay button'; WebKitPlaybackTargetAvailabilityEvent"
+    detail: >
+      WebKit dispara un evento inicial de disponibilidad automáticamente cuando se
+      registra el listener de webkitplaybacktargetavailabilitychanged, informando el
+      estado actual. Por eso el manager adjunta los listeners en attach() y no necesita
+      hacer polling - el estado inicial llega solo.
+    impact_on_tests: >
+      No esperar tener que 'provocar' el primer evento de disponibilidad; debe llegar
+      tras attach. Si no llega en headless, es porque no hay receptores (esperado).

@@ -1,0 +1,164 @@
+version: "1.0"
+module: drm
+last_updated: "2026-06-08"
+
+user_stories:
+  - id: US-DRM-001
+    persona: Viewer
+    narrative:
+      as: "usuario en Chrome viendo contenido premium protegido con Widevine"
+      want: "que el contenido protegido reproduzca automáticamente sin que tenga que hacer nada"
+      so_that: "pueda disfrutar el contenido sin fricción, igual que un contenido no protegido"
+    business_value: HIGH
+    risk_area:
+      - "Widevine license request latency"
+      - "CDM availability in headless environments"
+    related_features:
+      - "playback-core"
+      - "dash"
+    acceptance:
+      - "DRM-AC-001"
+      - "DRM-AC-011"
+    notes: "El flujo DRM es completamente transparente para el viewer. Si la licencia se obtiene en <8s, el viewer no nota diferencia respecto a contenido no-DRM."
+
+  - id: US-DRM-002
+    persona: Viewer
+    narrative:
+      as: "usuario en Safari en iOS viendo contenido premium protegido con FairPlay"
+      want: "que el contenido HLS+FairPlay reproduzca en mi dispositivo Apple"
+      so_that: "pueda acceder al catálogo premium desde mi iPhone/iPad/Mac con Safari"
+    business_value: HIGH
+    risk_area:
+      - "FairPlay CDM availability (Safari only)"
+      - "FairPlay certificate download"
+      - "hls.js emeEnabled configuration"
+    related_features:
+      - "hls"
+      - "platform-config"
+    acceptance:
+      - "DRM-AC-005"
+      - "DRM-AC-010"
+    notes: "FairPlay es la única opción DRM en el ecosistema Apple. Afecta a todos los usuarios de iOS y Safari macOS — mercado significativo en OTT premium."
+
+  - id: US-DRM-003
+    persona: Viewer
+    narrative:
+      as: "usuario cuya sesión de license DRM expiró durante una reproducción larga"
+      want: "recibir un mensaje de error claro y la posibilidad de reiniciar"
+      so_that: "sepa qué pasó y pueda reanudar la reproducción sin confusión"
+    business_value: HIGH
+    risk_area:
+      - "License expiry during long sessions"
+      - "Error message clarity"
+    related_features:
+      - "playback-core"
+      - "events"
+    acceptance:
+      - "DRM-AC-002"
+    notes: "El player emite evento 'error' con fatal=true. La UI debe manejar este evento y mostrar un mensaje de error adecuado con opción de reintentar."
+
+  - id: US-DRM-004
+    persona: Viewer
+    narrative:
+      as: "usuario en un browser antiguo sin soporte DRM"
+      want: "recibir un mensaje de error claro que explique por qué no puedo ver el contenido"
+      so_that: "entienda que el problema es mi browser, no el servicio, y pueda actuar"
+    business_value: MEDIUM
+    risk_area:
+      - "DRM not supported error handling"
+      - "Error message clarity"
+    related_features:
+      - "events"
+    acceptance:
+      - "DRM-AC-003"
+    notes: "El player emite DRM_NOT_SUPPORTED. La UI debe traducir este código de error en un mensaje amigable para el usuario."
+
+  - id: US-DRM-005
+    persona: Operator
+    narrative:
+      as: "operador que configura el player con contenido protegido con Widevine"
+      want: "que el token de autenticación DRM se incluya automáticamente en los license requests"
+      so_that: "el license server pueda validar las solicitudes de mis usuarios sin configuración adicional"
+    business_value: HIGH
+    risk_area:
+      - "Token auth correctness"
+      - "X-AxDRM-Message header"
+      - "httpRequestHeaders vs token precedence"
+    related_features:
+      - "platform-config"
+    acceptance:
+      - "DRM-AC-006"
+      - "DRM-AC-007"
+    notes: "El operador configura el token via drm.widevine.token o drm.widevine.httpRequestHeaders en la configuración de la plataforma. El player gestiona el auth automáticamente."
+
+  - id: US-DRM-006
+    persona: Operator
+    narrative:
+      as: "operador que monitoriza el estado del servicio"
+      want: "que cuando el license server esté caído, el player emita un error específico con código DRM_LICENSE_ERROR"
+      so_that: "pueda detectar el fallo vía analytics/alerting y diferenciar un error de DRM de otros errores del player"
+    business_value: HIGH
+    risk_area:
+      - "License server availability"
+      - "Error code specificity"
+    related_features:
+      - "events"
+      - "youbora"
+    acceptance:
+      - "DRM-AC-002"
+    notes: "El código de error DRM_LICENSE_ERROR debe aparecer en los reportes de Youbora/NPAW para correlacionar con incidentes del license server. Los errores DRM son siempre fatales."
+
+  - id: US-DRM-007
+    persona: Operator
+    narrative:
+      as: "operador que usa Google DAI con contenido DASH protegido con Widevine"
+      want: "que el player coordine correctamente el flujo DAI+DRM sin producir errores de init"
+      so_that: "el contenido con ads dinámicos y DRM funcione de forma integrada para mis usuarios"
+    business_value: MEDIUM
+    risk_area:
+      - "DAI + DRM coordination race condition"
+      - "Deferred manifest URL"
+      - "5s timeout"
+    related_features:
+      - "ads-dai"
+      - "dash"
+    acceptance:
+      - "DRM-AC-012"
+    notes: "Este es el escenario más complejo de DRM — requiere coordinación entre DRMPlugin y el plugin de Google DAI. Actualmente cubierto por tests fixme hasta que haya credenciales DAI disponibles."
+
+  - id: US-DRM-008
+    persona: Integrator
+    narrative:
+      as: "desarrollador que integra el player en una aplicación web"
+      want: "que el player funcione correctamente con streams DRM sin tener que gestionar la detección de CDM manualmente"
+      so_that: "pueda entregar el player con un stream DRM sin necesitar conocimiento profundo de EME"
+    business_value: HIGH
+    risk_area:
+      - "Automatic CDM detection"
+      - "Transparent DRM flow"
+      - "Configuration correctness"
+    related_features:
+      - "platform-config"
+      - "playback-core"
+    acceptance:
+      - "DRM-AC-001"
+      - "DRM-AC-004"
+      - "DRM-AC-005"
+    notes: "La detección de CDM (getDRMSupport) y la selección de candidateUrls son automáticas. El integrador solo necesita configurar drm.widevine.serverURL (y opcionalmente el token). El player hace el resto."
+
+  - id: US-DRM-009
+    persona: Integrator
+    narrative:
+      as: "desarrollador que configura contenido mixto (con y sin DRM) en la misma aplicación"
+      want: "que el player reproduzca contenido sin DRM normalmente sin activar el flujo EME"
+      so_that: "el rendimiento y la experiencia de reproducción no se degraden para el contenido no protegido"
+    business_value: MEDIUM
+    risk_area:
+      - "DRM activation for non-DRM content"
+      - "Performance overhead"
+    related_features:
+      - "playback-core"
+      - "hls"
+    acceptance:
+      - "DRM-AC-009"
+    notes: "takeDrmPath=false cuando no hay configuración DRM en la respuesta de la plataforma. El flujo DRM (getDRMSupport, DRMPluginRunner) no se activa, evitando la latencia de la detección de CDM."

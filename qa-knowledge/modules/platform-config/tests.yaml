@@ -1,0 +1,126 @@
+version: "1.0"
+module: platform-config
+last_updated: "2026-06-08"
+
+# NOTA: platform-config no tiene un spec dedicado. Su comportamiento se ejerce indirectamente
+# en CASI TODOS los integration/e2e tests, porque fixtures/platform-mock.ts (setupPlatformMocks)
+# es la base de la inicialización del player en el fixture isolatedPlayer. Un cambio en la forma
+# del config rompe la suite entera — de ahí criticality: critical.
+
+existing_tests:
+  - spec_file: "fixtures/platform-mock.ts"
+    description: "Mock catch-all de la plataforma (player config + content config) usado por isolatedPlayer. Fuente de verdad de la estructura JSON consumida. Provee setupPlatformMocks, mockContentConfig, mockPlayerConfig, mockAudioPlayerConfig, mockContentConfigById, mockContentError."
+    ac_coverage: ["PLAT-AC-001", "PLAT-AC-002"]
+
+  - spec_file: "tests/e2e/vod-playback.spec.ts"
+    description: "Flujo VOD completo; ejercita resolución de content config de video y montaje del player."
+    ac_coverage: ["PLAT-AC-001", "PLAT-AC-011"]
+
+  - spec_file: "tests/contract/api-bootstrap.spec.ts"
+    description: "Contrato de bootstrap del player; cubre el disparo del player config y la orquestación de loadConfig por api.js."
+    ac_coverage: ["PLAT-AC-002"]
+
+  - spec_file: "tests/integration/error-recovery.spec.ts"
+    description: "Errores de plataforma manejados como evento 'error' fatal sin crash (usa mockContentError 403)."
+    ac_coverage: ["PLAT-AC-004", "PLAT-AC-005"]
+
+  - spec_file: "tests/integration/duration-effect-ads.spec.ts"
+    description: "Normalización de ads del backend; ejercita la propagación de ads/ads.map al ads-manager."
+    ac_coverage: ["PLAT-AC-007"]
+
+  - spec_file: "tests/integration/radio-view.spec.ts"
+    description: "view.type='radio' desde player config (mockAudioPlayerConfig / player/radio.json)."
+    ac_coverage: ["PLAT-AC-002"]
+
+  - spec_file: "tests/integration/podcast-view.spec.ts"
+    description: "view.type compact/audio; selección de source de audio (mp3=m4a=hls)."
+    ac_coverage: ["PLAT-AC-002"]
+
+  - spec_file: "tests/integration/system73-dash.spec.ts"
+    description: "Content config DASH (content/dash.json, src.mpd) → selección de handler DASH."
+    ac_coverage: ["PLAT-AC-010"]
+
+  - spec_file: "tests/integration/drm-candidate-selection.spec.ts"
+    description: "drm._candidateUrls construidas por loadConfig; selección de formato por el plugin DRM."
+    ac_coverage: ["PLAT-AC-006"]
+
+coverage_gaps:
+  - id: GAP-PLAT-001
+    priority: MUST
+    ac_ref: PLAT-AC-003
+    title: "Type inválido aborta antes del fetch (PlayerInitError sin request de red)"
+    suggested_spec: "tests/contract/platform-config.spec.ts"
+    notes: "Verificar que un type no soportado lanza PlayerInitError y NO genera ninguna request a embedHost. Hoy no hay spec dedicado de platform-config."
+    industry_note: "Validación de input antes de I/O evita requests inútiles y errores confusos."
+
+  - id: GAP-PLAT-002
+    priority: MUST
+    ac_ref: PLAT-AC-005
+    title: "Respuesta 200 con JSON malformado o sin src → error fatal, no spinner infinito"
+    suggested_spec: "tests/integration/platform-config-malformed.spec.ts"
+    notes: "Mockear 200 con body no-JSON y con body sin src.*. Verificar evento 'error' y ausencia de cuelgue (relacionado con PLAT-DEF-002)."
+    industry_note: "Un 200 con body inválido tras un proxy mal configurado es caso de borde común; el cliente debe degradar con error claro."
+
+  - id: GAP-PLAT-003
+    priority: MUST
+    ac_ref: PLAT-AC-004
+    title: "403 ACCESS_DENIED preserva message/data/metadata en el error"
+    suggested_spec: "tests/integration/platform-config-access-denied.spec.ts"
+    notes: "Usar content/error-403.json. Verificar que el evento 'error' expone data='ACCESS_DENIED', status=403 y metadata.title/description para mostrar mensaje de restricción."
+    industry_note: "403 por token expirado/geo-blocking es el error de acceso #1 en OTT; QA debe garantizar mensaje accionable, no error genérico."
+
+  - id: GAP-PLAT-004
+    priority: SHOULD
+    ac_ref: PLAT-AC-012
+    title: "Contrato CORS: withCredentials exige origin reflejado, no wildcard"
+    suggested_spec: "tests/integration/platform-config-cors.spec.ts"
+    notes: "El platform-mock cortocircuita CORS. Se necesita un mock que simule Access-Control-Allow-Origin:* con credenciales y verifique que el fetch falla, o un test contra plataforma real desde origin whitelisteado."
+    industry_note: "videojs#7232, shaka#2227: regresión de CORS es invisible en tests con mock que interceptan antes del navegador."
+
+  - id: GAP-PLAT-005
+    priority: SHOULD
+    ac_ref: PLAT-AC-009
+    title: "ad_insertion (MediaTailor) → ads.mediaTailorDAI y src=null salvo DVR real"
+    suggested_spec: "tests/integration/platform-config-mediatailor.spec.ts"
+    notes: "Enriquecer content config con ad_insertion.enabled vía mockContentConfig. Verificar mediaTailorDAI.enabled, interval default 5, src=null fuera de DVR real, y que NO se active si ya hay googleDAI."
+    industry_note: "Rama de SSAI server-side menos ejercitada que googleDAI; interacción con DVR real es sutil."
+
+  - id: GAP-PLAT-006
+    priority: SHOULD
+    ac_ref: PLAT-AC-010
+    title: "format=dash sin mpd / format=hls sin hls → FORMAT_NOT_AVAILABLE"
+    suggested_spec: "tests/integration/platform-config-format-negotiation.spec.ts"
+    notes: "mockContentConfig con solo src.hls y data-format=dash → esperar PlayerInitError data='FORMAT_NOT_AVAILABLE'. Y caso inverso."
+    industry_note: "Negociación de formato es punto clásico de regresión cuando el packager cambia outputs."
+
+  - id: GAP-PLAT-007
+    priority: SHOULD
+    ac_ref: PLAT-AC-013
+    title: "DVR audio reescribe manifest a playlist_dvr_range"
+    suggested_spec: "tests/integration/platform-config-dvr-audio.spec.ts"
+    notes: "type='dvr', renderAs audio, start definido. Verificar src.hls contiene 'playlist_dvr_range'. Incluir caso donde el manifest NO trae 'live.m3u8' (replace no-op, PLAT-DEF-004)."
+    industry_note: "string replace literal es frágil ante cambios de naming del backend."
+
+  - id: GAP-PLAT-008
+    priority: SHOULD
+    ac_ref: PLAT-AC-006
+    title: "DRM pone src=null y fuerza hlsVariant=normal"
+    suggested_spec: "tests/integration/platform-config-drm-shape.spec.ts"
+    notes: "mockContentConfig con drm:{enabled:true, widevine:{serverURL}} → verificar config.src=null, drm._candidateUrls.hls presente, hlsVariant='normal'. Complementa drm-candidate-selection con assertions sobre la forma del config."
+    industry_note: "Light hls.js variant no soporta DRM/subtítulos; forzar normal es crítico."
+
+  - id: GAP-PLAT-009
+    priority: COULD
+    ac_ref: PLAT-AC-014
+    title: "Resume position desde localStorage con TTL 1h"
+    suggested_spec: "tests/integration/platform-config-resume.spec.ts"
+    notes: "Sembrar localStorage (_p/_t/_e keys de resumePlaying), resumePosition=true, verificar startPos. Incluir expiración tras TTL (storageDuration=1h)."
+    industry_note: "Resume cross-session común en OTT; precedencia startPos explícito > resume guardado."
+
+  - id: GAP-PLAT-010
+    priority: COULD
+    ac_ref: PLAT-AC-008
+    title: "Google DAI elimina subtítulos y desactiva preload"
+    suggested_spec: "tests/integration/platform-config-googledai.spec.ts"
+    notes: "ad_insertion_google.enabled + asset_key + subtitles[] → verificar config.ads.googleDAI, preloadEnabled=false, subtitles eliminados, hlsVariant=normal."
+    industry_note: "SSAI reescribe timelines; subtítulos sidecar quedan desincronizados (PLAT-DEF-003)."

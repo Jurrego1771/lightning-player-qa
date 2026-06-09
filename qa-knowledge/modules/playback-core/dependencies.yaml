@@ -1,0 +1,101 @@
+version: "1.0"
+module: playback-core
+last_updated: "2026-06-08"
+
+internal:
+  - id: hls
+    reason: "BasePlayer monta HLSHandler (normal/light/beta) cuando srcType === 'hls' y hls.js está soportado. HLS handler implementa ABR, fragmentos, y buffering avanzado."
+    coupling: high
+    files:
+      - "src/player/handler/hls/hls.js"
+      - "src/player/handler/hls/hls-light.js"
+      - "src/player/handler/hls/hls-beta.js"
+      - "src/player/handler/hls/isHLSJsSupported.js"
+    note: "hlsVariant ('normal'|'light'|'beta') se selecciona desde la config de plataforma. Una vez cargado un handler HLS, el módulo lo cachea en la variable global `loadedHLSHandler` para evitar cargar múltiples variants."
+
+  - id: dash
+    reason: "BasePlayer monta DashHandler cuando srcType === 'dash'. DASH no usa dash.js — usa playback nativo del browser. sourceType retorna 'native'."
+    coupling: medium
+    files:
+      - "src/player/handler/dash/handler.js"
+    note: "CRÍTICO para QA: level/levels/bandwidth/bitrate retornan undefined con DASH. Tests de ABR no aplican a DASH."
+
+  - id: native-handler
+    reason: "Usado para MP4 nativo, audio, y FairPlay HLS en Safari. Implementa ping-reload (4s) para recuperarse de stalls y FairPlay key management completo."
+    coupling: high
+    files:
+      - "src/player/handler/native.js"
+    note: "FairPlay requiere webkitneedkey y WebKitMediaKeys — solo disponible en Safari. NativeHandler implementa el flujo completo de FairPlay: certificate fetch + license POST."
+
+  - id: events
+    reason: "Usa internalEmitter (EventEmitter interno) para comunicación entre módulos y externalEmitter para eventos públicos via player.on()."
+    coupling: high
+    files:
+      - "src/events/index.js"
+    note: "Los eventos internos (prefijo '_') no son accesibles por integradores. Los eventos públicos van por postMessage con prefijo 'msp:'."
+
+  - id: controls-api
+    reason: "BasePlayer delega currentTime setter, paused, status, error, isPlayingAd y la coordinación con adsManager a src/controls/index.js."
+    coupling: high
+    files:
+      - "src/controls/index.js"
+      - "src/controls/methods.js"
+    note: "player.currentTime getter/setter NO está en BasePlayer._exposeMethods — está en controls para permitir a adsManager reportar su propio tiempo durante ads."
+
+  - id: ads-manager
+    reason: "Controls API coordina play()/pause() con adsManager cuando hay un ad activo. El seek puede ser ignorado durante un ad break."
+    coupling: medium
+    files:
+      - "src/ads/"
+    note: "Con autoplay: false, AdsManager no se inicializa hasta la primera interacción del usuario. player.ad.cuePoints puede estar vacío hasta entonces."
+
+  - id: drm
+    reason: "NativeHandler implementa FairPlay. HLS handler maneja Widevine/PlayReady via EME. Los parámetros de DRM se reciben desde el content config."
+    coupling: medium
+    files:
+      - "src/player/drm/"
+      - "src/player/handler/native.js"
+    note: "FairPlay en BasePlayer: getDerivedStateFromProps detecta drm.fairplay o drm['com.apple.fps.1_0'] y fuerza _canPlayNative = true para HLS en Safari."
+
+  - id: subtitles
+    reason: "textTracks.js gestiona TextTrackList. BasePlayer escucha 'addtrack' y 'cuechange' para manejar ICY metadata e ID3 tags."
+    coupling: low
+    files:
+      - "src/player/textTracks.js"
+    note: "textTracks es una propiedad de solo lectura expuesta en _exposeMethods. Los ICY metadata y textMetadata se exponen separadamente."
+
+  - id: platform-config
+    reason: "BasePlayer recibe src, type, autoplay, volume, loop, poster, playbackRate, hlsVariant desde el contexto de la plataforma via contextMapper."
+    coupling: high
+    files:
+      - "src/context/"
+    note: "autoplay default = true si no se especifica en la config. volume normalizado a 1 si inválido."
+
+  - id: error-handler
+    reason: "El estado 'error' del player y la propiedad player.error son manejados por ErrorHandler component, no directamente por BasePlayer."
+    coupling: medium
+    files:
+      - "src/error/error.js"
+    note: "PlayerInitError se emite directamente via internalEmitter.emit(Events._error, ...) en getDerivedStateFromProps cuando type o src son inválidos."
+
+external:
+  - id: hls.js
+    package: "hls.js"
+    version: "1.6.13"
+    reason: "Motor principal para reproducción HLS con ABR. Proporciona fragmentación, buffer management, y ABR switching."
+    risk: high
+    note: "hls.js 1.6.x tiene bugs conocidos de memoria (backBufferLength default = Infinity) y stalls cerca del final del stream. El player usa una versión fija — actualizar puede introducir regresiones. Se carga de forma lazy (dynamic import)."
+
+  - id: react
+    package: "react"
+    version: "18.3.1"
+    reason: "BasePlayer, NativeHandler y todos los handlers son React.PureComponent o React.memo. El render cycle es asíncrono."
+    risk: medium
+    note: "El estado React es async — assertar player.status inmediatamente después de una acción puede devolver el valor anterior. Siempre usar expect.poll() en tests."
+
+  - id: date-fns
+    package: "date-fns"
+    version: ">=2.x"
+    reason: "NativeHandler usa isValid() de date-fns para validar programDateTime desde HTMLVideoElement.getStartDate()."
+    risk: low
+    note: "Solo relevante para streams en vivo con programDateTime."

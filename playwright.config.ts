@@ -8,6 +8,14 @@ const IS_CI = process.env.CI === 'true'
 const ENV = getEnvironment()
 const ENV_CONFIG = getEnvironmentConfig()
 
+// Chromium-only flags — WebKit and Firefox reject these with "Unknown option"
+const CHROMIUM_ARGS = [
+  '--autoplay-policy=no-user-gesture-required',
+  '--disable-web-security',
+  '--allow-running-insecure-content',
+  '--disable-features=CrossSiteDocumentBlockingIfIsolating,IsolateOrigins,SitePerProcess',
+]
+
 console.log(`\n🎯 Ambiente: ${ENV_CONFIG.name} (${ENV})`)
 console.log(`📦 Player: ${ENV_CONFIG.playerScriptUrl}\n`)
 
@@ -24,6 +32,14 @@ export default defineConfig({
     {
       command: 'npx serve harness -p 3000 --cors',
       url: 'http://localhost:3000',
+      reuseExistingServer: !IS_CI,
+      timeout: 30_000,
+    },
+    {
+      // Embed host served from a DIFFERENT origin (port 3001) for cross-origin tests.
+      // Used by tests/integration/embed.spec.ts to simulate real iframe embedding.
+      command: 'npx serve embed-harness -p 3001 --cors',
+      url: 'http://localhost:3001',
       reuseExistingServer: !IS_CI,
       timeout: 30_000,
     },
@@ -57,6 +73,7 @@ export default defineConfig({
     ['html', { outputFolder: 'playwright-report', open: 'never' }],
     ['json', { outputFile: 'playwright-report/report.json' }],
     ['./reporters/flakiness-reporter.ts'],
+    ['allure-playwright', { resultsDir: 'allure-results', detail: true, suiteTitle: true }],
     ...(IS_CI ? [['github'] as ['github']] : []),
   ],
 
@@ -67,28 +84,20 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     locale: 'en-US',
 
-    launchOptions: {
-      args: [
-        '--autoplay-policy=no-user-gesture-required',
-        '--disable-web-security',          // permite cargar scripts cross-origin
-        '--allow-running-insecure-content', // IMA SDK en http:// sin bloqueo
-        '--disable-features=CrossSiteDocumentBlockingIfIsolating,IsolateOrigins,SitePerProcess', // permite iframes del IMA SDK en headless
-      ],
-    },
   },
 
   projects: [
     // ── Contract: corre primero en CI — falla rápido si el player rompió su API ─
     {
       name: 'contract',
-      use: { ...devices['Desktop Chrome'] },
+      use: { ...devices['Desktop Chrome'], launchOptions: { args: CHROMIUM_ARGS } },
       testMatch: ['tests/contract/**'],
     },
 
     // ── Tier 1: corre en cada PR / daily en dev ───────────────────────────
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: { ...devices['Desktop Chrome'], launchOptions: { args: CHROMIUM_ARGS } },
       testMatch: ENV_CONFIG.testSuite === 'full'
         ? ['tests/e2e/**', 'tests/integration/**', 'tests/a11y/**', 'tests/visual/**', 'tests/smoke/**']
         : ['tests/smoke/**'],
@@ -111,14 +120,21 @@ export default defineConfig({
     // ── Performance: solo en chromium (CDP disponible) ────────────────────
     {
       name: 'performance',
-      use: { ...devices['Desktop Chrome'] },
+      use: { ...devices['Desktop Chrome'], launchOptions: { args: CHROMIUM_ARGS } },
       testMatch: ['tests/performance/**'],
+    },
+
+    // ── Embed / Cross-Origin ──────────────────────────────────────────────
+    {
+      name: 'embed',
+      use: { ...devices['Desktop Chrome'], launchOptions: { args: CHROMIUM_ARGS } },
+      testMatch: ['tests/integration/embed.spec.ts'],
     },
 
     // ── Mobile simulado ───────────────────────────────────────────────────
     {
       name: 'mobile-chrome',
-      use: { ...devices['Pixel 7'] },
+      use: { ...devices['Pixel 7'], launchOptions: { args: CHROMIUM_ARGS } },
       testMatch: ENV_CONFIG.testSuite === 'full'
         ? ['tests/e2e/**']
         : ['tests/smoke/**'],

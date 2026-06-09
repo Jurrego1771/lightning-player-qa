@@ -1,24 +1,6 @@
 ---
 name: risk-calibrator
-description: "Recalcula risk_map.yaml con señales reales del repositorio. Se ejecuta al mergear a main o cuando se invoca manualmente para recalibrar un módulo. Delegar cuando se quiere mantener el mapa de riesgos actualizado después de un merge o cuando los scores parecen desactualizados.
-
-<example>
-Context: Se hizo merge de una rama con muchos cambios en el módulo ads. El risk_map.yaml puede estar obsoleto.
-user: \"Se hizo merge a main. Recalibra el risk_map para el módulo ads.\"
-assistant: \"Usaré risk-calibrator para recalcular el risk_score del módulo ads usando señales reales: commits recientes, bugs cerrados, cobertura de tests y tasa de fallos en CI.\"
-<commentary>
-Delegar a risk-calibrator (A11) después de merges a main o cuando los scores del risk_map.yaml están desactualizados. Puede operar sobre un módulo específico o todos.
-</commentary>
-</example>
-
-<example>
-Context: Se quiere recalibrar todos los módulos después de una sprint con muchos fixes de bugs.
-user: \"Recalibra todos los módulos del risk_map.\"
-assistant: \"Ejecutaré risk-calibrator sin filtro de módulo para recalcular los scores de todos los módulos con las señales actuales del repositorio.\"
-<commentary>
-Sin argumento --module, risk-calibrator procesa todos los módulos del risk_map.yaml. Puede tardar varios minutos si hay muchos módulos.
-</commentary>
-</example>"
+description: "Recalcula risk_map.yaml con señales reales del repositorio. Se ejecuta al mergear a main o cuando se invoca manualmente para recalibrar un módulo. Delegar cuando se quiere mantener el mapa de riesgos actualizado después de un merge o cuando los scores parecen desactualizados.\n\n<example>\nContext: Se hizo merge de una rama con muchos cambios en el módulo ads. El risk_map.yaml puede estar obsoleto.\nuser: \"Se hizo merge a main. Recalibra el risk_map para el módulo ads.\"\nassistant: \"Usaré risk-calibrator para recalcular el risk_score del módulo ads usando señales reales: commits recientes, bugs cerrados, cobertura de tests y tasa de fallos en CI.\"\n<commentary>\nDelegar a risk-calibrator (A11) después de merges a main o cuando los scores del risk_map.yaml están desactualizados. Puede operar sobre un módulo específico o todos.\n</commentary>\n</example>\n\n<example>\nContext: Se quiere recalibrar todos los módulos después de una sprint con muchos fixes de bugs.\nuser: \"Recalibra todos los módulos del risk_map.\"\nassistant: \"Ejecutaré risk-calibrator sin filtro de módulo para recalcular los scores de todos los módulos con las señales actuales del repositorio.\"\n<commentary>\nSin argumento --module, risk-calibrator procesa todos los módulos del risk_map.yaml. Puede tardar varios minutos si hay muchos módulos.\n</commentary>\n</example>"
 tools: Bash Read Write Glob Grep
 model: claude-sonnet-4-6
 color: purple

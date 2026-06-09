@@ -1,0 +1,54 @@
+version: "1.0"
+module: controls-api
+last_updated: "2026-06-08"
+
+defects:
+  - id: CTRL-DEF-001
+    status: known_limitation
+    severity: medium
+    title: "setLoop(true) es no-op en runtime — loop no es settable post-init"
+    description: "player.loop = true no actualiza el estado de loop del video element. El getter player.loop retorna el valor inicial de configuración, no el valor asignado en runtime. setLoop(false) puede funcionar en algunos casos (resetea al valor por defecto false), pero setLoop(true) no activa loop en un player ya inicializado."
+    workaround: "Configurar loop: true en el objeto de opciones al llamar loadMSPlayer() o en el atributo data-loop del script tag. No es posible activar loop en runtime en v1.0.75."
+    source_comment: "tests/contract/player-api-property.spec.ts:53 — test.fixme con comentario 'fast-check encontró: counterexample=[true]. setLoop(false) funciona, setLoop(true) no. El player.loop parece ser getter-only (no setter) en v1.0.75.'"
+    industry_known: false
+    regression_risk: low
+
+  - id: CTRL-DEF-002
+    status: known_limitation
+    severity: high
+    title: "Multi-instancia en la misma página: prototype pollution de play/pause"
+    description: "methods.js usa Object.defineProperty en LightningPlayer.prototype para exponer play, pause, currentTime, etc. Si hay dos instancias del player en la misma página, el segundo constructor sobrescribe los getters del prototype. La primera instancia ejecutará los métodos internos de la segunda instancia (Controls incorrecto)."
+    workaround: "No usar múltiples instancias del player en la misma página simultáneamente. Si se necesita cambiar contenido, usar player.load() en lugar de crear una segunda instancia."
+    source_comment: "src/controls/methods.js:3 — 'TODO: This implementation might be very badly done. It should be fixed. In particular, there is no way to have two instances of the player in the same page with two different handlers for the same exposed method. We should refactor the expose functionality to allow binding for a specific player instance. Something with WeakMaps should be a good solution.'"
+    industry_known: true
+    regression_risk: high
+
+  - id: CTRL-DEF-003
+    status: known_workaround
+    severity: medium
+    title: "controls durante ad break: seek (currentTime setter) ignorado por IMA SDK"
+    description: "Durante un ad linear activo (player.isPlayingAd() === true), asignar player.currentTime no tiene efecto sobre la posición del ad. La delegación en Controls.set() pasa el setter al adsManager, pero IMA SDK no expone control de seek para ads lineales por diseño (para proteger las métricas de viewing)."
+    workaround: "Verificar player.isPlayingAd() antes de intentar seek. Si hay ad activo, informar al usuario que el seek no está disponible."
+    source_comment: "Comportamiento derivado de la lógica de delegación en src/controls/index.js:370-386. No hay comentario explícito, pero es consecuencia del diseño."
+    industry_known: true
+    regression_risk: low
+
+  - id: CTRL-DEF-004
+    status: known_limitation
+    severity: low
+    title: "play() y pause() no tienen timeout — pueden quedarse esperando _viewReady indefinidamente"
+    description: "Controls._awaitViewReady() hace polling recursivo con setTimeout(100ms) sin timeout máximo. Si por algún motivo _viewReady nunca se vuelve true (bug de rendering, árbol React no montado), play() nunca resuelve ni rechaza. No hay un mecanismo de timeout explícito."
+    workaround: "El integrador puede implementar un timeout externo: Promise.race([player.play(), timeout(5000)]). Internamente no hay fix disponible."
+    source_comment: "src/controls/index.js:239-248 — _awaitViewReady() sin timeout"
+    industry_known: false
+    regression_risk: medium
+
+  - id: CTRL-DEF-005
+    status: open
+    severity: low
+    title: "_checkApiInterval no se limpia si api nunca se registra"
+    description: "componentDidMount inicia un setInterval(100ms) para esperar que get('api') esté disponible. Si 'api' nunca se registra (raro pero posible en error de inicialización), el interval corre indefinidamente. componentWillUnmount no limpia este interval si clearInterval ya corrió (porque la condición se cumplió). Sin embargo, si la condición NUNCA se cumple, el interval leak ocurre."
+    workaround: "No hay workaround. Es un edge case de error de inicialización severo."
+    source_comment: "src/controls/index.js:41-46 — _checkApiInterval sin timeout ni cleanup en caso de fallo"
+    industry_known: false
+    regression_risk: low

@@ -1,0 +1,170 @@
+version: "1.0"
+module: metadata
+last_updated: "2026-06-08"
+
+user_stories:
+  - id: US-META-001
+    persona: Viewer
+    narrative:
+      as: "espectador que reproduce un VoD"
+      want: "ver el título, descripción y póster correctos del contenido en el player"
+      so_that: "sé qué estoy viendo y reconozco el contenido"
+    business_value: HIGH
+    risk_area:
+      - "exposición de metadata de contenido"
+    related_features:
+      - "platform-config"
+      - "playback-core"
+    acceptance:
+      - "META-AC-001"
+      - "META-AC-003"
+    notes: "Metadata estática desde plataforma vía reduceToValidMetadata."
+
+  - id: US-META-002
+    persona: Viewer
+    narrative:
+      as: "oyente de una radio de audio"
+      want: "ver en tiempo real la canción y artista que suena ahora"
+      so_that: "identifico la música sin salir del player"
+    business_value: HIGH
+    risk_area:
+      - "now-playing firestore"
+      - "useID3Sync matching"
+    related_features:
+      - "hls"
+      - "events"
+    acceptance:
+      - "META-AC-007"
+      - "META-AC-014"
+    notes: "Requiere Firebase real y estación con useID3Sync:false."
+
+  - id: US-META-003
+    persona: Viewer
+    narrative:
+      as: "usuario en móvil con la pantalla bloqueada"
+      want: "controlar la reproducción y ver título/artista/carátula desde la lock screen"
+      so_that: "manejo el contenido sin desbloquear ni volver a la app"
+    business_value: HIGH
+    risk_area:
+      - "media session api"
+      - "action handlers"
+    related_features:
+      - "controls-api"
+      - "playback-core"
+    acceptance:
+      - "META-AC-006"
+      - "META-AC-008"
+      - "META-AC-012"
+    notes: "Media Session: MediaMetadata + action handlers + artwork. Degradar si no hay soporte."
+
+  - id: US-META-004
+    persona: Viewer
+    narrative:
+      as: "usuario viendo un live/DVR"
+      want: "que la barra de progreso del SO refleje correctamente que es en vivo"
+      so_that: "no veo una duración falsa ni un scrubber roto"
+    business_value: MEDIUM
+    risk_area:
+      - "duration infinity live"
+      - "media session position state"
+    related_features:
+      - "playback-core"
+      - "dash"
+    acceptance:
+      - "META-AC-005"
+      - "META-AC-010"
+    notes: "live ⇒ duration Infinity; DVR usa seekable, no duration."
+
+  - id: US-META-005
+    persona: Viewer
+    narrative:
+      as: "usuario al que le aparece un anuncio"
+      want: "que no pueda hacer scrub dentro del ad desde los controles del SO"
+      so_that: "el anuncio se reproduce íntegro y la posición no se corrompe"
+    business_value: MEDIUM
+    risk_area:
+      - "media session durante ad"
+    related_features:
+      - "ads-manager"
+      - "ads-ima"
+    acceptance:
+      - "META-AC-009"
+    notes: "Durante ad: position/duration 0 y seek bloqueado; skipad solo si skippable."
+
+  - id: US-META-006
+    persona: Integrator
+    narrative:
+      as: "integrador que escucha eventos del player"
+      want: "recibir metadatachanged solo cuando el contenido realmente cambia"
+      so_that: "no disparo recargas ni reporto analytics duplicados"
+    business_value: HIGH
+    risk_area:
+      - "deduplicación metadatachanged"
+    related_features:
+      - "events"
+      - "youbora"
+    acceptance:
+      - "META-AC-002"
+      - "META-AC-003"
+    notes: "Dedup por isEqual + debounce 100ms (fix/issue-627)."
+
+  - id: US-META-007
+    persona: Integrator
+    narrative:
+      as: "integrador que lee player.metadata para construir su propia UI"
+      want: "un objeto de metadata estable, serializable y sin funciones internas"
+      so_that: "puedo renderizar título/póster sin tropezar con goPrevItem/goNextItem"
+    business_value: MEDIUM
+    risk_area:
+      - "contrato de player.metadata"
+    related_features:
+      - "controls-api"
+    acceptance:
+      - "META-AC-001"
+    notes: "omitPrevNext garantiza que no se exponen funciones de navegación."
+
+  - id: US-META-008
+    persona: Integrator
+    narrative:
+      as: "integrador que monta múltiples players en una página"
+      want: "que solo el player activo controle los controles del SO"
+      so_that: "los metadatos de la lock screen no se mezclan entre instancias"
+    business_value: MEDIUM
+    risk_area:
+      - "media session multi-instancia"
+    related_features:
+      - "events"
+    acceptance:
+      - "META-AC-011"
+    notes: "Arbitraje vía _isCurrentMediaSession y eventos msp:*."
+
+  - id: US-META-009
+    persona: Operator
+    narrative:
+      as: "operador de certificación NPAW/Youbora"
+      want: "que los campos de metadata (title, mediaDuration, contentId, identidad de player/SDK) sean correctos en los beacons"
+      so_that: "la analítica de audiencia es fiable y la certificación pasa"
+    business_value: HIGH
+    risk_area:
+      - "metadata en telemetry"
+    related_features:
+      - "youbora"
+    acceptance:
+      - "META-AC-001"
+      - "META-AC-004"
+    notes: "Deriva de la hoja MetadataParams del workbook NPAW (Caracol TV)."
+
+  - id: US-META-010
+    persona: Viewer
+    narrative:
+      as: "usuario en un navegador sin Media Session API"
+      want: "que el player siga reproduciendo y mostrando metadata in-app"
+      so_that: "la falta de integración con el SO no degrada mi experiencia básica"
+    business_value: LOW
+    risk_area:
+      - "degradación sin media session"
+    related_features:
+      - "platform-config"
+    acceptance:
+      - "META-AC-015"
+    notes: "useMediaSession degrada a useSetBindings sin lanzar excepciones."

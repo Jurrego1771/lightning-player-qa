@@ -1,0 +1,76 @@
+version: "1.0"
+module: hls
+last_updated: "2026-06-08"
+
+learnings:
+  - id: HLS-LEARN-001
+    title: "player.duration retorna Infinity para cualquier stream live — incluido DVR"
+    discovery: "código fuente: handler.js get(duration) línea ~559"
+    detail: "El handler tiene lógica explícita: si props.type === 'live', retorna Infinity independientemente de la duración real del buffer DVR. Esto es correcto según la MSE spec para live streams, pero cualquier código que use player.duration para calcular la ventana DVR obtendrá Infinity. La ventana DVR real debe calcularse desde seekable.end - seekable.start."
+    impact_on_tests: "Tests de DVR NO deben usar player.duration. Usar player.seekable o player.currentTime para verificar el seek window. Un test que haga expect(player.duration).toBeGreaterThan(0) fallará en live streams aunque DVR funcione correctamente."
+
+  - id: HLS-LEARN-002
+    title: "player.nextLevel mapea a hls.loadLevel, no a hls.nextLevel"
+    discovery: "código fuente: handler.js get('nextLevel') línea ~545"
+    detail: "La propiedad player.nextLevel retorna hls.loadLevel (el nivel que se está cargando para el siguiente segmento), no hls.nextLevel (que en hls.js es diferente). Al hacer set('level', val), el handler escribe tanto hls.nextLevel como hls.loadLevel. Esta decisión de implementación hace que nextLevel sea predecible inmediatamente después del set, sin esperar al siguiente segmento."
+    impact_on_tests: "player.getNextLevel() retorna el valor escrito inmediatamente (no hay delay). Es seguro hacer expect(player.nextLevel).toBe(n) justo después de player.level = n. Contrasta con player.level que solo cambia después del siguiente segmento (verificado con levelchanged)."
+
+  - id: HLS-LEARN-003
+    title: "El handler evita duplicar eventos levelchange/levelchanged con guards _pastLevel/_pastLoadLevel"
+    discovery: "código fuente: handler.js LEVEL_SWITCHING/LEVEL_SWITCHED handlers"
+    detail: "hls.js puede disparar LEVEL_SWITCHING múltiples veces con el mismo nivel (p.ej. cuando el buffer se re-evalúa). El handler solo emite 'levelchange' si nextLevel !== this._pastLoadLevel, y 'levelchanged' solo si currentLevel !== this._pastLevel. Esto evita spam de eventos pero también significa que si el mismo nivel se 'vuelve a seleccionar' no hay evento duplicado."
+    impact_on_tests: "No usar waitForEvent('levelchange') para verificar que se fijó un nivel si el nivel ya era ese valor antes. El evento solo dispara cuando el nivel cambia respecto al anterior. Para verificar el nivel actual, leer player.level directamente."
+
+  - id: HLS-LEARN-004
+    title: "Live stream stall recovery: flush de buffer y reset de currentTime a 0"
+    discovery: "código fuente: handler.js FRAG_LOADED handler + _wasStalled flag"
+    detail: "Cuando un stream live sufre stall (_stalled=true) y luego carga un fragment (FRAG_LOADED), el handler detecta la condición (_wasStalled=true) y dispara BUFFER_FLUSHING con endOffset=Infinity, seguido de un reset currentTime=0. Esto evita que hls.js intente re-bufferar desde el punto de stall (potencialmente horas atrás en un stream de larga duración). El reset es intencional y brusco."
+    impact_on_tests: "En tests de live streams con stall simulation, NO asumir que currentTime va a continuar desde donde se quedó. El player hace reset a 0 y retoma desde el live edge. Un test que espere currentTime > X después de un stall puede fallar si X > 0."
+
+  - id: HLS-LEARN-005
+    title: "Preload controlado: autoStartLoad=false requiere llamar player.play() para iniciar el buffer"
+    discovery: "código fuente: handler.js _load() + load() + play()"
+    detail: "Si context.preloadEnabled es false/falsy, autoStartLoad=false en HLSConfig. El manifest se parsea pero los segmentos NO se descargan hasta que se llama load() (que llama hls.startLoad()). play() llama load() internamente. Esto significa que player.levels puede estar vacío incluso después de MANIFEST_PARSED si el consumer no llama play() o load()."
+    impact_on_tests: "Tests que leen player.levels deben haber esperado el evento 'ready' O haber llamado play() primero. No leer player.levels en el setup antes de waitForReady(). Con autoplay=true, esto no es un problema porque play() se llama automáticamente."
+
+  - id: HLS-LEARN-006
+    title: "El ABR real de hls.js necesita tiempo para estimar bandwidth — no reacciona instantáneamente"
+    discovery: "código fuente: handler.js + investigación web: redopop.com/posts/how-hlsjs-estimates-bandwidth"
+    detail: "hls.js usa EWMA (Exponential Weighted Moving Average) con dos ventanas (fast/slow). La estimación de bandwidth se actualiza después de cada segmento descargado. En la práctica, hls.js necesita 2-3 segmentos (4-6 segundos con segmentos de 2s) para reaccionar a un cambio de red. Por esto, el test hls-abr.spec.ts usa waitForTimeout(10s) después de degradar la red antes de esperar el level switch."
+    impact_on_tests: "Nunca testear ABR esperando levelchanged justo después de throttlear la red. Dejar al menos 8-10 segundos para que hls.js estime el nuevo bandwidth y decida el switch. Usar waitForEvent('levelchanged', 30_000) con timeout generoso."
+
+  - id: HLS-LEARN-007
+    title: "FairPlay DRM: el handler soporta 3 nombres de clave para la config ('fairplay', 'com.apple.fps.1_0', 'com.apple.fps')"
+    discovery: "código fuente: handler.js FAIRPLAY_DRM_KEYS constante + _getHlsDrmConfig()"
+    detail: "La API de la plataforma puede enviar la config DRM con cualquiera de tres claves para FairPlay. El handler hace _.find sobre las tres para encontrar la primera con serverURL. Esto es backward-compatibility con versiones anteriores de la plataforma que usaban 'fairplay' sin el full key system ID."
+    impact_on_tests: "Tests de FairPlay deben probar al menos con 'fairplay' y 'com.apple.fps' como claves — son los más comunes. Si se testea con 'com.apple.fps.1_0', también debe funcionar."
+
+  - id: HLS-LEARN-008
+    title: "hls.js importa .min.js explícitamente (no .mjs) para incluir el Web Worker"
+    discovery: "código fuente: hls.js línea 3 + hls-light.js línea 3 + comentario en hls-beta.js"
+    detail: "El comentario en todos los archivos de variante advierte: 'Make sure to NOT be including the .mjs file when importing, as it does not include the web worker for async processing'. El Web Worker es crítico para el rendimiento — sin él, la transcodificación TS→MP4 bloquea el main thread y causa jank visible."
+    impact_on_tests: "Si el player se vuelve lento o laggy durante tests, verificar que la importación es hls.min.js y no hls.mjs. No hay test directo para esto pero es un invariante que debe preservarse en code review."
+
+  - id: HLS-LEARN-009
+    title: "Industria: hls.js vs Video.js HLS plugin vs HLS nativo de Safari"
+    discovery: "investigación web: videosdk.live/developer-hub/hls/hls-js + mux.com articles"
+    detail: "hls.js es la opción estándar de la industria para HLS en browsers no-Safari (Chrome, Firefox, Edge). Safari tiene HLS nativo, pero hls.js también puede correr en Safari cuando MSE está disponible. Video.js usa hls.js como engine subyacente (vía videojs-http-streaming que es el fork de hls.js). Alternativas como Shaka Player (Google) soportan DASH y HLS pero la API es diferente. El player de Mediastream eligió hls.js directamente (sin Video.js) para tener control granular de la configuración."
+    impact_on_tests: "El comportamiento del player en Safari puede diferir del behavior documentado de hls.js si el browser decide usar HLS nativo en lugar de MSE. isHLSJsSupported() previene esto al verificar MSE antes de instanciar hls.js."
+
+  - id: HLS-LEARN-010
+    title: "Industria: liveBackBufferLength deprecated — migrar a backBufferLength"
+    discovery: "investigación web: HLS.js v1.x API docs + GitHub releases"
+    detail: "hls.js deprecó liveBackBufferLength en favor de backBufferLength en v1.x. La configuración actual del handler usa liveBackBufferLength=0, lo cual todavía funciona en v1.6.13 pero puede ser eliminado en futuras versiones. backBufferLength controla cuántos segundos de buffer se mantienen detrás de la posición actual de reproducción."
+    impact_on_tests: "No hay impacto inmediato en tests, pero documentar para la siguiente actualización de hls.js. Si se actualiza a v2.x, verificar que la eliminación de liveBackBufferLength no cause memory bloat del SourceBuffer."
+
+  - id: HLS-LEARN-011
+    title: "Industria: LL-HLS requiere tuning específico del player para latencia baja real"
+    discovery: "investigación web: mux.com/articles/low-latency-live-streaming-developers-guide + cloudinary.com/guides/live-streaming-video"
+    detail: "Un player que usa hls.js sin tuning específico puede tener latencia de 6+ segundos incluso con un feed LL-HLS. Para lograr <3s de latencia se necesita: reducir el CMAF chunk size a 200ms, tunear targetLatency a 0.9-1.2s, usar HTTP/2 preload hints, y tener el packager en el edge. El player actual usa liveSyncDuration=bufferlength (30s) que es conservador y adecuado para live standard, pero no para LL-HLS de baja latencia."
+    impact_on_tests: "Tests de latencia en live streams deben distinguir entre live standard (30-60s latencia esperada) y LL-HLS (objetivo <5s). No asumir que un stream LL-HLS automáticamente da baja latencia sin la configuración apropiada del player."
+
+  - id: HLS-LEARN-012
+    title: "CMCD se configura con contentId y sessionId si están disponibles en el contexto"
+    discovery: "código fuente: handler.js lines ~192-199"
+    detail: "Si context.id y context.metadata.MDSTRMPID están definidos, el handler agrega cmcd: { contentId, sessionId } al HLSConfig. CMCD (Common Media Client Data) es un estándar SVTA que permite al player reportar métricas al CDN via query params o headers. Esto mejora la observabilidad del CDN y puede influir en decisiones de caching."
+    impact_on_tests: "Tests que interceptan requests de segmentos pueden verificar la presencia de parámetros CMCD (MSID, SID en query string). Solo aplica cuando el mock content tiene id y MDSTRMPID configurados."

@@ -1,0 +1,12 @@
+module: ui-tv
+criticality: medium
+last_reviewed: "2026-06-05"
+paths: ["src/view/tv/"]
+depends_on: [events, state, controls-api]
+depended_by: []
+breaks_if_changed:
+  - "Navegación D-pad no funciona en TV (Tizen, webOS)"
+test_suites_required: []
+negative_cases: []
+known_gaps:
+  - "Tests de TV eliminados en commit ab1e035. No hay cobertura CI."

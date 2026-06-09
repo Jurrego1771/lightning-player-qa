@@ -1,0 +1,133 @@
+version: "1.0"
+module: ads-sgai
+last_updated: "2026-06-08"
+
+defects:
+
+  - id: SGAI-DEF-001
+    status: open
+    severity: high
+    title: "buffering state + DVR = loop infinito de ad breaks"
+    description: >
+      Cuando el player está en estado buffering (waiting/stalled) y el fragmento trigger
+      de un cue point SGAI es procesado, el player puede quedar atrapado en un loop infinito
+      alternando entre estado buffering y ad break state. El user experience es una pantalla
+      negra intermitente o un player congelado que requiere reload para resolverse.
+      Reproducible en streams DVR con condiciones de red degradadas.
+    workaround: >
+      Evitar seeks agresivos en streams DVR durante buffering inicial. En producción,
+      algunos operadores han configurado umbrales conservadores de buffering antes de
+      permitir que SGAI se inicialice.
+    source_comment: >
+      behavior.json (legacy) línea 136-148: "Player queda atrapado alternando entre
+      estado buffering y ad break state indefinidamente. Requiere reload para resolver."
+      context.yaml línea 27: "buffering state cuando llega cue point → ad break NO causa
+      loop infinito (BUG-SGAI-001)"
+    industry_known: true
+    regression_risk: high
+    notes: >
+      Sin tests de regresión activos. AC-SGAI-002 está marcado como fixme en
+      tests/integration/ads-sgai-lifecycle.spec.ts — requiere mock del Google IMA DAI SDK.
+      Este defecto debe ser re-evaluado cada vez que se modifica SGAIService.js o
+      useGoogleSGAILifecycle.js.
+
+  - id: SGAI-DEF-002
+    status: known_limitation
+    severity: high
+    title: "DVR + SGAI: cues en la ventana DVR histórica no tienen cobertura de tests"
+    description: >
+      La interacción entre SGAI y streams DVR no ha sido testeada. El comportamiento
+      esperado (ad break skipped si el fragmento trigger ya pasó) está implementado en
+      #attemptPendingCuePlayback() pero no está verificado por tests automatizados.
+      En particular, el caso donde el usuario hace seek dentro de la ventana DVR a una
+      posición que contiene un cue point no visto no tiene comportamiento definido
+      ni tests.
+    workaround: "No hay workaround documentado. El comportamiento en producción no es determinista."
+    source_comment: >
+      context.yaml línea 34: "No existen tests de integración completos para SGAI (solo mute state)"
+      testing_gaps.md línea 86: "SGAI — Google Server-Guided Ad Insertion - Estado: Sin implementar"
+    industry_known: true
+    regression_risk: high
+    notes: >
+      Yospace en NAB 2025 demostró SGAI con DVR con reemplazo de ads en ventana histórica.
+      El player actual no implementa esta funcionalidad — es una limitación conocida,
+      no un bug. Documentar como "fuera de scope" hasta decisión de producto.
+
+  - id: SGAI-DEF-003
+    status: known_limitation
+    severity: medium
+    title: "vpmute inicial puede no enviarse si STREAM_INITIALIZED llega tarde"
+    description: >
+      useGoogleSGAILifecycle llama sgaiService.updateMuteState() en la inicialización,
+      sincronizando el mute state del player. Sin embargo, streamManager es null hasta
+      que STREAM_INITIALIZED llega del SDK (async). El try/catch en updateMuteState()
+      silencia el error si el manager no está listo. El resultado: si el player se inicia
+      con muted=true, el primer ad puede no tener vpmute=1 en sus parámetros.
+    workaround: >
+      Si el usuario muta/desmuta el player después de la inicialización, el vpmute
+      se sincroniza correctamente. El problema es solo con el mute state inicial.
+    source_comment: >
+      SGAIService.js líneas 600-606: updateMuteState() con try/catch vacío.
+      ads-sgai-mute-state-lifecycle.spec.ts Suite 5: tests de race condition en
+      STREAM_INITIALIZED delay (CCGAP-2).
+    industry_known: true
+    regression_risk: medium
+    notes: >
+      La Suite 5 de ads-sgai-mute-state-lifecycle.spec.ts documenta y parcialmente
+      verifica este comportamiento. El fix correcto sería almacenar el mute state
+      inicial y reenviarlo en el callback de STREAM_INITIALIZED.
+
+  - id: SGAI-DEF-004
+    status: known_limitation
+    severity: medium
+    title: "pLoader custom no compatible con instancias que ya tienen pLoader configurado"
+    description: >
+      Si el player tiene un pLoader existente configurado externamente (ej: por otro plugin),
+      la inyección de HlsLoader (createSGAILoader) lo sobreescribe sin preservar el loader
+      original. Solo hay un pLoader activo a la vez. El loader SGAI wrappea el defaultLoader
+      de hls.js, no un pLoader externo previo.
+    workaround: "No hay workaround. Los plugins que necesiten pLoader no son compatibles con SGAI."
+    source_comment: >
+      useGoogleSGAILifecycle.js línea ~309: setData({ pLoader: CustomLoader }).
+      No hay lógica de composición de loaders.
+    industry_known: false
+    regression_risk: low
+    notes: "Impacto real depende del uso de otros plugins. En el scope actual, es una limitación aceptada."
+
+  - id: SGAI-DEF-005
+    status: open
+    severity: medium
+    title: "programDateTime fallback a Date.now() puede desincronizar el ad break"
+    description: >
+      Si el nombre del segmento no contiene un datetime CDN (formato 20260302T174013),
+      ManifestParser.parse() no puede extraer programDateTime y lo deja como null.
+      SGAIService.requestAdPod() usa Date.now()/1000 como fallback. En producción,
+      esto significa que el cueTime enviado a la plataforma puede diferir del tiempo
+      real del programa, causando que la plataforma devuelva un adBreakId incorrecto
+      o que el timing del ad break sea impreciso.
+    workaround: >
+      Asegurarse que el encoder CDN genere segmentos con datetime en el nombre.
+      AWS Elemental MediaPackage lo hace por defecto en el formato datetime-based.
+    source_comment: >
+      SGAIService.js líneas 485-488: log de advertencia + fallback a Date.now().
+      ManifestParser.js líneas 95-107: extracción del datetime del filename.
+    industry_known: false
+    regression_risk: medium
+    notes: >
+      Este defecto es silencioso — no genera errores, solo timing incorrecto.
+      Solo detectable verificando los parámetros enviados al endpoint de plataforma.
+
+  - id: SGAI-DEF-006
+    status: known_limitation
+    severity: low
+    title: "Formato de ad desconocido fallback a fullscreen sin advertencia al usuario"
+    description: >
+      Si la plataforma devuelve un format desconocido en fetchAdBreakId(), DisplayModeService
+      lo normaliza a 'fullscreen' sin emitir warning ni evento. El usuario ve el ad en
+      fullscreen aunque el operador haya configurado otro formato.
+    workaround: "No hay workaround desde el cliente. El formato correcto debe configurarse en la plataforma."
+    source_comment: >
+      DisplayModeService.js líneas 18-21: resolveFormat() con fallback a 'fullscreen'.
+    industry_known: false
+    regression_risk: low
+    notes: "El fallback es seguro pero puede confundir a operadores que configuran formatos custom."

@@ -1,0 +1,99 @@
+version: "1.0"
+module: error-handling
+last_updated: "2026-06-08"
+
+defects:
+  - id: ERR-DEF-001
+    status: known_workaround
+    severity: high
+    title: "Errores fatales pre-ready no se capturan de forma fiable (backfill race + analytics null)"
+    description: >
+      loadConfig lanza PlayerInitError fatal de forma síncrona dentro del .then de carga del player. Si el
+      contenido falla ANTES de ready (config 403, DRM no soportado, formato no disponible), el evento
+      'error' puede dispararse antes de que: (a) el harness QA registre su listener — window.__qa.errors y
+      eventData no siempre se populan; (b) el adapter NPAW exista — youbora no envía beacon /error de
+      startup (ver YBRA-DEF-001). Resultado: la métrica de startup errors / EBVS se pierde y los tests
+      ven un objeto de error parcial o ausente.
+    workaround: >
+      QA: fallback 3-way en error-recovery.spec.ts — aceptar el fallo si CUALQUIERA de
+      initError | getErrors().length>0 | status==='error' | eventData.error está presente. Para analytics
+      no hay workaround desde QA; fix sugerido en el player (inicializar adapter en onError fatal de
+      startup). Tests NPAW-8.1/8.6 están en test.fixme.
+    source_comment: "src/platform/loadConfig.js:170-174; tests/integration/error-recovery.spec.ts:27-38; YBRA-DEF-001"
+    industry_known: true
+    regression_risk: medium
+
+  - id: ERR-DEF-002
+    status: known_limitation
+    severity: high
+    title: "KEY_SYSTEM_NO_ACCESS entra a buffering sin emitir error observable"
+    description: >
+      En hls/handler.js:419, cuando el detalle es KEY_SYSTEM_NO_ACCESS el player llama _setBuffering() y
+      NO emite Events._error. Un dispositivo que nunca obtiene acceso al key system (DRM sin licencia,
+      EME no disponible) puede quedar en buffering indefinido sin error ni feedback al usuario o al
+      integrador.
+    workaround: >
+      Ninguno desde el player. QA debe testear con timeout: si tras N segundos sigue en buffering sin
+      error tras un fallo DRM de acceso, documentar como limitación (no como crash).
+    source_comment: "src/player/handler/hls/handler.js:418-420"
+    industry_known: true
+    regression_risk: low
+
+  - id: ERR-DEF-003
+    status: known_limitation
+    severity: medium
+    title: "Errores native code 1/2/3 no se normalizan a PlayerError"
+    description: >
+      native.js solo mapea HTMLMediaElement.error.code === 4 a MediaError fatal. Los códigos 1 (ABORTED),
+      2 (NETWORK) y 3 (DECODE) se emiten como event.nativeEvent crudo, sin type/fatal/data. Los
+      suscriptores reciben objetos de error inconsistentes según el path (MSE vs native).
+    workaround: >
+      QA: al asertar sobre errores en reproducción native, tolerar objetos sin 'type'; verificar al menos
+      message o code numérico. No asumir la taxonomía PlayerError en native.
+    source_comment: "src/player/handler/native.js:278-281"
+    industry_known: false
+    regression_risk: low
+
+  - id: ERR-DEF-004
+    status: known_limitation
+    severity: medium
+    title: "Errores DRM no-NO_ACCESS se reportan con type 'default' y message críptico"
+    description: >
+      Los errores KEY_SYSTEM distintos de NO_ACCESS se emiten como PlayerError base (type 'default')
+      con el message = data.details de hls.js (ej. 'keyLoadError', 'keySystemLicenseRequestFailed'). No se
+      distingue license 403 vs certificado inválido vs HDCP. El plugin DRM solo cubre 'DRM_NOT_SUPPORTED'.
+    workaround: >
+      En debug, hls/handler.js:393 emite un console.warn explicativo para el caso FairPlay 'keyId is null'.
+      Fuera de debug, QA debe asertar por fatal===true y message no vacío, sin esperar un type DRM-específico.
+    source_comment: "src/player/handler/hls/handler.js:391-396,422; src/player/drm/plugin.jsx:59,83"
+    industry_known: true
+    regression_risk: low
+
+  - id: ERR-DEF-005
+    status: open
+    severity: low
+    title: "swapAudioCodec no encadenado tras media error recurrente"
+    description: >
+      El comentario en hls/handler.js:414 ('// hls.swapAudioCodec()') indica que el segundo paso del
+      patrón de recovery de media de hls.js (swapAudioCodec tras un recoverMediaError fallido) no está
+      implementado. Un media error persistente por codec de audio podría no recuperarse pese a que
+      swapAudioCodec lo resolvería.
+    workaround: "Ninguno; tras agotar recoverMediaError, hls.js escala a fatal y el player emite error."
+    source_comment: "src/player/handler/hls/handler.js:413-417"
+    industry_known: true
+    regression_risk: low
+
+  - id: ERR-DEF-006
+    status: known_limitation
+    severity: low
+    title: "Errores de segmento no exponen el status HTTP en el objeto de error"
+    description: >
+      A diferencia de loadConfig (que captura data.status), los NetworkError de segmento generados por
+      hls.js solo llevan el string 'details' (ej. 'fragLoadError'), no el código HTTP (403/404/503). QA no
+      puede distinguir el status del segmento desde el objeto de error del player.
+    workaround: >
+      QA verifica el comportamiento (recovery vs fatal) en lugar del status: 503 transitorio → recovery,
+      404/503 persistente → fatal. El status real se observa vía interceptores de red de Playwright.
+    source_comment: "src/player/handler/hls/handler.js:406,409,416,437"
+    industry_known: true
+    regression_risk: low

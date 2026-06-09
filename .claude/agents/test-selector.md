@@ -1,6 +1,6 @@
 ---
 name: test-selector
-description: "Elige la batería mínima de tests según el risk_assessment de session_state.json. Escribe test_plan en session_state.json con los comandos exactos de Playwright a ejecutar. Es el tercer agente del pipeline (A3) — delegar después de risk-mapper (A2).\n\n<example>\nContext: risk-mapper calculó risk_label=HIGH para módulo ads-ima y el pipeline necesita decidir qué tests correr.\nuser: \"¿Qué tests debo correr para los cambios en ads-ima?\"\nassistant: \"Usaré test-selector para determinar la suite mínima suficiente según el nivel de riesgo HIGH.\"\n<commentary>\nDelegar a test-selector cuando risk_assessment ya está en session_state.json. El agente produce test_plan con comandos Playwright concretos y tiempo estimado.\n</commentary>\n</example>\n\n<example>\nContext: El diff afecta ui-video y ui-radio — módulos UI que requieren visual regression.\nuser: \"Selecciona los tests para los cambios de UI.\"\nassistant: \"Lanzo test-selector. Como hay módulos UI afectados, incluirá visual regression automáticamente.\"\n<commentary>\ntest-selector siempre agrega visual regression cuando ui-video, ui-radio o ui-compact están en los módulos afectados, independiente del risk_label global.\n</commentary>\n</example>"
+description: "Elige la batería mínima de tests según el risk_assessment de session_state.json. Escribe test_plan en session_state.json con los comandos exactos de Playwright a ejecutar. Es el tercer agente del pipeline (A3) — delegar después de coverage-auditor (A4) y test-generator (A5), para que el plan incluya los specs recién generados para gaps MUST.\n\n<example>\nContext: risk-mapper calculó risk_label=HIGH para módulo ads-ima, coverage-auditor ya auditó gaps y test-generator generó los specs faltantes.\nuser: \"¿Qué tests debo correr para los cambios en ads-ima?\"\nassistant: \"Usaré test-selector para determinar la suite mínima suficiente según el nivel de riesgo HIGH, incluyendo los nuevos specs generados.\"\n<commentary>\nDelegar a test-selector cuando risk_assessment Y coverage_gaps ya están en session_state.json. El agente produce test_plan con comandos Playwright concretos y tiempo estimado.\n</commentary>\n</example>\n\n<example>\nContext: El diff afecta ui-video y ui-radio — módulos UI que requieren visual regression.\nuser: \"Selecciona los tests para los cambios de UI.\"\nassistant: \"Lanzo test-selector. Como hay módulos UI afectados, incluirá visual regression automáticamente.\"\n<commentary>\ntest-selector siempre agrega visual regression cuando ui-video, ui-radio o ui-compact están en los módulos afectados, independiente del risk_label global.\n</commentary>\n</example>"
 tools: Read Bash
 model: claude-haiku-4-5-20251001
 color: yellow
@@ -42,6 +42,32 @@ Extraer:
 - `risk_assessment.cross_cutting_active` → boolean
 - `diff.modules_affected[]` → todos los módulos tocados
 - `diff.input_ref` → referencia del cambio (para contexto en el plan)
+
+---
+
+## PASO 1.5 — Consultar pipeline-context via query-context.ts
+
+```bash
+ALL_MODULES=$(python3 -c "import sys,json; d=json.load(open('state/session_state.json')); print(' '.join(d['diff']['modules_affected']))" 2>/dev/null)
+QC_OUT=$(npx ts-node scripts/query-context.ts pipeline-context $ALL_MODULES 2>&1)
+QC_EXIT=$?
+[ $QC_EXIT -ne 0 ] && echo "⚠️  query-context.ts exit $QC_EXIT — test_suites_required no disponible, plan puede omitir suites obligatorias" >&2
+echo "$QC_OUT"
+```
+
+Si responde, extraer para cada módulo:
+- `test_suites_required[]` — suites que DEBEN incluirse en el plan (ej: `["contract","e2e"]`)
+- `criticality` — confirmar criticality del oracle vs risk_assessment
+- `behavior_status` — `curated | template | stale` (stale → advertir en reporte)
+- `uncovered_acs` — ACs sin covered_by (informativo; A4 ya los capturó)
+
+**Validar:** Para cada módulo CRITICAL o HIGH en `modules_affected`:
+```
+Si test_suites_required incluye una suite que NO está en el plan actual → ALERTAR:
+  ⚠️ Módulo [X] requiere suite [Y] (definido en context.yaml) — incluir en el plan.
+```
+
+Si `scripts/query-context.ts` no existe o falla → ⚠️ ADVERTENCIA: `test_suites_required` no disponible — el plan puede omitir suites obligatorias. Continuar con PASO 2 pero marcar `note: "test_suites_required no verificado"` en el test_plan.
 
 ---
 
@@ -268,7 +294,7 @@ Leer `state/session_state.json`, agregar `test_plan` y reescribir conservando to
   Tiempo estimado: ~6 min (vs suite completa: ~25 min — ahorro: 76%)
 
   state/session_state.json ✅ actualizado con test_plan
-  → Siguiente: coverage-auditor (A4) para detectar gaps de cobertura
+  → /pipeline procede a fase de ejecución (A6 + A9 en paralelo)
 
 ═══════════════════════════════════════════════════════════
 ```
@@ -277,10 +303,12 @@ Leer `state/session_state.json`, agregar `test_plan` y reescribir conservando to
 
 ## REGLAS
 
-1. **Contract es siempre bloqueante** cuando el módulo afectado toca la API pública (`controls-api`, `api-bootstrap`, `events`, `constants`).
-2. **Visual regression es automática** si `ui-video`, `ui-radio`, `ui-compact`, o `ui-common` están en `diff.modules_affected`, sin importar el risk_label.
-3. **Multi-browser solo en CRITICAL** con `cross_cutting_active = true`. Para HIGH y MEDIUM, solo chromium.
-4. **Smoke siempre al final** — nunca omitirlo, nunca ponerlo antes de los tests específicos.
-5. **Comandos exactos**: los comandos en `steps[].command` deben ser ejecutables desde la raíz del proyecto sin modificaciones.
-6. **MERGE**: preservar `diff` y `risk_assessment` al actualizar `session_state.json`.
-7. Si no se encuentran specs para un módulo → incluir smoke como mínimo y marcar `note: "no se encontraron specs para [módulo] — revisar coverage-auditor"`.
+1. **`test_suites_required` es vinculante** — si PASO 1.5 entregó datos, incluir obligatoriamente todas las suites listadas en `test_suites_required` para módulos CRITICAL/HIGH. No excluirlas aunque el risk_label sugiera menos.
+2. **Contract es siempre bloqueante** cuando el módulo afectado toca la API pública (`controls-api`, `api-bootstrap`, `events`, `constants`).
+3. **Visual regression es automática** si `ui-video`, `ui-radio`, `ui-compact`, o `ui-common` están en `diff.modules_affected`, sin importar el risk_label.
+4. **Multi-browser solo en CRITICAL** con `cross_cutting_active = true`. Para HIGH y MEDIUM, solo chromium.
+5. **Smoke siempre al final** — nunca omitirlo, nunca ponerlo antes de los tests específicos.
+6. **Comandos exactos**: los comandos en `steps[].command` deben ser ejecutables desde la raíz del proyecto sin modificaciones.
+7. **MERGE**: preservar `diff` y `risk_assessment` al actualizar `session_state.json`.
+8. **`behavior_status: stale`** — advertir en el reporte si algún módulo CRITICAL/HIGH tiene oracle desactualizado (>90 días), pero no bloquear el plan.
+9. Si no se encuentran specs para un módulo → incluir smoke como mínimo y marcar `note: "no se encontraron specs para [módulo] — revisar coverage-auditor"`.

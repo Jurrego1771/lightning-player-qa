@@ -1,0 +1,136 @@
+version: "1.0"
+module: events
+last_updated: "2026-06-08"
+
+# El módulo events es la capa de infraestructura central del player.
+# Tiene coupling ALTO con todos los módulos que emiten o consumen eventos.
+
+internal:
+  - id: constants
+    reason: "Define el catálogo Events.* que es la fuente de verdad de nombres de eventos válidos. También define InternalEvents.* para comunicación intra-módulo."
+    coupling: high
+    files:
+      - "constants.cjs"
+    risk_if_changed: "Renombrar cualquier clave en Events.* rompe todos los listeners externos del integrador. Es el cambio más breaking posible en el sistema."
+
+  - id: playback-core
+    reason: "Emite la mayoría de los eventos HTML5 Media (play, pause, playing, ended, seeking, seeked, timeupdate, etc.) y eventos custom (contentFirstPlay, sourcechange, buffering)."
+    coupling: high
+    files:
+      - "src/player/base.js"
+      - "src/player/index.jsx"
+    risk_if_changed: "Si playback-core deja de emitir un evento HTML5, tests de E2E y analytics fallan silenciosamente."
+
+  - id: ads-ima
+    reason: "Emite todos los eventos ads* (adsStarted, adsComplete, adsError, adsImpression, etc.) via internalEmitter cuando Google IMA SDK notifica cambios."
+    coupling: high
+    files:
+      - "src/ads/ima/"
+    risk_if_changed: "Si los eventos de ads no se emiten correctamente, los beacons de Youbora/analytics y la integración con el integrador de ads fallan."
+
+  - id: ads-dai
+    reason: "Emite eventos ads* para flujos DAI (Server-Side Ad Insertion de Google). Comparte el mismo catálogo de eventos que ads-ima."
+    coupling: high
+    files:
+      - "src/ads/dai/"
+
+  - id: ads-sgai
+    reason: "Emite eventos ads* para flujos SGAI. Incluye eventos de lifecycle que dependen del estado de buffering."
+    coupling: high
+    files:
+      - "src/ads/sgai/"
+
+  - id: hls
+    reason: "Emite levelchange, levelchanged cuando hls.js cambia de nivel ABR. También emite error en caso de fallo de segmento."
+    coupling: medium
+    files:
+      - "src/handlers/hls/"
+
+  - id: dash
+    reason: "Emite eventos de playback vía el handler nativo del browser (no usa dash.js). Dependencia baja en eventos custom."
+    coupling: low
+    files:
+      - "src/handlers/native/"
+
+  - id: drm
+    reason: "Puede emitir error si falla la obtención de licencia DRM."
+    coupling: low
+    files:
+      - "src/drm/"
+
+  - id: chromecast
+    reason: "Emite todos los eventos cast* (castStateChange, castConnected, castDisconnected, castMediaLoaded, etc.)."
+    coupling: high
+    files:
+      - "src/chromecast/"
+
+  - id: airplay
+    reason: "Emite airPlayAvailabilityChange, airPlayConnected, airPlayDisconnected cuando el status de AirPlay cambia."
+    coupling: medium
+    files:
+      - "src/airplay/"
+
+  - id: subtitles
+    reason: "Emite texttrackchange, texttrackaddtrack, texttrackremovetrack, subtitlechange cuando el usuario o el sistema cambia la pista activa."
+    coupling: medium
+    files:
+      - "src/subtitles/"
+
+  - id: quality-selector
+    reason: "Emite levelchange cuando el usuario o el ABR solicita un cambio de calidad, levelchanged cuando el cambio se confirma."
+    coupling: medium
+    files:
+      - "src/quality/"
+
+  - id: controls-api
+    reason: "Emite dismissButton, share, tabchange, tabitemchange, tabitemschange. También es consumidor de eventos para actualizar la UI."
+    coupling: medium
+    files:
+      - "src/controls/"
+
+  - id: youbora
+    reason: "Consume múltiples eventos vía player.on() para registrar beacons de QoE (play, pause, seeking, seeked, buffering, error, etc.)."
+    coupling: high
+    files:
+      - "src/plugins/youbora/"
+
+  - id: analytics-streammetrics
+    reason: "Consume eventos de playback para reportar métricas al backend de Mediastream."
+    coupling: medium
+
+  - id: analytics-comscore
+    reason: "Consume eventos para reportar a Comscore StreamSense."
+    coupling: medium
+
+  - id: analytics-ga4
+    reason: "Consume eventos para reportar a Google Analytics 4."
+    coupling: low
+
+  - id: plugins
+    reason: "El sistema de plugins del player se carga via internalEmitter. Los plugins se suscriben a eventos internos para ejecutar su lógica."
+    coupling: medium
+
+external:
+  # El módulo events no tiene dependencias externas de npm propias.
+  # Usa la implementación de EventEmitter que provee el bundler (webpack polyfill de Node.js events).
+  - id: node-events-polyfill
+    package: "events (webpack polyfill)"
+    version: "incluida en el bundle del player"
+    reason: "Proporciona la clase EventEmitter base para internalEmitter. No es una dependencia directa de npm — webpack la incluye automáticamente al usar require('events') en el source."
+    risk: low
+    note: "En browsers modernos, EventTarget nativo podría reemplazar el polyfill de Node events. El player aún usa el patrón EventEmitter (on/off/once/emit/removeAllListeners) en lugar de EventTarget + CustomEvent. La industria en 2024-2025 está migrando hacia EventTarget nativo + TypeScript generics."
+
+  # Consumidores externos (no deps del módulo, pero afectan el risk)
+  - id: embed-iframe-host
+    package: "window.postMessage API (browser nativo)"
+    version: "nativa"
+    reason: "El sistema de postMessage es el canal de comunicación entre el player en iframe y el host page. Es parte del protocolo de integración documentado."
+    risk: medium
+    note: "El filtro por origin (location.origin) protege contra XSS. Si el host y el iframe no están en el mismo origin, los eventos msp: no llegan. CORS policies pueden afectar la integración."
+
+  - id: google-ima-sdk
+    package: "https://imasdk.googleapis.com/js/sdkloader/ima3.js"
+    version: "IMA3 (cargado dinámicamente)"
+    reason: "Fuente de todos los eventos ads*. Los eventos del SDK de IMA se adaptan al formato interno del player antes de ser emitidos."
+    risk: high
+    note: "El SDK de Google IMA puede cambiar el timing de eventos entre versiones. adsContentPauseRequested y adsContentResumeRequested son especialmente sensibles a cambios de timing."

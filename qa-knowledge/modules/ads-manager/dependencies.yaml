@@ -1,0 +1,102 @@
+version: "1.0"
+module: ads-manager
+last_updated: "2026-06-08"
+
+internal:
+  - id: events
+    reason: "internalEmitter es el bus central para todos los eventos _ads*. AdsHandler emite en internalEmitter Y en su propio EventEmitter simultáneamente. También escucha _volumechange para sincronizar volumen con el ad player."
+    coupling: high
+    files:
+      - "src/events/index.js"
+
+  - id: playback-core
+    reason: "AdsHandler llama playerHandler.pause() y playerHandler.play() para coordinar contenido vs ad breaks. Lee playerHandler.get('currentTime') como clock reference para los cue points del AdsManager. Lee playerHandler.get('ended') para decidir si reanudar tras un ad."
+    coupling: high
+    files:
+      - "src/controls/methods.js"
+      - "src/player/index.js"
+
+  - id: controls-api
+    reason: "controls-api consulta handler.get() y handler.set() para interceptar operaciones sobre currentTime durante ad playback. handler.play() y handler.pause() son llamados por los controles. La interfaz de controls espera que handler.get() retorne null cuando no hay ad para delegar al player."
+    coupling: high
+    files:
+      - "src/controls/api.js"
+
+  - id: platform-config
+    reason: "El componente AdsManager React lee del context: ads.map, adsCanPause, adsInsecureVpaidMode, withoutCookies, googleImaPpid, custom, listenerId, volume, autoplay. Cambios en estos props re-inicializan el ad system."
+    coupling: medium
+    files:
+      - "src/context/index.js"
+
+  - id: ads-ima
+    reason: "El módulo ads-ima (src/ads/googleIma/) es un sistema paralelo e independiente de ads-manager. ADMGR no lo selecciona ni lo inicializa. Ambos pueden coexistir en la misma instancia del player pero sirven propósitos distintos: ads-manager implementa CSAI VAST/VMAP propio; ads-ima usa el SDK de Google IMA."
+    coupling: low
+    files:
+      - "src/ads/googleIma/index.js"
+    note: "Relación de coexistencia, no dependencia directa. La documentación legacy indicaba ADMGR como selector de ads-ima pero el código muestra que son sistemas independientes."
+
+  - id: ads-dai
+    reason: "Google DAI (src/ads/googleDAI/) es un plugin separado para SSAI. Coexiste con ads-manager pero no es inicializado por él."
+    coupling: low
+    files:
+      - "src/ads/googleDAI/plugin.jsx"
+
+  - id: ads-sgai
+    reason: "Google SGAI (src/ads/googleSGAI/) es un plugin separado para live HLS SSAI. Coexiste con ads-manager pero no es gestionado por él."
+    coupling: low
+    files:
+      - "src/ads/googleSGAI/plugin.jsx"
+
+  - id: ads-adswizz
+    reason: "AdsWizz (src/ads/adswizz/) maneja cookie sync y banner companions. Coexiste con ads-manager pero no es inicializado por él."
+    coupling: low
+    files:
+      - "src/ads/adswizz/index.jsx"
+
+external:
+  - id: vast-xml-parser
+    package: "DOMParser (Web API nativo)"
+    version: "browser built-in"
+    reason: "AdsLoader usa DOMParser para parsear el XML de la respuesta VAST/VMAP. No hay dependencia de biblioteca externa para parsing."
+    risk: low
+    note: "Comportamiento seguro en todos los navegadores modernos. El manejo de XML malformado puede producir un document con parseerror element — debe validarse el elemento raíz antes de procesar."
+
+  - id: vast-loader
+    package: "src/ads/manager/loader/vast.js (dinámico)"
+    version: "interna"
+    reason: "Cargado dinámicamente (import()) cuando la respuesta es VAST. Implementación propia del player para parsear y resolver VAST incluyendo Wrapper chains."
+    risk: medium
+    note: "Carga dinámica (lazy) — la primera carga puede añadir latencia en conexiones lentas."
+
+  - id: vmap-loader
+    package: "src/ads/manager/loader/vmap.js (dinámico)"
+    version: "interna"
+    reason: "Cargado dinámicamente (import()) cuando la respuesta es VMAP. Parsea el XML del VMAP y construye la lista de cue points."
+    risk: medium
+    note: "Igual que vast-loader: lazy load. Si el import() falla, el error queda capturado en #handleAdsRequest y se emite UNKNOWN_AD_RESPONSE."
+
+  - id: omid-sdk
+    package: "src/ads/manager/tracker/omid/external/*.cjs"
+    version: "v1"
+    reason: "Open Measurement SDK bundleado localmente para viewability y verification tracking. Se inicializa cuando el VAST contiene adVerifications."
+    risk: medium
+    note: "El OMID SDK bundleado (v1) puede quedar desactualizado frente a nuevas versiones del IAB OMID spec. Las verificaciones OMID son opcionales — si fallan, el tracking de viewability continúa degradado pero el ad reproduce normalmente."
+
+  - id: intersection-observer
+    package: "IntersectionObserver (Web API nativo)"
+    version: "browser built-in"
+    reason: "AdsTracker usa IntersectionObserver para viewable impression tracking (MRC standard: 50% del ad visible por 2 segundos continuos)."
+    risk: low
+    note: "Si IntersectionObserver no está disponible (entornos embedding restrictivos), se dispara beacon 'viewundetermined' como fallback."
+
+  - id: bowser
+    package: "bowser"
+    version: "npm"
+    reason: "AdsHandler usa Bowser para detectar mobile/tablet al construir macros de targeting (macro 'mobile')."
+    risk: low
+
+  - id: lodash-get
+    package: "lodash/get"
+    version: "npm"
+    reason: "AdsHandler usa lodash/get para resolver macros custom.* del ad tag URL."
+    risk: low

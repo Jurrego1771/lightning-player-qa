@@ -1,0 +1,160 @@
+version: "1.0"
+module: chromecast
+last_updated: "2026-06-08"
+
+risks:
+  - id: CAST-RISK-001
+    severity: high
+    title: "SDK v3 sin versión fija — actualizaciones silenciosas de Google"
+    description: >
+      El Cast SDK se carga siempre desde gstatic.com (no hay versión pinneada).
+      Google puede actualizar el SDK sin aviso y romper comportamientos existentes.
+      Históricamente, actualizaciones del SDK han causado incompatibilidades (ej: v4.8.0 rompió
+      el botón Cast en iOS en react-native-google-cast). El player no puede controlar
+      qué versión del SDK está activa en producción.
+    affected_files:
+      - "src/chromecast/loader.js"
+    trigger: "Google actualiza el SDK en gstatic.com; el player carga la nueva versión en el próximo page load"
+    mitigation: "El loader captura errores y retorna null si el SDK falla. hasCastSDKFailed() permite detectar el fallo. Sin pin de versión posible."
+    industry_note: "Problema conocido en la industria OTT. Netflix y Hulu también dependen de la CDN de Google para el SDK sender. No existe mecanismo de rollback."
+    test_priority: SHOULD
+
+  - id: CAST-RISK-002
+    severity: high
+    title: "bfcache stale time — SDK envía tiempo incorrecto tras SESSION_RESUMED"
+    description: >
+      Cuando el usuario regresa a la pestaña (bfcache restore) y ya existe una sesión Cast activa,
+      el SDK envía eventos timeUpdate con valores cacheados/stale del momento en que la pestaña
+      quedó en segundo plano. El player implementa un workaround: ignora timeUpdates por 5000ms
+      y llama forceTimeSync() vía GetStatusRequest para obtener el tiempo real del dispositivo.
+      Si forceTimeSync() falla o el timeout de 5s es insuficiente, el tiempo local puede quedar
+      desincronizado.
+    affected_files:
+      - "src/view/video/atoms/chromecast.js"
+      - "src/chromecast/CastManager.js"
+    trigger: "Usuario deja la pestaña con Cast activo, el browser entra en bfcache, luego el usuario regresa"
+    mitigation: "ignoreTimeUpdatesUntil window de 5000ms + forceTimeSync() con GetStatusRequest. Fallback silencioso a currentTime si falla."
+    industry_note: "Problema conocido y documentado en la industria. El Cast SDK no maneja bfcache natively. El workaround via GetStatusRequest es la práctica recomendada."
+    test_priority: MUST
+
+  - id: CAST-RISK-003
+    severity: high
+    title: "Singleton de CastManager — contaminación entre instancias del player"
+    description: >
+      castManagerInstance en chromecast.js (atoms) es una variable de módulo singleton.
+      Si hay múltiples instancias del player en la misma página, todas comparten el mismo
+      CastManager. Esto puede causar que los eventos de Cast de un player afecten al otro,
+      o que al destruir un player se destruya el CastManager compartido.
+    affected_files:
+      - "src/view/video/atoms/chromecast.js"
+    trigger: "Dos o más instancias del Lightning Player en la misma página, ambas con Chromecast habilitado"
+    mitigation: "Sin fix. cleanupChromecast() destruye el singleton. Para multi-instancia: deshabilitar Cast en al menos una instancia via view.chromecast=false."
+    industry_note: "Patrón singleton es común en implementaciones Cast. La industria recomienda un único Cast sender activo por página."
+    test_priority: COULD
+
+  - id: CAST-RISK-004
+    severity: high
+    title: "Retry loop de conexión — 10 reintentos cada 200ms si isConnected es false"
+    description: >
+      autoLoadMedia() espera que manager.isConnected sea true antes de cargar media.
+      Si la conexión no se establece en 2000ms (10 reintentos × 200ms), la carga de media
+      falla silenciosamente sin emitir castError. El usuario ve el Cast button como conectado
+      pero sin media reproduciéndose en el dispositivo.
+    affected_files:
+      - "src/view/video/atoms/chromecast.js"
+    trigger: "Latencia elevada en la red al establecer la sesión Cast, o el SDK emite SESSION_STARTED antes de que el estado interno se actualice"
+    mitigation: "Timeout de 2s con log de error. Sin castError emitido en este caso específico. El usuario debe intentar reconectar manualmente."
+    industry_note: "Race condition conocida en CAF v3 entre SESSION_STARTED y el cambio de isConnected en RemotePlayer."
+    test_priority: MUST
+
+  - id: CAST-RISK-005
+    severity: medium
+    title: "Subtítulos: timeout de 500ms puede ser insuficiente en dispositivos lentos"
+    description: >
+      Después de loadMedia(), el player espera CAST_EVENT_DELAY_MS=500ms para emitir
+      tracksLoaded. Si el dispositivo Cast es lento o la red es lenta, el Cast SDK
+      puede no haber procesado los tracks en 500ms, causando que textTracks retorne
+      un array vacío y el estado de subtítulos quede desincronizado.
+    affected_files:
+      - "src/chromecast/CastManager.js"
+      - "src/chromecast/constants.js"
+    trigger: "Dispositivo Cast lento o conexión WiFi con alta latencia"
+    mitigation: "CAST_EVENT_DELAY_MS=500ms hardcoded. Sin retry. La UI de subtítulos puede quedar vacía hasta que el usuario recargue."
+    industry_note: "La industria recomienda delays de 300-1000ms para la inicialización de tracks en Cast. 500ms es un valor común pero no garantizado."
+    test_priority: SHOULD
+
+  - id: CAST-RISK-006
+    severity: medium
+    title: "getContentTypeFromSrc — detección por extensión de URL puede fallar con CDN tokens"
+    description: >
+      La detección del content type de media se basa en el pathname de la URL (busca
+      .m3u8, .mpd, etc.). URLs de CDN con query params extensos o tokens de auth
+      que incluyen extensions en los parámetros pueden causar detección incorrecta.
+      Ej: `https://cdn.example.com/stream?token=abc.mp4.token` → detectado como MP4
+      cuando es HLS.
+    affected_files:
+      - "src/chromecast/constants.js"
+    trigger: "CDN URLs con tokens de autenticación que incluyen extensiones en los query params"
+    mitigation: "getContentTypeFromSrc usa url.toLowerCase() sobre el string completo, no solo el pathname. No hay fix. El integrador debe pasar contentType explícito."
+    industry_note: "Problema conocido con CDNs que usan tokens de firma. La práctica recomendada es siempre especificar el content type explícitamente."
+    test_priority: COULD
+
+  - id: CAST-RISK-007
+    severity: medium
+    title: "Chromecast no testeble en headless — requiere SDK real y dispositivo físico"
+    description: >
+      El Cast SDK no funciona en Playwright headless ni con Chrome sin el plugin de Cast.
+      No existe un Cast Simulator oficial para testing E2E automatizado. Todo el flujo
+      de sesión (connect → loadMedia → playback → disconnect) requiere hardware real.
+      Los tests actuales solo cubren el contrato de API y la inicialización del player.
+    affected_files:
+      - "tests/integration/casting-overlay.spec.ts"
+    trigger: "Cualquier test que intente llamar manager.requestSession() en headless"
+    mitigation: "Tests actuales evitan el picker. La cobertura real requiere Cast Simulator o dispositivo físico. Ver GAP-CAST-001."
+    industry_note: "Limitación conocida y aceptada en la industria. Bitmovin, THEOplayer y otros players documentan que el testing de Cast requiere dispositivo físico."
+    test_priority: MUST
+
+  - id: CAST-RISK-008
+    severity: medium
+    title: "Normalización de URLs de subtítulos puede retornar null para URLs inválidas"
+    description: >
+      normalizeSubtitleUrl() retorna null si la URL normalizada no es válida y no es
+      un path relativo. Si tracks enviados por la plataforma tienen URLs con formato
+      no estándar, el track queda con file=null y el Cast SDK puede ignorarlo o
+      lanzar un error al intentar cargar el track.
+    affected_files:
+      - "src/chromecast/subtitles.js"
+    trigger: "Subtítulos con URLs no estándar o con protocolos distintos de http/https"
+    mitigation: "normalizeSubtitleUrl retorna la URL original si es un path relativo. Retorna null para URLs completamente inválidas. Sin log ni castError emitido."
+    industry_note: "Google Cast SDK requiere URLs absolutas con HTTPS para tracks externos. URLs relativas fallan en el receiver."
+    test_priority: SHOULD
+
+  - id: CAST-RISK-009
+    severity: low
+    title: "iOS nunca soporta Cast — userAgent detection puede ser eludida"
+    description: >
+      isBrowserSupported() usa regex /iphone|ipad|ipod/i para detectar iOS.
+      Browsers que falsifican el User-Agent o browsers en futuras versiones de iOS
+      que añadan soporte experimental podrían eludir esta detección.
+      Android Chrome sí está permitido (comentario en código: 'as of recent versions').
+    affected_files:
+      - "src/chromecast/isSupported.js"
+    trigger: "User-Agent spoofing o cambios en el soporte de Cast en iOS"
+    mitigation: "Detección via 'chrome' in window (objeto DOM) como primary check. El UA es un fallback. Bajo riesgo práctico."
+    industry_note: "Google no soporta Cast SDK en iOS browsers. La restricción es correcta según la documentación oficial."
+    test_priority: COULD
+
+  - id: CAST-RISK-010
+    severity: low
+    title: "destroy() no llama endSession — sesión Cast puede quedar activa"
+    description: >
+      CastManager.destroy() limpia listeners y referencias locales pero no llama
+      endSession(). Si el player se destruye mientras hay una sesión activa (ej:
+      navegación SPA), el dispositivo Cast puede quedar reproduciendo indefinidamente
+      hasta que el usuario lo detenga manualmente desde la app de Cast.
+    affected_files:
+      - "src/chromecast/CastManager.js"
+    trigger: "player.destroy() llamado con sesión Cast activa"
+    mitigation: "Ninguno implementado. El integrador debe llamar manager.endSession() antes de destroy() si quiere limpiar la sesión."
+    industry_note: "Comportamiento de diseño intencional en muchos players — el Cast sigue después de cerrar el sender. Netflix y YouTube implementan este comportamiento."
+    test_priority: COULD

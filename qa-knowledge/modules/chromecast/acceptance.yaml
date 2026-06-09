@@ -1,0 +1,225 @@
+version: "1.0"
+module: chromecast
+last_updated: "2026-06-08"
+
+acceptance_criteria:
+
+  # ── MUST: Happy path principal ─────────────────────────────────────────────
+
+  - id: CAST-AC-001
+    priority: MUST
+    scenario: "El player expone player.cast con la shape correcta en browsers Chromium"
+    given: "Un player inicializado en Chrome desktop con contenido VOD"
+    when: "Se accede a player.cast"
+    then:
+      - "player.cast es un objeto no null"
+      - "player.cast.isConnected es boolean (false en estado inicial)"
+      - "player.cast.isAvailable es boolean"
+      - "player.cast.connect es una función"
+      - "player.cast.disconnect es una función"
+
+  - id: CAST-AC-002
+    priority: MUST
+    scenario: "castStateChange se emite cuando el estado de Cast cambia"
+    given: "Un player inicializado con el módulo Chromecast habilitado"
+    when: "El estado del Cast SDK cambia (NO_DEVICES → NOT_CONNECTED → CONNECTED)"
+    then:
+      - "El evento castStateChange se emite via player.on()"
+      - "El payload contiene { state: string } con valor de CastState"
+      - "El evento también se emite via window.postMessage con prefijo msp:"
+
+  - id: CAST-AC-003
+    priority: MUST
+    scenario: "player.isCasting refleja el estado de conexión"
+    given: "Un player inicializado"
+    when: "Se accede a player.isCasting antes de cualquier sesión Cast"
+    then:
+      - "player.isCasting retorna false"
+      - "player.castDeviceName retorna null"
+
+  - id: CAST-AC-004
+    priority: MUST
+    scenario: "Chromecast no disponible en browsers no-Chromium (Firefox, Safari)"
+    given: "Un player inicializado en Firefox o Safari"
+    when: "Se verifica player.cast"
+    then:
+      - "isChromecastSupported() retorna false"
+      - "El módulo no intenta cargar el SDK de gstatic.com"
+      - "castStateChange no se emite"
+
+  - id: CAST-AC-005
+    priority: MUST
+    scenario: "Chromecast no disponible en contexto no seguro (HTTP en dominios distintos de localhost)"
+    given: "Un player cargado desde URL HTTP (no localhost)"
+    when: "Se intenta inicializar Chromecast"
+    then:
+      - "isSecureContext() retorna false"
+      - "isChromecastSupported() retorna false"
+      - "No se carga el SDK"
+
+  - id: CAST-AC-006
+    priority: MUST
+    scenario: "castConnected se emite al establecer sesión nueva"
+    given: "Un player conectado a un dispositivo Cast"
+    when: "La sesión Cast se establece (SESSION_STARTED)"
+    then:
+      - "castConnected se emite con { deviceName: string }"
+      - "player.isCasting === true"
+      - "player.castDeviceName === nombre del dispositivo"
+      - "El player local pausa automáticamente (api.pause())"
+
+  - id: CAST-AC-007
+    priority: MUST
+    scenario: "castDisconnected se emite al terminar sesión"
+    given: "Un player activamente casting"
+    when: "La sesión Cast termina (usuario desconecta o dispositivo se apaga)"
+    then:
+      - "castDisconnected se emite"
+      - "player.isCasting === false"
+      - "player.castDeviceName === null"
+      - "Si el contenido local coincide con el remoto: player resume en la posición remota"
+
+  - id: CAST-AC-008
+    priority: MUST
+    scenario: "castMediaLoaded se emite al cargar media en el dispositivo"
+    given: "Una sesión Cast activa"
+    when: "manager.loadMedia() se completa exitosamente"
+    then:
+      - "castMediaLoaded se emite"
+      - "El dispositivo Cast reproduce el contenido"
+
+  - id: CAST-AC-009
+    priority: MUST
+    scenario: "castError se emite en caso de fallo del SDK"
+    given: "Un player con Chromecast habilitado"
+    when: "El SDK de Cast falla al cargar (timeout 10s o script error)"
+    then:
+      - "castError se emite con el error"
+      - "El player continúa funcionando normalmente (degradación sin bloqueo)"
+      - "hasCastSDKFailed() retorna true"
+
+  - id: CAST-AC-010
+    priority: MUST
+    scenario: "Subtítulos ASS/SSA son filtrados al enviar media al Cast device"
+    given: "Contenido VOD con subtítulos que incluyen tracks ASS/SSA"
+    when: "Se carga media en el dispositivo Cast"
+    then:
+      - "Los tracks ASS/SSA son excluidos del MediaInfo enviado al Cast SDK"
+      - "Los tracks WebVTT y TTML son incluidos correctamente"
+      - "La URL de subtítulos es normalizada a HTTPS"
+
+  - id: CAST-AC-011
+    priority: MUST
+    scenario: "La posición de reproducción se transfiere al iniciar Cast"
+    given: "Un player reproduciendo VOD en el segundo 120"
+    when: "El usuario inicia una sesión Cast"
+    then:
+      - "El dispositivo Cast inicia en currentTime=120"
+      - "buildMediaInfoFromApi incluye currentTime del player local"
+
+  # ── SHOULD: Comportamientos importantes ───────────────────────────────────
+
+  - id: CAST-AC-012
+    priority: SHOULD
+    scenario: "castTracksLoaded se emite después del delay correcto"
+    given: "Una sesión Cast con media que tiene subtítulos"
+    when: "Se carga media con tracks en el dispositivo Cast"
+    then:
+      - "castTracksLoaded se emite después de CAST_EVENT_DELAY_MS (500ms)"
+      - "El payload contiene { tracks: array } con los text tracks disponibles"
+
+  - id: CAST-AC-013
+    priority: SHOULD
+    scenario: "castActiveTracksChanged se emite al cambiar subtítulo activo"
+    given: "Una sesión Cast con tracks disponibles"
+    when: "Se llama manager.setActiveTrackIds([trackId])"
+    then:
+      - "castActiveTracksChanged se emite con { activeTrackIds: [trackId] }"
+      - "El dispositivo Cast muestra el subtítulo seleccionado"
+
+  - id: CAST-AC-014
+    priority: SHOULD
+    scenario: "Subtítulo activo en el local player se transfiere al iniciar Cast"
+    given: "Un player con subtítulo en español activo"
+    when: "Se inicia una sesión Cast"
+    then:
+      - "getActiveSubtitleFromApi detecta el track con mode=showing"
+      - "loadMedia incluye activeTrackId apuntando al track de español"
+      - "El dispositivo Cast muestra español desde el inicio"
+
+  - id: CAST-AC-015
+    priority: SHOULD
+    scenario: "DVR usa StreamType.LIVE en el dispositivo Cast"
+    given: "Contenido DVR (type=dvr o type=live con isDVR=true)"
+    when: "Se construye el MediaInfo para Cast"
+    then:
+      - "buildMediaInfo establece streamType=BUFFERED si es VOD"
+      - "buildMediaInfo establece streamType=LIVE si isLive=true o isDVR=true"
+
+  - id: CAST-AC-016
+    priority: SHOULD
+    scenario: "Sesión reanudada (bfcache) sincroniza tiempo real desde el dispositivo"
+    given: "Una sesión Cast activa que se reanuda tras SESSION_RESUMED"
+    when: "El handler onConnected detecta isResumed=true"
+    then:
+      - "ignoreTimeUpdates se activa por 5000ms"
+      - "forceTimeSync() se llama para obtener tiempo real del dispositivo"
+      - "No se recarga media automáticamente"
+
+  - id: CAST-AC-017
+    priority: SHOULD
+    scenario: "Al desconectar Cast, el player local resume solo si el contenido coincide"
+    given: "Casting de contenido X, player local en contenido X"
+    when: "La sesión Cast termina"
+    then:
+      - "Se comparan base URLs (sin query params)"
+      - "Si coinciden: currentTime se restaura a la posición remota"
+      - "Si no coinciden: no se modifica el player local"
+
+  - id: CAST-AC-018
+    priority: SHOULD
+    scenario: "Prevención de doble audio durante casting"
+    given: "Una sesión Cast activa"
+    when: "El player local intenta reproducir (play event)"
+    then:
+      - "onLocalPlay intercepta el evento"
+      - "El player local es pausado en el siguiente tick (setTimeout 0)"
+
+  # ── COULD: Comportamientos deseables ─────────────────────────────────────
+
+  - id: CAST-AC-019
+    priority: COULD
+    scenario: "autoJoinPolicy ORIGIN_SCOPED reconecta sesión existente automáticamente"
+    given: "El usuario tiene una sesión Cast activa del mismo origen"
+    when: "El player se inicializa con autoJoinPolicy=ORIGIN_SCOPED"
+    then:
+      - "La sesión existente se reanuda automáticamente sin picker"
+      - "castConnected se emite con { isResumed: true }"
+
+  - id: CAST-AC-020
+    priority: COULD
+    scenario: "El custom receiverAppId se puede configurar desde player config"
+    given: "Un integrador que necesita un Custom CAF Receiver"
+    when: "Se pasa view.chromecastReceiverAppId en la config del player"
+    then:
+      - "CastManager se inicializa con el receiverAppId personalizado"
+      - "El Default Media Receiver (CC1AD845) no se usa"
+
+  - id: CAST-AC-021
+    priority: COULD
+    scenario: "Chromecast se puede deshabilitar por configuración"
+    given: "Un integrador que quiere deshabilitar Cast en un embed específico"
+    when: "Se configura view.chromecast=false en la config del player"
+    then:
+      - "castEnabledAtom retorna false"
+      - "El SDK no se carga"
+      - "No se expone player.cast en la API"
+
+  - id: CAST-AC-022
+    priority: COULD
+    scenario: "castMediaEnded se emite cuando termina la media en el Cast device"
+    given: "Una sesión Cast reproduciendo VOD"
+    when: "El video llega al final (playerState=IDLE con mediaInfo presente)"
+    then:
+      - "castMediaEnded se emite via internalEmitter"
+      - "El player local puede reaccionar al fin de sesión"

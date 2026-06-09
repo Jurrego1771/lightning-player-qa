@@ -1,0 +1,23 @@
+module: analytics-comscore
+criticality: medium
+last_reviewed: "2026-06-05"
+
+paths:
+  - "src/analytics/comscore/"
+
+depends_on:
+  - events
+  - plugins
+
+depended_by: []
+
+breaks_if_changed:
+  - "Beacons Comscore no se envían en eventos de reproducción"
+
+test_suites_required: []
+
+negative_cases:
+  - "SDK Comscore no disponible → silencioso, no afecta reproducción"
+
+external_dependencies:
+  - "Comscore SDK CDN"

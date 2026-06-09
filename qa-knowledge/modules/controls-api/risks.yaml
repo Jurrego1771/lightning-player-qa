@@ -1,0 +1,104 @@
+version: "1.0"
+module: controls-api
+last_updated: "2026-06-08"
+
+risks:
+  - id: CTRL-RISK-001
+    severity: high
+    title: "seek durante buffering: seeked puede no emitirse nunca"
+    description: "Si se asigna currentTime mientras el player está en estado 'buffering' (no tiene datos en el buffer para el target), hls.js puede quedar en estado de seek indefinido. El evento 'seeking' se emite pero 'seeked' puede demorar indefinidamente o no llegar si el buffer no se llena."
+    affected_files:
+      - "src/controls/index.js"
+    trigger: "player.currentTime = T mientras el video element está en readyState < HAVE_FUTURE_DATA"
+    mitigation: "Tests deben esperar 'playing' y que currentTime > umbral antes de hacer seek. El timeout en waitForEvent('seeked') debe ser generoso (15s+)."
+    industry_note: "Conocido en hls.js issues: backward-seeking en streams live puede causar freeze. Issue #4956 en video-dev/hls.js documenta este comportamiento."
+    test_priority: MUST
+
+  - id: CTRL-RISK-002
+    severity: high
+    title: "play() antes de ready: comportamiento silencioso vs. error"
+    description: "Si se llama play() antes de que state._ready sea true, Controls lanza Error('Player is not ready...'). Sin embargo, la instancia de LightningPlayer puede existir (loadMSPlayer resolvió) pero Controls aún no completó su ciclo de ready. Race condition típica en integrations que llaman play() inmediatamente tras el callback de loadMSPlayer."
+    affected_files:
+      - "src/controls/index.js"
+    trigger: "Llamada a player.play() en el callback 'loaded' o justo después de loadMSPlayer() sin esperar 'ready'"
+    mitigation: "Siempre esperar el evento 'ready' antes de llamar play(). El evento 'ready' es la señal oficial de que los controles están operativos."
+    industry_note: "Patrón universal en players modernos: play() antes de ready = error o noop. HTMLMediaElement tiene readyState para este propósito."
+    test_priority: MUST
+
+  - id: CTRL-RISK-003
+    severity: high
+    title: "Autoplay bloqueado por política del browser: play() rechazado silenciosamente"
+    description: "Chrome y otros browsers modernos bloquean autoplay con sonido si no hay user gesture o si el Media Engagement Index es bajo. El player emite un evento 'error' con el mensaje de la política, pero player.status cambia a 'pause'. Integradores que no manejan este caso muestran una UI de 'reproduciendo' mientras el video está pausado."
+    affected_files:
+      - "src/controls/index.js"
+    trigger: "autoplay: true en contexto sin user gesture previo (ventana nueva, iframe cross-origin)"
+    mitigation: "Controls ya maneja el catch de autoplay y emite 'error' con el mensaje + cambia status a 'pause'. El integrador debe escuchar 'error' y mostrar botón de play. Muted autoplay siempre está permitido."
+    industry_note: "Chrome Autoplay Policy (2018, vigente en 2025): autoplay con sonido requiere MEI > umbral o user gesture. NotAllowedError es el DOMException estándar. Fuente: https://developer.chrome.com/blog/autoplay"
+    test_priority: MUST
+
+  - id: CTRL-RISK-004
+    severity: high
+    title: "prototype pollution: múltiples instancias en la misma página"
+    description: "methods.js usa Object.defineProperty en LightningPlayer.prototype para exponer play/pause/currentTime. Con dos instancias del player en la misma página, el segundo constructor sobrescribe los getters del prototype, haciendo que la primera instancia responda a los métodos de la segunda. Comentario explícito en el código: 'There is no way to have two instances of the player in the same page'."
+    affected_files:
+      - "src/controls/methods.js"
+    trigger: "Múltiples llamadas a loadMSPlayer() con diferentes contenedores en la misma página"
+    mitigation: "Comentario TODO en methods.js sugiere WeakMap como solución. Sin fix hasta v1.0.75. Evitar multi-instancia."
+    industry_note: "Anti-pattern clásico de SDKs JavaScript. La solución correcta es instancia-bound methods o WeakMap por instancia."
+    test_priority: SHOULD
+
+  - id: CTRL-RISK-005
+    severity: medium
+    title: "setLevel en DASH: propiedad no aplica (sourceType === 'native')"
+    description: "Las propiedades level, levels, bandwidth, bitrate, nextLevel solo son válidas para HLS (sourceType === 'hls'). Con DASH nativo, el browser gestiona ABR internamente y no hay handler dedicado en el player. Llamar player.level = N en DASH no tiene efecto."
+    affected_files:
+      - "src/controls/index.js"
+    trigger: "Contenido DASH cargado y se intenta control manual de calidad"
+    mitigation: "Documentar en business rules. No testear level/levels en contenido DASH."
+    industry_note: "Ausencia de dash.js confirmada en el código fuente. DASH usa playback nativo."
+    test_priority: SHOULD
+
+  - id: CTRL-RISK-006
+    severity: medium
+    title: "volume fuera de rango [0,1]: clamping silencioso sin evento de error"
+    description: "Asignar player.volume = 2 o player.volume = -0.5 no lanza error y no emite evento de warning. El valor se clampea silenciosamente. Un integrador que espera error o feedback no lo recibe."
+    affected_files:
+      - "src/controls/index.js"
+    trigger: "player.volume = valor fuera de [0,1]"
+    mitigation: "El clamping silencioso es el comportamiento esperado según HTMLMediaElement spec. Tests deben verificar que el resultado esté en [0,1] independientemente del input."
+    industry_note: "HTMLMediaElement spec: volume debe estar en [0,1]. Fuera de rango lanza IndexSizeError en algunos browsers, pero en implementaciones wrapper es común clampear."
+    test_priority: SHOULD
+
+  - id: CTRL-RISK-007
+    severity: medium
+    title: "destroy() seguido de play(): estado indeterminado"
+    description: "Si se llama player.destroy() y luego player.play() sin reinicializar, el React tree está desmontado y Controls no existe. play() puede lanzar TypeError o simplemente no hacer nada (getter retorna función que referencia Controls destruido)."
+    affected_files:
+      - "src/controls/index.js"
+      - "src/api/player.jsx"
+    trigger: "player.destroy() → player.play() sin loadConfig() intermedio"
+    mitigation: "destroy() es irreversible. Documentar en business rules. Usar loadConfig() para reinicializar con nuevo contenido."
+    industry_note: "Patrón estándar: destroy es operación terminal. Llamar métodos post-destroy es undefined behavior."
+    test_priority: SHOULD
+
+  - id: CTRL-RISK-008
+    severity: medium
+    title: "controls durante ad break: comandos pueden ser ignorados o delegados"
+    description: "Durante un ad break, play()/pause()/currentTime son delegados al adsManager. El adsManager puede ignorar o restringir algunos comandos (ej: seek no está disponible durante anuncios lineales en IMA). Integradores que asumen que sus comandos siempre tienen efecto pueden tener comportamiento inesperado."
+    affected_files:
+      - "src/controls/index.js"
+    trigger: "player.play() o player.currentTime = N durante ad linear activo"
+    mitigation: "Verificar player.isPlayingAd() antes de operaciones sensibles durante el contenido."
+    industry_note: "IMA SDK: seek durante ad linear no está soportado. Es comportamiento intencionado para proteger la monetización."
+    test_priority: SHOULD
+
+  - id: CTRL-RISK-009
+    severity: low
+    title: "setLoop(true) es no-op en runtime (v1.0.75)"
+    description: "fast-check encontró que setLoop(true) no se refleja en getLoop(). setLoop(false) funciona. El getter loop parece ser de solo lectura en runtime — loop es una propiedad de configuración inicial, no un control de runtime."
+    affected_files:
+      - "src/controls/index.js"
+    trigger: "player.loop = true después de que el player está ready"
+    mitigation: "Configurar loop al inicializar el player vía config: { loop: true }. Documentar que loop no es settable en runtime."
+    industry_note: "Algunos players limitan loop a configuración de inicialización. Es una decisión de diseño, no un bug de la plataforma."
+    test_priority: COULD

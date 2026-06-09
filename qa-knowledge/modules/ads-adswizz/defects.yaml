@@ -1,0 +1,92 @@
+version: "1.0"
+module: ads-adswizz
+last_updated: "2026-06-08"
+
+defects:
+  - id: AWZ-DEF-001
+    status: known_limitation
+    severity: high
+    title: "decorateURLAndCreateSession sin timeout puede colgar el inicio del stream"
+    description: >
+      decorateURL envuelve la creación de sesión en una Promise sin timeout y loadConfig hace
+      await por cada URL candidata. Si el edge server no responde, la promesa no resuelve y el
+      play del audio queda bloqueado indefinidamente.
+    workaround: "Ninguno en código. Operacionalmente, monitorear salud del edge server; considerar Promise.race con fallback a URL sin decorar como mejora."
+    source_comment: "src/ads/adswizz/getAdswizzSDK.js:24-26; src/platform/loadConfig.js:331-349"
+    industry_known: true
+    regression_risk: medium
+
+  - id: AWZ-DEF-002
+    status: known_limitation
+    severity: medium
+    title: "Pérdida silenciosa de decoración SSAI cuando el SDK resuelve a null"
+    description: >
+      Si getAdswizzSDK devuelve null (CDN caído, adblock, error de import) loadConfig reproduce
+      la URL del stream SIN decorar. El audio funciona pero no hay sesión AdsWizz: el tracking/
+      conteo del aviso se pierde sin señal visible ni evento de error.
+    workaround: "Ninguno. La degradación silenciosa es intencional para no romper el audio."
+    source_comment: "src/ads/adswizz/getAdswizzSDK.js:38-40; src/platform/loadConfig.js:331-333"
+    industry_known: true
+    regression_risk: low
+
+  - id: AWZ-DEF-003
+    status: known_limitation
+    severity: medium
+    title: "listenerConsent hardcoded en true (sin gate de consentimiento real)"
+    description: >
+      init() siempre pasa listenerConsent: true, derivando el listenerId desde cookie sin
+      consultar una CMP. Posible hallazgo de compliance bajo GDPR/CCPA según el cliente.
+    workaround: "Ninguno en código. El cliente debe asegurar base legal para el tracking por cookie."
+    source_comment: "src/ads/adswizz/index.jsx:89"
+    industry_known: false
+    regression_risk: low
+
+  - id: AWZ-DEF-004
+    status: known_workaround
+    severity: low
+    title: "Props comentadas / no usadas en el componente Adswizz"
+    description: >
+      Hay props declaradas y comentadas (type, listenerConsent, _src, _listenerId) y un TODO
+      explícito sobre que algunas no se usan u no se pasan al llamar. El componente recibe
+      type='audio' desde el wrapper común pero no lo usa internamente.
+    workaround: "Ignorar las props comentadas; depender solo de las activas (adswizzPlayerId, afrURL, companionZoneId, fallbackZoneId, width, height, element, debug)."
+    source_comment: "src/ads/adswizz/index.jsx:124 (TODO: Revisar. Los props comentados...)"
+    industry_known: false
+    regression_risk: low
+
+  - id: AWZ-DEF-005
+    status: known_limitation
+    severity: low
+    title: "Sin cleanup de sesión en componentWillUnmount"
+    description: >
+      resetSession solo se llama vía onContainerMounted(null). Un desmontaje abrupto de la vista
+      (sin que el ref pase por null) puede dejar timers de TIMED_POLLING y la sesión SMC activos.
+    workaround: "Ninguno. En la práctica el ref suele desmontarse antes que el componente; relevante en navegación SPA agresiva."
+    source_comment: "src/ads/adswizz/index.jsx:74-76, 32-42"
+    industry_known: false
+    regression_risk: low
+
+  - id: AWZ-DEF-006
+    status: known_limitation
+    severity: low
+    title: "SDK cargado sin version pin desde CDN"
+    description: >
+      files.ads.adswizz apunta a un SDK sin versión fija en *.s-mdstrm.com. Un cambio de contrato
+      del SDK rompería la integración en runtime sin cambio en el player.
+    workaround: "Loguear getVersion() en debug y monitorear; no hay assertion de versión mínima."
+    source_comment: "constants.cjs (files.ads.adswizz); src/ads/adswizz/index.jsx:82"
+    industry_known: true
+    regression_risk: low
+
+  - id: AWZ-DEF-007
+    status: known_limitation
+    severity: low
+    title: "DAAST legacy no soportado por estándar moderno (informativo)"
+    description: >
+      Cualquier creativo de audio basado en el esquema DAAST deprecado debe migrarse a VAST 4.1+
+      adType=audio. No es un bug del player (es SSAI), pero afecta el diseño de fixtures y la
+      validez de campañas de audio.
+    workaround: "Usar VAST 4.1+ para campañas y fixtures de audio."
+    source_comment: "n/a (estándar IAB)"
+    industry_known: true
+    regression_risk: low

@@ -1,0 +1,129 @@
+version: "1.0"
+module: quality-selector
+last_updated: "2026-06-08"
+
+learnings:
+  - id: QUAL-LEARN-001
+    title: "DASH SÍ soporta selección de calidad y ABR (dash.js 5.1.1) — la doc legacy estaba stale"
+    discovery: "fuente: código fuente src/player/handler/dash/handler.js (get/set 'level', QUALITY_CHANGE_REQUESTED/RENDERED) + verificación 2026-06-08"
+    detail: >
+      El behavior.json/context.yaml legacy y player_system.md (líneas 19-21) afirmaban que
+      level/levels/bandwidth/bitrate/nextLevel 'NO funcionan en DASH' y que los tests de ABR
+      en DASH 'son inválidos'. Eso es FALSO en la versión actual: el DashHandler implementa el
+      mismo contrato get/set que HLS, mapea representaciones de dash.js a niveles 0-indexados,
+      emite levelchange/levelchanged, y soporta selección manual (setRepresentationForTypeByIndex)
+      y re-habilitación de ABR (autoSwitchBitrate). Esta era la 'decisión anterior incorrecta'.
+    impact_on_tests: >
+      Los tests de calidad/ABR deben cubrir HLS Y DASH. dash-abr.spec.ts ya existe. Actualizar
+      player_system.md memory para retirar la afirmación obsoleta. No saltear tests DASH por
+      'API no soportada'.
+
+  - id: QUAL-LEARN-002
+    title: "La API de calidad es propiedades (level/levels/...), NO métodos (no hay setLevel())"
+    discovery: "fuente: código fuente src/player/base.js _exposeMethods + src/controls/methods.js expose()"
+    detail: >
+      El player NO expone métodos setLevel()/getLevel()/getLevels(). Expone PROPIEDADES sobre el
+      prototipo de LightningPlayer vía Object.defineProperty: level (get/set), levels/nextLevel/
+      autoLevelEnabled/bandwidth/bitrate/droppedFrames/edge (solo get). nextLevel es R/W.
+      Se usa player.level = N (asignación), no player.setLevel(N). El fixture ABRMixin envuelve
+      esto en getLevel()/setLevel()/getNextLevel()/setNextLevel()/getBandwidth()/getBitrate().
+    impact_on_tests: >
+      En page.evaluate usar window.__player.level = N (asignación a propiedad). Los helpers de
+      tests (getLevel/setLevel) son del fixture, no de la API pública del player.
+
+  - id: QUAL-LEARN-003
+    title: "level=-1 es ABR auto; índices >= 0 son 0-based contra el array levels"
+    discovery: "fuente: código fuente hls/handler.js set('level') y dash/handler.js set('level')"
+    detail: >
+      level === -1 → ABR automático. level >= 0 → índice exacto en player.levels (0-based).
+      autoLevelEnabled refleja el estado: true cuando level===-1, false cuando hay nivel fijo.
+      nextLevel es el nivel solicitado/pendiente y puede diferir de level durante la transición
+      (nextLevel cambia inmediato, level alcanza tras el siguiente segmento → levelchanged).
+    impact_on_tests: >
+      Tras setLevel(N), assert nextLevel===N de inmediato; assert level===N solo DESPUÉS de
+      esperar levelchanged. No assertear level===N síncronamente tras el set.
+
+  - id: QUAL-LEARN-004
+    title: "HLS usa nextLevel+loadLevel (no destructivo); evita el stall de currentLevel"
+    discovery: "investigación web: github.com/video-dev/hls.js/issues/2143, hls.js docs/API.md + código set('level')"
+    detail: >
+      hls.js ofrece tres formas de fijar nivel: currentLevel (flush de buffer = stall inmediato),
+      loadLevel (interrumpe la carga, cambia tras el buffer existente) y nextLevel (no destructivo,
+      espera al siguiente switch). El player asigna handler.nextLevel = lvl Y handler.loadLevel = lvl
+      — la variante no destructiva — evitando el rebuffer agresivo de currentLevel. Esto es la
+      práctica recomendada por hls.js.
+    impact_on_tests: >
+      Al cambiar nivel manualmente, el cambio visible se difiere (no es instantáneo). Esperar
+      levelchanged para confirmar el switch. No esperar un stall/flush inmediato como en currentLevel.
+
+  - id: QUAL-LEARN-005
+    title: "El player usa la API MODERNA de dash.js v5 (no la deprecada setQualityFor)"
+    discovery: "investigación web: dashif.org/dash.js migration-guides/4-to-5, github issue #2888 + código dash/handler.js"
+    detail: >
+      dash.js v5 REMOVIÓ setQualityFor() (usado en v4 y anteriores). El player usa la API actual:
+      getRepresentationsByType / setRepresentationForTypeByIndex / updateSettings({streaming:{abr:
+      {autoSwitchBitrate:{video|audio:bool}}}}). NO usa patrones deprecados. autoSwitchBitrate es
+      por mediaType. La doc oficial recomienda incluso setRepresentationForTypeById (por id) sobre
+      el índice; el player usa índice (ver QUAL-RISK-005).
+    impact_on_tests: >
+      No flaggear el uso de setRepresentationForTypeByIndex como deprecado. Si un PR introduce
+      setQualityFor(), ESO sí sería un regresión a API removida en v5.
+
+  - id: QUAL-LEARN-006
+    title: "bandwidth y bitrate son siempre bits/seg (no Kbps ni Bps)"
+    discovery: "fuente: código fuente hls/handler.js (bandwidthEstimate, levels[].bitrate) y dash/handler.js (getAverageThroughput * 8)"
+    detail: >
+      HLS bandwidth = hls.bandwidthEstimate (ya en bits/seg). DASH bandwidth =
+      getAverageThroughput(mediaType) * 8 (dash.js da bytes/seg, se multiplica por 8). bitrate
+      proviene de levels[level].bitrate (manifest, bits/seg). El label de UI convierte a kbps
+      dividiendo /1000 solo para mostrar.
+    impact_on_tests: >
+      Aserciones numéricas deben asumir bits/seg. Un nivel 720p ~1.5 Mbps = 1_500_000. No comparar
+      contra Kbps.
+
+  - id: QUAL-LEARN-007
+    title: "No existe evento público de 'bandwidth estimado'; el estimador converge entre segmentos"
+    discovery: "investigación web (hls.js ABR throughput) + tests/integration/hls-abr.spec.ts comentarios"
+    detail: >
+      El estimador de bandwidth de hls.js/dash.js actúa internamente al descargar segmentos
+      sucesivos (típicamente 2-3 segmentos = ~4-6s) y no emite un evento por cada actualización.
+      El único feedback público de cambio de calidad son levelchange/levelchanged. Por eso los
+      tests de recovery usan waitForTimeout intencional para dar tiempo al estimador.
+    impact_on_tests: >
+      Para validar reacción de ABR, esperar levelchanged o usar un wait controlado; no existe
+      evento para 'esperar a que bandwidth se actualice'.
+
+  - id: QUAL-LEARN-008
+    title: "El menú UI de calidad antepone 'Auto' y ordena niveles de mayor a menor"
+    discovery: "fuente: código fuente src/view/video/components/controls/options/levelsAccordionItem.jsx"
+    detail: >
+      El selector UI construye opciones: { value:-1, label:'Auto' } + niveles ordenados por value
+      descendente (mayor resolución primero). El label muestra '{height}p' o 'Auto'. selectedLevel
+      se rastrea con api.nextLevel ?? api.level ?? -1 y escucha levelchange/levelchanged. El item
+      no se renderiza si no hay niveles (levelOptions vacío).
+    impact_on_tests: >
+      Tests visuales/UI: 'Auto' siempre primero; orden descendente por resolución; selección
+      marcada con check. El selector ausente con un solo nivel es comportamiento esperado.
+
+  - id: QUAL-LEARN-009
+    title: "Industria: la selección manual de calidad SIEMPRE anula ABR (override total)"
+    discovery: "investigación web: Dolby OptiView docs, GetStream, Mux best-practices 2025"
+    detail: >
+      Es práctica estándar de la industria que elegir una calidad específica overrule el algoritmo
+      de ABR por completo. Algunos usuarios prefieren calidad baja consistente sobre fluctuaciones;
+      otros quieren máxima calidad aun con rebuffer. El player implementa exactamente esto
+      (autoLevelEnabled=false al fijar nivel; -1 para volver a Auto).
+    impact_on_tests: >
+      Validar que fijar nivel deja autoLevelEnabled=false y que ABR NO reajusta automáticamente
+      mientras haya nivel fijo. Validar el retorno a Auto con level=-1.
+
+  - id: QUAL-LEARN-010
+    title: "Industria: 'sticky quality' / persistencia de preferencia entre sesiones NO está implementada"
+    discovery: "investigación web (UX quality selector OTT) + ausencia en código (level.js inicializa con api.level ?? -1)"
+    detail: >
+      Varios players OTT persisten la última calidad elegida por el usuario (localStorage/cookie)
+      y la restauran en la siguiente sesión. El Lightning Player NO persiste la preferencia: cada
+      carga inicia en ABR auto (startLevel=-1 en HLS, autoSwitchBitrate=true en DASH).
+    impact_on_tests: >
+      No esperar que la calidad elegida se recuerde tras reload/nuevo source. Cada source nuevo
+      reinicia en Auto. Esto es un gap funcional, no un defecto.

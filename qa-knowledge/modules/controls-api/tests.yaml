@@ -1,0 +1,101 @@
+version: "1.0"
+module: controls-api
+last_updated: "2026-06-08"
+
+existing_tests:
+  - spec_file: "tests/integration/controls-api-edge.spec.ts"
+    description: "Edge cases de la API pública: play() concurrente (guard _calledPlaying), seek via currentTime setter (seeking/seeked events, tolerance ±2s), seek a 0, seek negativo (clamping)"
+    ac_coverage:
+      - CTRL-AC-003
+      - CTRL-AC-006
+      - CTRL-AC-009
+      - CTRL-AC-016
+
+  - spec_file: "tests/integration/controls-api-hooks.spec.ts"
+    description: "Tests de integración para hooks UI de controles (useControlsLeft, useControlsRight, useVideoActions). Cubre play/pause/seek/volume/mute/loop/playbackRate vía API pública. También verifica ausencia de errores de consola por i18n."
+    ac_coverage:
+      - CTRL-AC-001
+      - CTRL-AC-002
+      - CTRL-AC-003
+      - CTRL-AC-007
+      - CTRL-AC-008
+      - CTRL-AC-015
+
+  - spec_file: "tests/contract/player-api-property.spec.ts"
+    description: "Property-based tests con fast-check: volume en [0,1], muted toggle, playbackRate en [0.25,2.0], combinaciones volume+muted. Incluye test.fixme de setLoop(true) como no-op documentado."
+    ac_coverage:
+      - CTRL-AC-007
+      - CTRL-AC-008
+      - CTRL-AC-015
+
+  - spec_file: "tests/contract/api-bootstrap.spec.ts"
+    description: "Contract test: verifica que play, pause, load, destroy son funciones en la instancia retornada por loadMSPlayer()"
+    ac_coverage:
+      - CTRL-AC-014
+
+  - spec_file: "tests/integration/playback-core-edge.spec.ts"
+    description: "Cubre edge cases de play()/pause() antes de ready (error descriptivo). Compartido con el módulo playback-core."
+    ac_coverage:
+      - CTRL-AC-004
+      - CTRL-AC-005
+
+  - spec_file: "tests/e2e/vod-playback.spec.ts"
+    description: "Flujo VOD completo: play/pause/seek. Verifica paused getter en contexto real de reproducción."
+    ac_coverage:
+      - CTRL-AC-001
+      - CTRL-AC-002
+      - CTRL-AC-012
+
+  - spec_file: "tests/integration/ad-beacons.spec.ts"
+    description: "Tests de beacons de ads. Cubre indirectamente la delegación de play() al adsManager cuando hay ads configurados."
+    ac_coverage:
+      - CTRL-AC-011
+
+coverage_gaps:
+  - id: GAP-CTRL-001
+    priority: MUST
+    ac_ref: CTRL-AC-013
+    title: "play() rechazado por autoplay policy: player en estado válido post-rechazo"
+    suggested_spec: "tests/integration/controls-api-edge.spec.ts"
+    notes: "No existe test que simule el rechazo de autoplay por política de browser y verifique que: (1) 'error' se emite, (2) status === 'pause', (3) player puede recibir play() posterior con user gesture. Headless no bloquea autoplay por defecto — necesita configurar browser con --autoplay-policy=user-gesture-required."
+    industry_note: "Chrome Autoplay Policy es el escenario de error más común en integraciones de player en iframes y páginas nuevas. Documentado en developer.chrome.com/blog/autoplay."
+
+  - id: GAP-CTRL-002
+    priority: MUST
+    ac_ref: CTRL-AC-010
+    title: "destroy() limpia completamente: sin leaks de event listeners ni elementos DOM"
+    suggested_spec: "tests/integration/controls-api-edge.spec.ts"
+    notes: "No existe test que verifique: (1) el elemento DOM queda vacío después de destroy(), (2) internalEmitter no tiene listeners huérfanos, (3) cleanupChromecast() fue invocado. El test actual de destroy() verifica solo que la promesa resuelve."
+    industry_note: "Memory leaks por event listeners no removidos son el defecto #1 en players web de larga ejecución. SPAs con navigación frecuente entre contenidos son especialmente vulnerables."
+
+  - id: GAP-CTRL-003
+    priority: SHOULD
+    ac_ref: CTRL-AC-011
+    title: "Delegación de play() al adsManager: playerHandler.play() NO se invoca durante ad"
+    suggested_spec: "tests/integration/controls-api-edge.spec.ts"
+    notes: "El test existente en ad-beacons.spec.ts cubre beacons pero no verifica explícitamente que playerHandler.play() no es llamado cuando adsManager.play() retorna valor. Requiere mock del adsManager para spy sobre playerHandler."
+    industry_note: "Ad takeover incompleto (content resume while ad plays) es un bug crítico de monetización."
+
+  - id: GAP-CTRL-004
+    priority: SHOULD
+    ac_ref: CTRL-RISK-001
+    title: "seek durante buffering: timeout y recuperación"
+    suggested_spec: "tests/integration/controls-api-edge.spec.ts"
+    notes: "No existe test que verifique que el player no queda colgado si se hace seek a un timestamp fuera del buffer actual. Requiere stream con segmentos no disponibles o simulación de red lenta."
+    industry_note: "Documentado en hls.js issue #4956: backward-seeking en live puede causar freeze permanente."
+
+  - id: GAP-CTRL-005
+    priority: SHOULD
+    ac_ref: CTRL-RISK-007
+    title: "play() o pause() post-destroy() no causa crash"
+    suggested_spec: "tests/integration/controls-api-edge.spec.ts"
+    notes: "No existe test que verifique qué ocurre al llamar play() después de destroy(). Debe manejar graciosamente (lanzar error descriptivo o ser noop) sin crash de la página."
+    industry_note: "Uso post-destroy es un escenario real en SPAs donde el componente se desmonta pero el código async aún tiene referencias al player."
+
+  - id: GAP-CTRL-006
+    priority: COULD
+    ac_ref: CTRL-RISK-004
+    title: "multi-instancia: segunda instancia no contamina métodos de la primera"
+    suggested_spec: "tests/integration/controls-api-multi-instance.spec.ts"
+    notes: "Dado el bug documentado en methods.js (prototype pollution), un test que verifique la contaminación podría servir como regression test para cuando se implemente el fix con WeakMap."
+    industry_note: "WeakMap-per-instance es el patrón de solución documentado en el TODO del código fuente."

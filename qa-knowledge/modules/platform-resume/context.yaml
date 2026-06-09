@@ -1,0 +1,13 @@
+module: platform-resume
+criticality: medium
+last_reviewed: "2026-06-05"
+paths: ["src/platform/resume/"]
+depends_on: [events, state, platform-config]
+depended_by: []
+breaks_if_changed:
+  - "Posición de reproducción no se guarda entre sesiones"
+  - "Resume position no se aplica al iniciar contenido"
+test_suites_required: [e2e]
+negative_cases:
+  - "Sin localStorage → resume silenciosamente deshabilitado"
+  - "Posición guardada mayor a duration → inicio desde 0"

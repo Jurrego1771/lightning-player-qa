@@ -1,0 +1,167 @@
+version: "1.0"
+module: hls
+last_updated: "2026-06-08"
+
+acceptance_criteria:
+  - id: HLS-AC-001
+    priority: MUST
+    scenario: "Stream HLS VOD carga y reproduce en menos de 10 segundos"
+    given: "Player con stream HLS VOD válido, sin ads, red normal"
+    when: "El player se inicializa con autoplay true"
+    then:
+      - "El evento 'ready' se emite en menos de 10s"
+      - "currentTime === 0 al momento de 'ready'"
+      - "player.levels tiene al menos 1 nivel disponible"
+      - "El evento 'playing' se emite después de 'ready'"
+
+  - id: HLS-AC-002
+    priority: MUST
+    scenario: "ABR automático baja calidad cuando el bandwidth cae"
+    given: "Player reproduciendo HLS VOD con ABR habilitado (player.level === -1), al menos 2 calidades disponibles"
+    when: "El bandwidth disponible cae a 500 Kbps (throttling CDP)"
+    then:
+      - "player.level cambia a un nivel con bitrate menor"
+      - "Se emite 'levelchange' con el nuevo nivel como payload"
+      - "Se emite 'levelchanged' después de 'levelchange'"
+      - "La reproducción no se interrumpe permanentemente"
+
+  - id: HLS-AC-003
+    priority: MUST
+    scenario: "player.level = -1 habilita ABR automático"
+    given: "Player con nivel manual fijo (player.level >= 0)"
+    when: "Se asigna player.level = -1"
+    then:
+      - "player.autoLevelEnabled retorna true"
+      - "Se emite 'levelchange' para informar el cambio a auto"
+      - "hls.js vuelve a elegir el nivel según bandwidth disponible"
+
+  - id: HLS-AC-004
+    priority: MUST
+    scenario: "player.level = N fija calidad y deshabilita ABR"
+    given: "Player con ABR habilitado (player.level === -1), al menos 2 niveles"
+    when: "Se asigna player.level = 1"
+    then:
+      - "player.nextLevel retorna 1 inmediatamente"
+      - "player.autoLevelEnabled retorna false"
+      - "Se emite 'levelchange' con el valor 1"
+      - "Después del siguiente segmento, player.level retorna 1 y se emite 'levelchanged'"
+
+  - id: HLS-AC-005
+    priority: MUST
+    scenario: "Segmento HTTP 404 persistente agota retries y emite error fatal"
+    given: "Player reproduciendo HLS VOD, un segmento específico devuelve HTTP 404 en todos los intentos"
+    when: "hls.js agota su retry budget para ese segmento"
+    then:
+      - "El player emite evento 'error' con tipo NetworkError"
+      - "El player no queda en loop infinito de retries"
+      - "player.getErrors() tiene al menos 1 error registrado"
+
+  - id: HLS-AC-006
+    priority: MUST
+    scenario: "DVR window crece y permite seek hacia atrás en stream live"
+    given: "Player reproduciendo stream HLS Live con DVR habilitado (PLAYLIST_TYPE=EVENT o sliding window)"
+    when: "Han pasado al menos 30 segundos desde el inicio"
+    then:
+      - "player.seekable.end es mayor que el valor inicial del seekable range"
+      - "Hacer seek a un punto dentro de la DVR window funciona sin error fatal"
+      - "currentTime refleja el punto solicitado después del seek"
+
+  - id: HLS-AC-007
+    priority: MUST
+    scenario: "EXT-X-DISCONTINUITY no causa crash del player"
+    given: "Stream HLS con al menos un tag EXT-X-DISCONTINUITY en el manifest"
+    when: "El player alcanza el punto de discontinuidad durante la reproducción"
+    then:
+      - "No se lanza ninguna excepción JavaScript no capturada"
+      - "El player no emite error fatal"
+      - "currentTime avanza más allá del punto de discontinuidad"
+      - "La reproducción continúa (puede haber glitch breve de audio/video)"
+
+  - id: HLS-AC-008
+    priority: MUST
+    scenario: "Manifest inválido o no disponible emite error fatal"
+    given: "URL de manifest HLS que retorna 404 o contenido malformado"
+    when: "El player intenta cargar el manifest"
+    then:
+      - "El player emite evento 'error' con fatal=true"
+      - "El error contiene información de tipo NetworkError o MediaError"
+      - "El player no queda en estado de loading infinito"
+
+  - id: HLS-AC-009
+    priority: MUST
+    scenario: "player.level con índice inválido lanza error o no-op"
+    given: "Player inicializado con N niveles disponibles"
+    when: "Se asigna player.level = N (índice fuera de rango)"
+    then:
+      - "El handler lanza Error('Invalid level') o realiza no-op"
+      - "El nivel no se cambia a un valor inválido"
+      - "El player sigue reproduciendo"
+
+  - id: HLS-AC-010
+    priority: SHOULD
+    scenario: "Recovery de bandwidth: player sube calidad cuando mejora la red"
+    given: "Player reproduciendo HLS en calidad baja por bandwidth degradado"
+    when: "El bandwidth disponible sube a 10 Mbps (throttling removido)"
+    then:
+      - "Se emite 'levelchanged' con un nivel de mayor bitrate"
+      - "La reproducción continúa sin interrupciones"
+
+  - id: HLS-AC-011
+    priority: SHOULD
+    scenario: "CMCD se envía en las requests cuando contentId y sessionId están disponibles"
+    given: "Player con context.id y context.metadata.MDSTRMPID configurados"
+    when: "El player descarga segmentos HLS"
+    then:
+      - "Las requests incluyen parámetros CMCD (MSID, SID) en query string o header"
+      - "Los valores de contentId y sessionId coinciden con los del contexto del player"
+
+  - id: HLS-AC-012
+    priority: SHOULD
+    scenario: "AirPlay: ManagedMediaSource no se usa cuando AirPlay está disponible"
+    given: "Browser Safari con AirPlay disponible"
+    when: "El player inicializa el handler HLS"
+    then:
+      - "preferManagedMediaSource se configura como false"
+      - "El botón AirPlay es visible en los controles del player"
+      - "La opción de AirPlay permanece accesible (disableRemotePlayback no se activa)"
+
+  - id: HLS-AC-013
+    priority: SHOULD
+    scenario: "System73 P2P: fallo del SDK externo no bloquea el playback"
+    given: "Configuración system73.enabled=true pero URL del SDK es inalcanzable"
+    when: "El player intenta cargar el SDK System73"
+    then:
+      - "El import falla silenciosamente (catch interno)"
+      - "El player inicializa hls.js sin wrapper P2P"
+      - "La reproducción HLS funciona normalmente"
+      - "No se emite error de init"
+
+  - id: HLS-AC-014
+    priority: SHOULD
+    scenario: "Audio tracks múltiples se exponen vía player.audioTracks"
+    given: "Stream HLS con múltiples pistas de audio (AUDIO group en manifest)"
+    when: "El player alcanza el estado 'ready'"
+    then:
+      - "player.audioTracks.length es mayor que 1"
+      - "Cada track tiene id, label, language correctos del manifest"
+      - "Solo una pista tiene enabled=true inicialmente"
+
+  - id: HLS-AC-015
+    priority: COULD
+    scenario: "FairPlay DRM via hls.js emeEnabled: player acepta config sin crash"
+    given: "Contenido HLS con DRM FairPlay configurado (serverURL, certificate)"
+    when: "El player inicializa en Safari con EME disponible"
+    then:
+      - "HLSConfig incluye emeEnabled=true"
+      - "HLSConfig.drmSystems['com.apple.fps'] tiene licenseUrl correcto"
+      - "En browsers sin FairPlay CDM, el player emite error de DRM pero no crashea"
+
+  - id: HLS-AC-016
+    priority: COULD
+    scenario: "Live stream stalled: flush de buffer al recuperarse tras desconexión"
+    given: "Player en stream live que perdió conexión (stall) y la recuperó"
+    when: "FRAG_LOADED se recibe después de un periodo de stall"
+    then:
+      - "El buffer se flushea para evitar lag acumulado"
+      - "El player retoma desde near-live-edge (no desde donde se quedó)"
+      - "currentTime se resetea a 0 después del flush"

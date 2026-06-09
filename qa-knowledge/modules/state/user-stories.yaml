@@ -1,0 +1,145 @@
+version: "1.0"
+module: state
+last_updated: "2026-06-08"
+
+user_stories:
+
+  - id: US-STATE-001
+    persona: Viewer
+    narrative:
+      as: "espectador viendo un video VOD"
+      want: "que el player refleje con precisión si el video está reproduciendo o pausado"
+      so_that: "puedo saber si necesito presionar play de nuevo o si el video está en pausa deliberada"
+    business_value: HIGH
+    risk_area:
+      - "estado paused/playing desincronizado"
+      - "debounce de 100ms en playerStatus"
+    related_features:
+      - "controls-api"
+      - "playback-core"
+    acceptance:
+      - STATE-AC-001
+      - STATE-AC-002
+    notes: "El debounce de 100ms es invisible para el usuario pero puede causar que la UI de controles parpadee en una transición play→pause muy rápida."
+
+  - id: US-STATE-002
+    persona: Viewer
+    narrative:
+      as: "espectador buscando una escena específica"
+      want: "que el scrubber refleje mi posición actual en el video en tiempo real"
+      so_that: "puedo navegar al momento exacto que quiero ver"
+    business_value: HIGH
+    risk_area:
+      - "currentTime atom stale"
+      - "currentTime null en DVR durante inicialización"
+    related_features:
+      - "controls-api"
+    acceptance:
+      - STATE-AC-003
+      - STATE-AC-007
+    notes: "La actualización de currentTime cada ~250ms es suficiente para una UX fluida del scrubber. En DVR la latencia inicial es un edge case conocido."
+
+  - id: US-STATE-003
+    persona: Viewer
+    narrative:
+      as: "espectador ajustando el volumen"
+      want: "que el nivel de volumen que establezco se preserve entre acciones de play/pause"
+      so_that: "no tengo que reajustar el volumen cada vez que pauso y reanudo el video"
+    business_value: MEDIUM
+    risk_area:
+      - "estado de volumen persistencia"
+      - "volumeAtom reset en destroy"
+    related_features:
+      - "controls-api"
+    acceptance:
+      - STATE-AC-004
+      - STATE-AC-010
+    notes: "El volumen se preserva entre play/pause en la misma sesión. No se persiste entre recargas de página (sin localStorage)."
+
+  - id: US-STATE-004
+    persona: Viewer
+    narrative:
+      as: "espectador en una playlist automática"
+      want: "que cuando el player cargue el siguiente episodio, empiece desde el principio"
+      so_that: "no me pierdo el inicio del nuevo contenido ni veo datos del episodio anterior"
+    business_value: HIGH
+    risk_area:
+      - "estado no reseteado tras load()"
+      - "currentTime residual"
+      - "duration NaN post-ads"
+    related_features:
+      - "next-episode"
+      - "ads-manager"
+    acceptance:
+      - STATE-AC-005
+    notes: "El reset de estado al cargar nuevo contenido es crítico para playlists y next-episode. El loadKey único en player.load() es el mecanismo que garantiza el reset."
+
+  - id: US-STATE-005
+    persona: Integrator
+    narrative:
+      as: "desarrollador integrando el player en mi web"
+      want: "que player.status, player.currentTime y player.paused sean confiables para actualizar mi UI custom"
+      so_that: "puedo construir una interfaz de usuario personalizada sin polling constante"
+    business_value: HIGH
+    risk_area:
+      - "async state con Jotai"
+      - "debounce de playerStatus"
+      - "stale state en asserts síncronos"
+    related_features:
+      - "events"
+      - "controls-api"
+    acceptance:
+      - STATE-AC-002
+      - STATE-AC-014
+    notes: "El integrador debe usar player.on('timeupdate', ...) para actualizar su UI de currentTime. Para status, player.on('playing', ...) y player.on('pause', ...) son más confiables que polling de player.status."
+
+  - id: US-STATE-006
+    persona: Integrator
+    narrative:
+      as: "desarrollador que maneja errores de reproducción"
+      want: "que player.status === 'error' y player.error sean consistentes cuando ocurre un error fatal"
+      so_that: "puedo mostrar un mensaje de error apropiado y ofrecer un botón de reintento"
+    business_value: HIGH
+    risk_area:
+      - "estado error no terminal"
+      - "player.error null con status error"
+    related_features:
+      - "events"
+    acceptance:
+      - STATE-AC-006
+    notes: "La combinación player.status === 'error' && player.error instanceof Error es el contrato para error fatal. Un estado donde status === 'error' pero error === null es un bug."
+
+  - id: US-STATE-007
+    persona: Integrator
+    narrative:
+      as: "desarrollador integrando el player en una plataforma OTT con contenido en vivo y DVR"
+      want: "que player.currentTime devuelva el offset correcto dentro de la ventana DVR"
+      so_that: "puedo mostrar el tiempo relativo del programa al usuario (e.g. '3h 20m desde el inicio')"
+    business_value: MEDIUM
+    risk_area:
+      - "currentTime absoluto vs offset DVR"
+      - "dvrWindowStart inicialización tardía"
+    related_features:
+      - "dvr"
+      - "playback-core"
+    acceptance:
+      - STATE-AC-012
+    notes: "El integrador debe entender que player.currentTime en DVR es un offset [0, duration], no un timestamp Unix. Para obtener el timestamp del programa, el integrador debe usar player.on('programdatetime', ...) o calcular desde el offset."
+
+  - id: US-STATE-008
+    persona: Operator
+    narrative:
+      as: "operador de plataforma de streaming monitoreando la calidad de reproducción"
+      want: "que el player reporte el estado correcto en analytics incluso durante y después de los ads"
+      so_that: "los reportes de Youbora/NPAW muestren el tiempo real de reproducción del contenido, no del ad"
+    business_value: HIGH
+    risk_area:
+      - "estado de ads contamina player.paused y player.currentTime"
+      - "duration NaN post-ads"
+    related_features:
+      - "ads-manager"
+      - "youbora"
+    acceptance:
+      - STATE-AC-013
+      - STATE-AC-008
+    notes: "El override de estado durante ads en Controls.get() es intencional para que analytics reporte correctamente. El bug de duration NaN post-ads afecta directamente los reportes de porcentaje de reproducción."

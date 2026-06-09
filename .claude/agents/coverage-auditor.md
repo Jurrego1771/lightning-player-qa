@@ -1,6 +1,6 @@
 ---
 name: coverage-auditor
-description: "Audita la cobertura de tests para los módulos en riesgo CRITICAL y HIGH. Identifica gaps MUST (sin ninguna cobertura) y gaps SHOULD (cobertura parcial). Escribe coverage_gaps en session_state.json. Es el cuarto agente del pipeline (A4) — delegar después de test-selector (A3).\n\n<example>\nContext: El pipeline tiene el risk_assessment y test_plan listos y necesita saber si faltan tests antes de ejecutar.\nuser: \"¿Hay gaps de cobertura en los módulos de riesgo alto?\"\nassistant: \"Usaré coverage-auditor para verificar si los archivos modificados tienen tests que los cubran.\"\n<commentary>\nDelegar a coverage-auditor cuando risk_assessment tiene módulos HIGH o CRITICAL. El agente busca tests por archivo modificado y clasifica los gaps como MUST o SHOULD.\n</commentary>\n</example>\n\n<example>\nContext: ads-sgai fue modificado y no hay tests de SGAI en el repo según CLAUDE.md.\nuser: \"Verifica la cobertura de los cambios en ads-sgai.\"\nassistant: \"Lanzo coverage-auditor para ads-sgai — es un gap conocido según la documentación del proyecto.\"\n<commentary>\nEn este caso coverage-auditor confirmará el gap MUST para ads-sgai y lo documentará en coverage_gaps para que test-generator (A5) lo procese.\n</commentary>\n</example>"
+description: "Audita la cobertura de tests para los módulos en riesgo CRITICAL y HIGH. Identifica gaps MUST (sin ninguna cobertura) y gaps SHOULD (cobertura parcial). Escribe coverage_gaps en session_state.json. Es el cuarto agente del pipeline (A4) — delegar después de risk-mapper (A2), antes de test-selector (A3). Corre primero para que test-generator (A5) genere specs nuevos y test-selector los incluya en el plan.\n\n<example>\nContext: El pipeline tiene el risk_assessment listo y necesita saber si faltan tests antes de seleccionar la suite.\nuser: \"¿Hay gaps de cobertura en los módulos de riesgo alto?\"\nassistant: \"Usaré coverage-auditor para verificar si los archivos modificados tienen tests que los cubran.\"\n<commentary>\nDelegar a coverage-auditor cuando risk_assessment tiene módulos HIGH o CRITICAL. El agente busca tests por archivo modificado y clasifica los gaps como MUST o SHOULD.\n</commentary>\n</example>\n\n<example>\nContext: ads-sgai fue modificado y no hay tests de SGAI en el repo según CLAUDE.md.\nuser: \"Verifica la cobertura de los cambios en ads-sgai.\"\nassistant: \"Lanzo coverage-auditor para ads-sgai — es un gap conocido según la documentación del proyecto.\"\n<commentary>\nEn este caso coverage-auditor confirmará el gap MUST para ads-sgai y lo documentará en coverage_gaps para que test-generator (A5) lo procese.\n</commentary>\n</example>"
 tools: Read Glob Grep Bash
 model: claude-haiku-4-5-20251001
 color: orange
@@ -39,21 +39,76 @@ Extraer:
 - `diff.files[]` → archivos con su módulo, `symbols_changed[]`, `events_touched[]`
 - `diff.cross_cutting_risk` → boolean
 
-Construir lista de archivos a auditar: solo los que pertenecen a módulos CRITICAL o HIGH.
-
-```python
-# Pseudo-código de filtrado
-files_to_audit = [
-    f for f in diff["files"]
-    if f["module"] in (modules_critical + modules_high)
-]
-```
+Construir lista de módulos a auditar: solo CRITICAL y HIGH.
 
 ---
 
-## PASO 2 — Buscar tests existentes para cada archivo modificado
+## PASO 1.5 — Consultar coverage-gaps via query-context.ts
 
-Para cada archivo en `files_to_audit`:
+```bash
+# Una sola lectura de session_state.json — dos listas en un proceso python3
+_MODS=$(python3 -c "
+import json
+d = json.load(open('state/session_state.json'))
+ra = d.get('risk_assessment', {})
+print('CRITICAL=' + ' '.join(ra.get('modules_critical', [])))
+print('HIGH=' + ' '.join(ra.get('modules_high', [])))
+" 2>/dev/null)
+CRITICAL_MODS=$(echo "$_MODS" | grep '^CRITICAL=' | cut -d= -f2-)
+HIGH_MODS=$(echo "$_MODS" | grep '^HIGH=' | cut -d= -f2-)
+
+# Capturar exit code — no suprimir errores silenciosamente
+QC_OUT=$(npx ts-node scripts/query-context.ts coverage-gaps $CRITICAL_MODS $HIGH_MODS 2>&1)
+QC_EXIT=$?
+[ $QC_EXIT -ne 0 ] && echo "⚠️  query-context.ts exit $QC_EXIT — proceder a PASO 1.6" >&2
+echo "$QC_OUT"
+```
+
+Si `scripts/query-context.ts` existe y responde → usar su output como **fuente primaria** de gaps:
+- `priority: "MUST"` → AC sin ningún `covered_by` en módulo CRITICAL/HIGH
+- `priority: "SHOULD"` → AC con `covered_by` parcial (símbolo modificado no cubierto)
+- `priority: "NICE"` → ignorar en esta etapa
+
+Si falla → continuar al PASO 1.6 (behavior.json directo — sin grep).
+
+---
+
+## PASO 1.6 — Leer covered_by[] directamente desde behavior.json
+
+Ejecutar si PASO 1.5 falló o retornó vacío. Lee archivos estructurados ya existentes — sin grep, sin spawn adicional por módulo:
+
+```bash
+for MODULE in $CRITICAL_MODS $HIGH_MODS; do
+  BFILE="qa-knowledge/modules/$MODULE/behavior.json"
+  [ ! -f "$BFILE" ] && echo "⚠️  Sin behavior.json para $MODULE — diferir a PASO 2" && continue
+  echo "=== $MODULE ==="
+  python3 -c "
+import json
+data = json.load(open('$BFILE'))
+for ac in data.get('acceptance_criteria', []):
+    cov = ac.get('covered_by', [])
+    pri = ac.get('priority', 'NICE')
+    if pri not in ('MUST', 'SHOULD'):
+        continue
+    status = 'COVERED' if cov else 'GAP'
+    specs = ', '.join(cov) if cov else 'ninguno'
+    print(f'  {status}:{pri}:{ac[\"id\"]} specs={specs}')
+"
+done
+```
+
+Clasificar output:
+- `GAP:MUST:*` → gap MUST sin cobertura (ningún `covered_by` en AC de prioridad MUST)
+- `GAP:SHOULD:*` → gap SHOULD sin cobertura
+- `COVERED:*` → verificar que los spec paths listados existen en `tests/`
+
+Si `behavior.json` no existe para un módulo → pasar ese módulo al PASO 2 (grep).
+
+---
+
+## PASO 2 — Buscar tests existentes (grep — último recurso)
+
+Ejecutar solo si PASO 1.5 y PASO 1.6 no produjeron output para el módulo. Para cada archivo en módulos CRITICAL/HIGH:
 
 ```bash
 # Usar el skill si existe
@@ -88,7 +143,9 @@ ls tests/integration/*ads* tests/e2e/*ads* 2>/dev/null
 
 ## PASO 3 — Clasificar cada gap
 
-Para cada archivo auditado, determinar su nivel de cobertura:
+**Fuente primaria (PASO 1.5):** Si query-context.ts respondió, sus gaps ya están clasificados — usar directamente. Completar con `symbols_uncovered` y `events_uncovered` desde `diff.files[]`.
+
+**Fuente fallback (PASO 2):** Si query-context no respondió, clasificar según grep:
 
 ### Sin cobertura → gap MUST
 
@@ -233,9 +290,10 @@ Si no hay gaps:
 ## REGLAS
 
 1. **Solo auditar módulos CRITICAL y HIGH** — no auditar MEDIUM ni LOW (son el límite de esta etapa).
-2. **Un gap es MUST** si no hay absolutamente ningún test que mencione el archivo, el símbolo o el módulo. Si hay aunque sea un test tangencial → es SHOULD.
-3. **Gaps conocidos del proyecto** (`ads-sgai`, `sgai.spec.ts` inexistente) → siempre MUST con `known_gap: true`.
-4. **`suggested_spec_path`** debe ser un path real que pueda existir — no inventar rutas que contradigan la estructura del proyecto.
-5. **MERGE**: preservar `diff`, `risk_assessment`, `test_plan` al actualizar `session_state.json`.
-6. Si los tests/ no son accesibles por algún error → reportar el error y marcar todos los archivos auditados como MUST (conservativo).
-7. **No generar tests aquí** — solo identificar y documentar gaps. La generación es responsabilidad de A5 (test-generator).
+2. **Fuente primaria: query-context.ts coverage-gaps** (PASO 1.5) — AC sin `covered_by` = MUST; partial = SHOULD. Grep (PASO 2) es fallback.
+3. **Un gap es MUST** si no hay absolutamente ningún test que mencione el archivo, el símbolo o el módulo. Si hay aunque sea un test tangencial → es SHOULD.
+4. **Gaps conocidos del proyecto** (`ads-sgai`, `sgai.spec.ts` inexistente) → siempre MUST con `known_gap: true`.
+5. **`suggested_spec_path`** debe ser un path real que pueda existir — no inventar rutas que contradigan la estructura del proyecto.
+6. **MERGE**: preservar `diff`, `risk_assessment`, `test_plan` al actualizar `session_state.json`.
+7. Si los tests/ no son accesibles por algún error → reportar el error y marcar todos los archivos auditados como MUST (conservativo).
+8. **No generar tests aquí** — solo identificar y documentar gaps. La generación es responsabilidad de A5 (test-generator).

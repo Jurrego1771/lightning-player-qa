@@ -1,0 +1,105 @@
+version: "1.0"
+module: next-episode
+last_updated: "2026-06-08"
+
+defects:
+  - id: NEPI-DEF-001
+    status: known_limitation
+    severity: medium
+    title: "Magic number 5000ms para el countdown sin constante nombrada"
+    description: |
+      El timeout del auto-load está hardcoded como setTimeout(5000) en index.jsx línea 242.
+      No existe una constante nombrada AUTOLOAD_COUNTDOWN_MS o similar. Si un equipo
+      quiere modificar el valor o hacer A/B testing, debe buscar el número mágico en el código.
+      Adicionalmente, la animación CSS 'progress 5s linear' en el SCSS debe cambiarse
+      manualmente para estar en sinc con el JS — son dos puntos de cambio desacoplados.
+    workaround: "El valor está hardcoded — ningún workaround disponible sin modificar el código fuente"
+    source_comment: "src/view/video/components/nextEpisode/index.jsx:242 — setTimeout(async () => {...}, 5000)"
+    industry_known: false
+    regression_risk: medium
+
+  - id: NEPI-DEF-002
+    status: known_limitation
+    severity: medium
+    title: "Diferencia de tipo default: headless='media' vs video view='episode'"
+    description: |
+      useNextEpisodeLoader.js en view/none usa type='media' como default, mientras que
+      el equivalente en view/video usa type='episode'. Si la plataforma Mediastream trata
+      de forma diferente a 'media' vs 'episode' en el endpoint de carga, el comportamiento
+      puede diferir según el view activo. Según player_system.md, 'episode' es equivalente
+      interno a 'media', pero esto podría no ser válido en todos los contextos de la plataforma.
+    workaround: "Pasar type explícitamente en nextEpisodeConfirmed({ id, type: 'episode' }) para forzar el tipo correcto independientemente del view"
+    source_comment: |
+      src/view/none/hooks/useNextEpisodeLoader.js:12 — const type = originalType || 'media'
+      src/view/video/hooks/useNextEpisodeLoader.js:10 — const type = originalType || 'episode'
+    industry_known: false
+    regression_risk: low
+
+  - id: NEPI-DEF-003
+    status: known_limitation
+    severity: low
+    title: "Accesibilidad: countdown sin aria-live, CSS outline:none en :focus"
+    description: |
+      El countdown de 5 segundos no tiene ningún anuncio ARIA (aria-live, role='timer').
+      Los usuarios de screen readers no reciben información sobre cuánto tiempo tienen
+      antes de que el siguiente episodio se cargue automáticamente. Adicionalmente,
+      ':focus { outline: none }' en el SCSS elimina el focus ring nativo del browser,
+      reemplazándolo solo con un scale transform que puede ser insuficiente para
+      usuarios con alta visión o en modo de alto contraste.
+      Viola WCAG 2.1 AA: SC 2.4.7 (Focus Visible), SC 2.2.1 (Timing Adjustable).
+    workaround: "Los botones tienen texto descriptivo y son focuseables via teclado. El usuario puede cancelar el autoload con Escape o tab+Enter. No hay workaround para la ausencia de timer announcement."
+    source_comment: |
+      src/view/video/components/nextEpisode/nextEpisode.scss:38 — &:focus { outline: none }
+      src/view/video/components/nextEpisode/index.jsx — no aria-live en ningún elemento
+    industry_known: true
+    regression_risk: low
+
+  - id: NEPI-DEF-004
+    status: known_limitation
+    severity: low
+    title: "$baseColor placeholder puede ser literal inválido en CSS en entornos sin theming"
+    description: |
+      La variable SCSS $baseColor está definida como '#color1#' (un placeholder de
+      template del player). En entornos donde el sistema de theming no ha procesado
+      el SCSS (tests locales sin UI config, o build en desarrollo), este placeholder
+      queda literal en el CSS generado. Los elementos que usan $baseColor (botón
+      focused, barra de progreso del countdown) no tendrán color válido.
+    workaround: "Configurar un player con UI config válido que defina color1 antes de ejecutar tests visuales. Los tests de CI deben usar un harness con theming configurado."
+    source_comment: "src/view/video/components/nextEpisode/nextEpisode.scss:2 — $baseColor: '#color1#'"
+    industry_known: false
+    regression_risk: medium
+
+  - id: NEPI-DEF-005
+    status: known_limitation
+    severity: medium
+    title: "nextEpisodePlayNext no bypasa requiresConfirmation en video view"
+    description: |
+      En view/none (headless), el handler de nextEpisodePlayNext llama directamente
+      a handleLoadNextEpisode() que no verifica requiresConfirmation.
+      En view/video (index.jsx), handleNextEpisode sí verifica requiresConfirmation
+      y retorna sin cargar si está en true. El evento nextEpisodePlayNext en video
+      view llama a handleNextEpisode, por lo que requiresConfirmation también bloquea
+      nextEpisodePlayNext en la UI.
+      Esto es una inconsistencia entre las dos implementaciones.
+    workaround: "Emitir nextEpisodeConfirmed antes de nextEpisodePlayNext cuando se usa view='video' con nextEpisodeOverride definido"
+    source_comment: |
+      src/view/none/hooks/useNextEpisodeEvents.js:125-128 — handlePlayNext llama a handleLoadNextEpisode (sin check requiresConfirmation)
+      src/view/video/components/nextEpisode/index.jsx:58 — if (!effectiveNextEpisode || requiresConfirmation) return
+    industry_known: false
+    regression_risk: medium
+
+  - id: NEPI-DEF-006
+    status: known_limitation
+    severity: low
+    title: "incomingEventEmitted no se resetea si el usuario seek fuera del threshold y regresa"
+    description: |
+      En video view, incomingEventEmittedRef se resetea solo cuando AMBAS condiciones son
+      falsas simultáneamente: shouldEmitIncomingEvent=false AND shouldShow=false.
+      Si el usuario hace seek fuera del threshold incoming (timeRemaining > nextEpisodeTime+5),
+      shouldEmitIncomingEvent pasa a false pero shouldShow puede no llegar a false inmediatamente
+      si el seek no es suficientemente atrás. Al regresar al threshold, el evento
+      nextEpisodeIncoming no se re-emite.
+    workaround: "El integrador debe asumir que nextEpisodeIncoming se emite máximo una vez por contenido entre sourcechanges"
+    source_comment: "src/view/video/hooks/useNextEpisodeEvents.js:13-16 — reset condicional del ref"
+    industry_known: false
+    regression_risk: low

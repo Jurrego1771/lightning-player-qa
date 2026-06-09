@@ -1,0 +1,76 @@
+version: "1.0"
+module: drm
+last_updated: "2026-06-08"
+
+learnings:
+  - id: DRM-LEARN-001
+    title: "getDRMSupport devuelve el PRIMER key system soportado — no retorna un objeto multi-DRM"
+    discovery: "código fuente: src/helper/getDRMSupport.js líneas 10-73"
+    detail: "getDRMSupport() prueba los key systems en orden: Widevine → PlayReady → FairPlay. Retorna una Promise<string> con el ID del PRIMER key system que el browser acepta, no un objeto con flags booleanos. El behavior.json original (versión legacy) documentaba erróneamente que retornaba { widevine: boolean, playready: boolean, fairplay: boolean }. El código real retorna 'com.widevine.alpha', 'com.microsoft.playready', o 'com.apple.fps.1_0'."
+    impact_on_tests: "Tests que comprueben getDRMSupport deben assertar contra el string del key system ID, no contra un objeto booleano. El mock de getDRMSupport en tests de integración debe retornar el string del key system."
+
+  - id: DRM-LEARN-002
+    title: "El flujo DRM tiene 3 fallbacks para browsers legacy: EME → WebKitMediaKeys → MSMediaKeys → canPlayType"
+    discovery: "código fuente: src/helper/getDRMSupport.js líneas 20-73"
+    detail: "getDRMSupport soporta 4 APIs de DRM en orden de preferencia: (1) requestMediaKeySystemAccess (EME estándar W3C, Chrome/Firefox/Edge modernos), (2) window.WebKitMediaKeys (Safari legacy pre-EME), (3) window.MSMediaKeys (IE11), (4) video.canPlayType con key system (Safari muy antiguo). En CI solo importa el path EME — los otros son legacy."
+    impact_on_tests: "Tests en Playwright Chromium solo tocarán el path EME. Si se necesita testear browsers legacy, considerar mocks de window.WebKitMediaKeys."
+
+  - id: DRM-LEARN-003
+    title: "DRMPlugin usa requestAnimationFrame antes de llamar setData — previene race conditions con React"
+    discovery: "código fuente: src/player/drm/plugin.jsx líneas 34-78"
+    detail: "Después de que getDRMSupport() resuelve, DRMPluginRunner envuelve el setState en un requestAnimationFrame. Esto asegura que el update de contexto ocurre después del próximo frame de render, previniendo race conditions con el ciclo de render de React. Es un patrón de defensive programming."
+    impact_on_tests: "Tests E2E deben ser asíncronos y tolerar la latencia del rAF (generalmente < 16ms). No asumir que setData ocurre síncronamente después de que getDRMSupport resuelve."
+
+  - id: DRM-LEARN-004
+    title: "takeDrmPath en loadConfig.js requiere isVideo=true — el DRM en audio NO se activa"
+    discovery: "código fuente: src/platform/loadConfig.js línea 244"
+    detail: "La condición es: isVideo && (responseDrm?.enabled || hasDrmConfig) && (hls || mpd). Si el player es de tipo audio (playerType !== 'video' && renderAs !== 'video'), takeDrmPath es false incluso si drm está configurado. Los candidateUrls no se construyen."
+    impact_on_tests: "Tests de DRM deben usar type: 'media' con contenido de video. Tests con type: 'audio' o 'radio' no activarán DRM aunque el mock tenga drm configurado."
+
+  - id: DRM-LEARN-005
+    title: "El token DRM se convierte en el header X-AxDRM-Message — convención propietaria de Axinom DRM"
+    discovery: "código fuente: src/player/drm/getDashProtectionData.js líneas 26-32"
+    detail: "El campo drm.widevine.token o drm.widevine.drmToken se mapea al header HTTP 'X-AxDRM-Message'. Este header es específico de la plataforma Axinom DRM que usa Mediastream. Si la plataforma cambia a otro proveedor DRM, este header puede no ser reconocido. La lógica solo acepta token como string — si es otro tipo, es ignorado silenciosamente."
+    impact_on_tests: "Tests que validan la license request deben verificar que el header X-AxDRM-Message está presente con el token correcto. El mock del license server debe requerir este header."
+
+  - id: DRM-LEARN-006
+    title: "candidateUrls solo se construye cuando takeDrmPath=true — antes era src.hls directo"
+    discovery: "código fuente: src/platform/loadConfig.js líneas 336-351"
+    detail: "Cuando DRM está activo, loadConfig NO pone src directamente en el contexto. En su lugar, pone src=null y drm._candidateUrls={hls, mpd}. El DRMPlugin es responsable de resolver el candidato correcto según el CDM del browser. Esto implica que el player no puede reproducir contenido DRM sin que DRMPlugin resuelva exitosamente."
+    impact_on_tests: "En tests con contenido DRM mockeado, el mock JSON debe incluir drm._candidateUrls (no src directamente). Si el mock no tiene _candidateUrls, DRMPlugin no activará DRMPluginRunner."
+
+  - id: DRM-LEARN-007
+    title: "Widevine L1 vs L3: en browsers de escritorio solo hay L3 — requestMediaKeySystemAccess con 'SW_SECURE_CRYPTO'"
+    discovery: "código fuente: src/helper/getDRMSupport.js línea 33 + investigación web: W3C EME spec"
+    detail: "El player solicita Widevine con robustness: 'SW_SECURE_CRYPTO' — esto es L3 (software). Si se cambiara a 'HW_SECURE_ALL', fallaría en todos los browsers de escritorio ya que L1 requiere TEE hardware. L3 es suficiente para streaming HD/FHD. La industria acepta L3 en browser como el nivel standard para contenido no-premium."
+    impact_on_tests: "No intentar testear con robustness HW_SECURE_ALL en CI — siempre fallará. Los tests de Widevine deben asumir L3 (SW_SECURE_CRYPTO)."
+
+  - id: DRM-LEARN-008
+    title: "FairPlay via hls.js (emeEnabled) es diferente de FairPlay nativo (webkitneedkey)"
+    discovery: "código fuente: src/player/drm/plugin.jsx + tests/integration/drm-fairplay-hls.spec.ts"
+    detail: "Hay DOS formas de implementar FairPlay: (1) hls.js con emeEnabled=true y drmSystems — usa la API EME moderna de hls.js, disponible desde hls.js v1.x. (2) Flujo nativo con el evento webkitneedkey de WebKit (legacy Safari). El player usa el path (1) con emeEnabled. Esto requiere que hls.js reciba la config drmSystems correctamente."
+    impact_on_tests: "Tests de FairPlay deben verificar que la config de hls.js incluye emeEnabled: true y drmSystems con la licenseUrl correcta. No verificar webkitneedkey — ese path no es el que usa este player."
+
+  - id: DRM-LEARN-009
+    title: "La industria: Widevine L3 en browsers headless es posible pero requiere versión específica de Chromium con CDM activo"
+    discovery: "investigación web: Widevine CDM headless testing 2024, Playwright DRM testing"
+    detail: "Playwright Chromium incluye el CDM de Widevine en modo headless desde versiones recientes, pero requiere que el CDM esté activo. En algunos entornos de CI (GitHub Actions, contenedores Docker mínimos), el CDM puede estar bloqueado por restricciones de sandbox. Los tests E2E de Widevine requieren un entorno de CI específico con el CDM habilitado, o un stream de prueba de Widevine con un license server accesible desde CI."
+    impact_on_tests: "Los tests E2E de Widevine (drm-widevine-dash.spec.ts) pueden ser inestables en CI si el entorno no tiene el CDM activo. Considerar marcados como @flaky o con skip en CI mínimo."
+
+  - id: DRM-LEARN-010
+    title: "CENC (Common Encryption): los streams modernos soportan múltiples DRM en el mismo manifest"
+    discovery: "investigación web: MPEG-DASH CENC spec, Common Encryption in ISO Base Media File Format"
+    detail: "Un stream DASH moderno con CENC puede incluir múltiples pssh boxes (uno por DRM system: Widevine, PlayReady, FairPlay). El browser CDM selecciona el que soporta. El player Mediastream soporta este patrón via candidateUrls — el mismo MPD puede tener protección Widevine Y PlayReady. Esto es estándar en la industria OTT."
+    impact_on_tests: "Si se tienen streams de prueba con CENC multi-DRM, se puede verificar que el player selecciona el key system correcto según el browser sin necesidad de streams separados por DRM system."
+
+  - id: DRM-LEARN-011
+    title: "FairPlay requiere un certificado del servidor además de la license URL — dos endpoints necesarios"
+    discovery: "investigación web: Apple FairPlay Streaming documentation, hls.js FairPlay guide"
+    detail: "FairPlay tiene un flujo de 3 pasos: (1) descargar el certificado del servidor (certificateUrl), (2) el browser genera un SPC (Server Playback Context) con el certificado, (3) enviar el SPC al license server para obtener el CKC (Content Key Context). El player debe configurar drm.fairplay.certificateUrl además de drm.fairplay.serverURL."
+    impact_on_tests: "Tests de FairPlay deben mockear TANTO el certificateUrl como el serverURL. Si solo se mockea el serverURL, el handshake FairPlay fallará en el paso 1."
+
+  - id: DRM-LEARN-012
+    title: "ClearKey: key system de W3C útil solo para testing — deprecated para producción"
+    discovery: "investigación web: W3C ClearKey spec, MDN Encrypted Media Extensions"
+    detail: "ClearKey ('org.w3.clearkey') es un key system estándar del W3C que descifra AES-128 sin CDM propietario. Es útil para tests de EME porque está disponible en todos los browsers modernos sin instalar CDMs externos. Sin embargo, no provee protección real (las claves se transmiten en claro) — es solo para testing y demos. El player Mediastream NO implementa ClearKey — usa Widevine/FairPlay/PlayReady exclusivamente."
+    impact_on_tests: "Para tests de integración que necesiten verificar EME sin CDM real, ClearKey podría usarse como stub. Sin embargo, el player no tiene código de ClearKey — no es testeable via la API pública actual."

@@ -1,0 +1,94 @@
+version: "1.0"
+module: chromecast
+last_updated: "2026-06-08"
+
+defects:
+  - id: CAST-DEF-001
+    status: known_workaround
+    severity: high
+    title: "Tiempo stale tras SESSION_RESUMED (bfcache) — SDK envía currentTime cacheado"
+    description: >
+      Cuando el usuario regresa a la pestaña con una sesión Cast activa (bfcache restore),
+      el Cast SDK emite eventos timeUpdate con el tiempo que tenía cuando la pestaña
+      quedó en background. El player puede mostrar un tiempo incorrecto durante los
+      primeros segundos después del resume.
+    workaround: >
+      ignoreTimeUpdatesUntil window de 5000ms + forceTimeSync() via GetStatusRequest.
+      Los timeUpdates se ignoran durante 5s y se fuerza una consulta de status al
+      dispositivo Cast para obtener el tiempo real. Implementado en onConnected handler
+      (isResumed=true) en chromecast.js atoms.
+    source_comment: "src/view/video/atoms/chromecast.js:127-145 (ignoreTimeUpdatesUntil) y src/chromecast/CastManager.js:105 (forceTimeSync comment: 'Needed after bfcache restore since SDK buffers stale values')"
+    industry_known: true
+    regression_risk: high
+
+  - id: CAST-DEF-002
+    status: known_limitation
+    severity: high
+    title: "autoLoadMedia timeout de 2s silencioso — sin castError al agotar reintentos"
+    description: >
+      Si manager.isConnected no se vuelve true en 2000ms (10 reintentos × 200ms),
+      autoLoadMedia() falla con console.error('[Chromecast] Connection timeout')
+      pero NO emite castError. El usuario ve el dispositivo Cast aparentemente conectado
+      (SESSION_STARTED se emitió) pero sin media reproduciéndose. No hay feedback de error
+      al usuario ni mecanismo de retry automático.
+    workaround: "Ninguno automático. El usuario debe desconectar y reconectar manualmente. El integrador puede suscribirse a castConnected y verificar castMediaLoaded en un timeout propio."
+    source_comment: "src/view/video/atoms/chromecast.js:319-345 (autoLoadMedia retry loop)"
+    industry_known: false
+    regression_risk: medium
+
+  - id: CAST-DEF-003
+    status: known_limitation
+    severity: medium
+    title: "Subtítulos: tracks inválidos filtrados silenciosamente sin log ni evento"
+    description: >
+      normalizeSubtitleUrl() puede retornar null para URLs inválidas. Cuando esto ocurre,
+      el track queda con file=null y es enviado al Cast SDK. El Cast SDK puede ignorar
+      el track o lanzar un error interno no capturado. No se emite castError ni
+      log warning en producción (IS_PRODUCTION check).
+    workaround: "Asegurar que los subtítulos del contenido tengan URLs HTTPS absolutas válidas antes de enviarlos al player."
+    source_comment: "src/chromecast/subtitles.js:62-72 (normalizeSubtitleUrl)"
+    industry_known: false
+    regression_risk: low
+
+  - id: CAST-DEF-004
+    status: known_limitation
+    severity: medium
+    title: "Singleton de CastManager contamina múltiples instancias del player en la misma página"
+    description: >
+      castManagerInstance es una variable de módulo (global al módulo JS).
+      Múltiples instancias del Lightning Player en la misma página comparten el mismo
+      CastManager. Si el player A se destruye, cleanupChromecast() destruye el CastManager
+      compartido, rompiendo Cast en el player B. Los eventos de Cast del player A
+      también afectan al player B.
+    workaround: "Deshabilitar Cast en todas las instancias excepto una usando view.chromecast=false. No hay fix sin refactorización del singleton."
+    source_comment: "src/view/video/atoms/chromecast.js:19-27 (castManagerInstance singleton)"
+    industry_known: true
+    regression_risk: medium
+
+  - id: CAST-DEF-005
+    status: known_limitation
+    severity: medium
+    title: "getContentTypeFromSrc busca extensiones en el string completo de la URL (incluyendo query params)"
+    description: >
+      getContentTypeFromSrc() llama src.toLowerCase() y verifica includes('.m3u8'),
+      includes('.mpd'), etc. sobre el string completo, incluyendo query params y tokens.
+      Una URL como https://cdn.example.com/video?token=session.m3u8_auth retorna
+      ContentType.HLS incorrectamente si el token contiene '.m3u8'.
+    workaround: "El integrador puede pasar contentType explícito en buildMediaInfo() para override la detección automática."
+    source_comment: "src/chromecast/constants.js:43-54 (getContentTypeFromSrc)"
+    industry_known: false
+    regression_risk: low
+
+  - id: CAST-DEF-006
+    status: known_workaround
+    severity: low
+    title: "pauseChange y playerStateChange se emiten manualmente 500ms después de loadMedia"
+    description: >
+      Después de cargar media exitosamente, el SDK de Cast no siempre emite los eventos
+      de estado (paused, playerState) de forma inmediata. El código implementa un
+      setTimeout de 500ms que fuerza la emisión de estos eventos para sincronizar el
+      estado de los atoms de Jotai.
+    workaround: "setTimeout 500ms post-loadMedia que emite manualmente pauseChange e playerStateChange. Implementado en autoLoadMedia()."
+    source_comment: "src/view/video/atoms/chromecast.js:355-364"
+    industry_known: true
+    regression_risk: low

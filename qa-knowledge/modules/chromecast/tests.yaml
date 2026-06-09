@@ -1,0 +1,173 @@
+version: "1.0"
+module: chromecast
+last_updated: "2026-06-08"
+
+existing_tests:
+  - spec_file: "tests/integration/casting-overlay.spec.ts"
+    description: >
+      Suite de integración post-refactor del casting overlay. Cubre:
+      1) Inicialización del player (VOD, live, DVR) sin error tras eliminación de SubtitleControl y LiveIndicator del overlay.
+      2) Contrato de player.cast API (shape del objeto, eventos registrables).
+      3) Regresión DVR: seek en VOD, getTextTracks() funcional.
+      4) No errores de consola relacionados con componentes eliminados.
+    ac_coverage:
+      - CAST-AC-001
+      - CAST-AC-002
+      - CAST-AC-003
+
+coverage_gaps:
+  - id: GAP-CAST-001
+    priority: MUST
+    ac_ref: CAST-AC-009
+    title: "SDK timeout de carga (10s) — degradación sin bloqueo del player"
+    suggested_spec: "tests/integration/chromecast-sdk-load.spec.ts"
+    notes: >
+      Simular fallo de carga del SDK interceptando la URL de gstatic.com con
+      page.route() y retornando 500 o timeout. Verificar que:
+      - El player inicializa y llega a 'ready' normalmente
+      - hasCastSDKFailed() retorna true después del timeout
+      - castError se emite
+      - player.cast es null o no disponible (no lanza excepción al acceder)
+    industry_note: "Fallo del SDK de Cast es un escenario de producción real (CDN outage, content blockers). El player no debe romperse."
+
+  - id: GAP-CAST-002
+    priority: MUST
+    ac_ref: CAST-AC-010
+    title: "Filtrado de subtítulos ASS/SSA al construir MediaInfo para Cast"
+    suggested_spec: "tests/unit/chromecast-subtitles.spec.ts"
+    notes: >
+      Tests unitarios de filterCompatibleSubtitles() y normalizeSubtitles():
+      - Track con .vtt: incluido
+      - Track con .ttml: incluido
+      - Track con .ass: excluido
+      - Track con .ssa: excluido
+      - URL HTTP normalizada a HTTPS
+      - URL ya HTTPS: no modificada
+      - URL inválida: retorna null
+      Importar directamente desde src/chromecast/subtitles.js.
+    industry_note: "ASS/SSA no soportados por Google Cast SDK. El filtrado es crítico para evitar errores en el receiver."
+
+  - id: GAP-CAST-003
+    priority: MUST
+    ac_ref: CAST-AC-004
+    title: "isChromecastSupported() falso en Firefox y contexto no-HTTPS"
+    suggested_spec: "tests/unit/chromecast-support-detection.spec.ts"
+    notes: >
+      Tests unitarios de isBrowserSupported(), isSecureContext(), isChromecastSupported():
+      - Mockear navigator.userAgent con Firefox UA: isSupported=false
+      - Mockear con Safari UA: isSupported=false
+      - Mockear con iOS UA: isSupported=false
+      - Chrome desktop: isSupported=true
+      - Chrome headless (sin 'chrome' in window): verificar comportamiento
+      - window.isSecureContext=false: isSecureContext()=false
+      - window.location.protocol='http:': isSecureContext()=false (excepto localhost)
+    industry_note: "iOS nunca soporta Cast SDK. Firefox no soporta APIs de Chrome Cast Extension."
+
+  - id: GAP-CAST-004
+    priority: MUST
+    ac_ref: CAST-AC-007
+    title: "Resume del player local al desconectar Cast — comparación de URL base"
+    suggested_spec: "tests/unit/chromecast-disconnect-resume.spec.ts"
+    notes: >
+      Tests unitarios del handler onDisconnected en chromecast.js atoms.
+      Mockear el CastManager y los atoms de Jotai.
+      Escenarios:
+      - URL local == URL remota (sin query params): currentTime restaurado + play si wasPlaying
+      - URL local == URL remota (con query params distintos): base URLs iguales → resume
+      - URL local != URL remota: no resume
+      - remoteTime=0: no resume
+      - wasPlaying=false: currentTime restaurado pero no play()
+    industry_note: "La comparación de base URLs (sin query params) es crítica para CDNs con tokens rotantes."
+
+  - id: GAP-CAST-005
+    priority: MUST
+    ac_ref: CAST-AC-011
+    title: "buildMediaInfoFromApi transfiere currentTime, subtítulo activo y metadata"
+    suggested_spec: "tests/unit/chromecast-media-builder.spec.ts"
+    notes: >
+      Tests unitarios de buildMediaInfoFromApi() y buildMediaInfo():
+      - src presente: no lanza error
+      - src ausente: lanza Error('MediaBuilder: src is required')
+      - isLive=true: streamType=LIVE
+      - isDVR=true: streamType=LIVE (DVR usa LIVE según el código)
+      - Subtítulo activo: activeTrackId apunta al track correcto (índice 1-based)
+      - Subtítulos vacíos: activeTrackId=null
+      - metadata con poster, title, subtitle se mapean correctamente
+    industry_note: "currentTime correcto es crítico para la experiencia de usuario (continuar donde el usuario estaba)."
+
+  - id: GAP-CAST-006
+    priority: SHOULD
+    ac_ref: CAST-AC-015
+    title: "DVR y live usan StreamType.LIVE en el MediaInfo"
+    suggested_spec: "tests/unit/chromecast-media-builder.spec.ts"
+    notes: >
+      Incluir en tests de MediaBuilder:
+      - type='dvr' + isDVR=true: streamType=LIVE
+      - type='live' + isLive=true: streamType=LIVE
+      - type='media' (VOD): streamType=BUFFERED
+      - Verificar que buildMediaInfoFromContext mapea type='live' a isLive=true
+      - Verificar que buildMediaInfoFromContext mapea type='dvr' a isDVR=true
+
+  - id: GAP-CAST-007
+    priority: SHOULD
+    ac_ref: CAST-AC-021
+    title: "view.chromecast=false deshabilita el módulo completamente"
+    suggested_spec: "tests/integration/chromecast-config.spec.ts"
+    notes: >
+      Pasar view.chromecast=false en la config del player (via isolatedPlayer.goto).
+      Verificar:
+      - castEnabledAtom retorna false
+      - No se hace fetch a gstatic.com (interceptar con page.route y verificar que no se llama)
+      - player.cast no existe o es null
+      Usar network interception de Playwright para verificar que el SDK no se carga.
+
+  - id: GAP-CAST-008
+    priority: SHOULD
+    ac_ref: CAST-AC-012
+    title: "castTracksLoaded se emite con delay de 500ms (CAST_EVENT_DELAY_MS)"
+    suggested_spec: "tests/unit/chromecast-tracks-loaded-delay.spec.ts"
+    notes: >
+      Test unitario de CastManager.loadMedia() con tracks.
+      Usar fake timers para controlar el setTimeout.
+      Verificar que:
+      - castTracksLoaded NO se emite antes de 500ms
+      - castTracksLoaded SE emite después de 500ms
+      - Si destroy() se llama antes de 500ms: tracksLoaded NO se emite
+      - El timeout previo se limpia si loadMedia se llama dos veces
+
+  - id: GAP-CAST-009
+    priority: SHOULD
+    ac_ref: CAST-AC-013
+    title: "setActiveTrackIds actualiza el estado remoto y emite castActiveTracksChanged"
+    suggested_spec: "tests/unit/chromecast-text-tracks.spec.ts"
+    notes: >
+      Tests unitarios de enableTextTrack(), disableTextTracks(), toggleTextTrack():
+      - enableTextTrack(1): llama setActiveTrackIds([1]), emite activeTracksChanged con [1]
+      - disableTextTracks(): llama setActiveTrackIds([]), emite activeTracksChanged con []
+      - toggleTextTrack(1) cuando track 1 activo: deshabilita todos
+      - toggleTextTrack(1) cuando ningún track activo: habilita track 1
+      Verificar que setActiveTrackIds llama editTracksInfo del SDK.
+
+  - id: GAP-CAST-010
+    priority: COULD
+    ac_ref: CAST-AC-019
+    title: "autoJoinPolicy ORIGIN_SCOPED — reconexión automática de sesión existente"
+    suggested_spec: "tests/integration/chromecast-session-resume.spec.ts"
+    notes: >
+      Requiere Cast SDK real o mock completo del SDK.
+      No testeable en headless estándar.
+      Candidato para Cast Simulator cuando esté disponible.
+      Documentar como gap conocido con limitación técnica.
+    industry_note: "SESSION_RESUMED es el camino de code más diferente al SESSION_STARTED. Crítico para UX."
+
+  - id: GAP-CAST-011
+    priority: COULD
+    ac_ref: CAST-AC-006
+    title: "castConnected + loadMedia E2E con Cast Simulator"
+    suggested_spec: "tests/integration/chromecast-e2e.spec.ts"
+    notes: >
+      Requiere dispositivo físico o Cast Simulator.
+      Flujo completo: requestSession → loadMedia → play/pause/seek → endSession.
+      No testeable en CI headless actual.
+      Documentar como gap con limitación: requiere hardware o Cast Simulator.
+    industry_note: "El flujo completo es la prueba más valiosa pero la más difícil de automatizar. Netflix y otros usan dispositivos físicos en sus test labs."

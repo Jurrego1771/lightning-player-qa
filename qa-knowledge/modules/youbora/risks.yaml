@@ -1,0 +1,148 @@
+version: "1.0"
+module: youbora
+last_updated: "2026-06-08"
+
+risks:
+  - id: YBRA-RISK-001
+    severity: medium
+    title: "Beacons NPAW bloqueados por ad blockers / privacy extensions"
+    description: >
+      Las extensiones de bloqueo (uBlock, AdBlock, NoScript, Brave shields) y listas de
+      tracking-protection pueden bloquear requests a *.npaw.com / *.youboranqs01.com al
+      reconocerlos como dominios de analítica/tracking. El resultado es subreporte de métricas
+      (Views perdidas) aunque el player funcione bien para el usuario.
+    affected_files:
+      - "src/analytics/youbora/tracker.js"
+    trigger: "Usuario con ad blocker o tracking protection activo reproduce contenido."
+    mitigation: >
+      El player absorbe fallos del SDK (try/catch en init) y la reproducción NO se ve afectada.
+      El test NPAW-1.3 verifica que con AdBlocker activo el player sigue operando sin errores.
+      NPAW recomienda first-party proxying del collector para mitigar el bloqueo.
+    industry_note: >
+      Bien documentado: librerías de beacon (incl. analytics) son bloqueadas por blacklists de
+      nombres de archivo/dominio. La industria mitiga con proxy de primer nivel y nombres no-obvios.
+    test_priority: MUST
+
+  - id: YBRA-RISK-002
+    severity: high
+    title: "SDK NPAW no carga (CDN caído / chunk lazy fallido)"
+    description: >
+      El módulo Youbora se importa de forma lazy (React.lazy en plugins/index.js) y el SDK hace
+      un handshake con lma.npaw.com antes de emitir beacons. Si el chunk no carga, lma.npaw.com no
+      responde, o el handshake falla, la cola de beacons queda atascada y no se reporta nada.
+    affected_files:
+      - "src/plugins/index.js"
+      - "src/analytics/youbora/tracker.js"
+    trigger: "Fallo de red/CDN al cargar el chunk o al resolver el handshake LMA."
+    mitigation: >
+      init() está envuelto en try/catch — un fallo del SDK no rompe la reproducción. El test
+      harness mockea lma.npaw.com (addInitScript XHR mock) precisamente porque el handshake real
+      introduce un race 'queue stuck' que retrasa o impide los beacons en CI.
+    industry_note: >
+      Analítica de video debe ser fail-safe: nunca debe degradar la reproducción aunque el collector
+      esté caído. El patrón try/catch + no-op es la práctica correcta de la industria.
+    test_priority: MUST
+
+  - id: YBRA-RISK-003
+    severity: high
+    title: "Errores fatales de arranque no se reportan (adapter null)"
+    description: >
+      onError tiene el guard `if (!this._adapter) return` (tracker.js:225). El _adapter solo se crea
+      en _initAdapter() (en ready/firstPlay/playing). Si el contenido falla ANTES de ready
+      (p.ej. manifest 403/timeout), _adapter es null y NINGÚN beacon /error se envía — se pierde
+      precisamente la métrica de errores de arranque, la más crítica para QoE.
+    affected_files:
+      - "src/analytics/youbora/tracker.js"
+    trigger: "Error fatal de startup (manifest/license/CDN inaccesible) antes de reachear ready."
+    mitigation: >
+      Ninguna actualmente. Tests NPAW-8.1 y NPAW-8.6 están en test.fixme documentando el bug.
+      Fix sugerido: inicializar adapter (con fireInit + fireError, no fireStart) en el primer error
+      aunque la sesión no haya empezado.
+    industry_note: >
+      Startup errors y EBVS son métricas estrella para reducir churn (NPAW/Conviva). No reportarlos
+      es un gap material de observabilidad.
+    test_priority: MUST
+
+  - id: YBRA-RISK-004
+    severity: medium
+    title: "Métricas incorrectas: bitrate/throughput/playhead reportados como -1 o 0"
+    description: >
+      getRendition/bitrate dependen de que el handler exponga api.bitrate, videoWidth/Height. En el
+      QA de Caracol TV (2026-04) se observó bitrate=-1, throughput=-1 y playhead=0 en /bufferUnderrun.
+      Métricas degradadas reducen el valor analítico aunque las Views se abran correctamente.
+    affected_files:
+      - "src/analytics/youbora/tracker.js"
+    trigger: "Handler que no expone bitrate/throughput, o buffer underrun antes de tener playhead."
+    mitigation: >
+      Por contrato NPAW, -1 es un valor válido ('player no reporta bitrate'). No rompe la View.
+      bufferDuration sigue siendo válido aunque playhead=0.
+    industry_note: >
+      Rebuffering ratio y bitrate son métricas QoE núcleo. Valores -1 sistemáticos sesgan dashboards;
+      conviene verificar que el handler expone bitrate cuando el formato lo permite.
+    test_priority: SHOULD
+
+  - id: YBRA-RISK-005
+    severity: medium
+    title: "Actualización silenciosa del SDK npaw-plugin (^7.3.28) cambia comportamiento"
+    description: >
+      El rango ^7.3.28 admite minors/patches automáticos. El SDK es caja negra: un cambio en nombres
+      de campos del payload (POST JSON), endpoints, timing de /ping o lógica de breakNumber puede
+      romper tests o el reporting sin cambios en el código del player.
+    affected_files:
+      - "src/analytics/youbora/tracker.js"
+    trigger: "npm install resuelve una versión más nueva dentro de ^7.3.28."
+    mitigation: >
+      Los tests NO verifican paths/campos exactos de beacons como contrato (solo presencia y conteo
+      relativo). Pinear la versión exacta reduce sorpresas. Verificar pluginVersion en /start.
+    industry_note: >
+      El adapter traduce eventos del player al formato Youbora; NPAW mantiene los adapters al día,
+      pero los breaking changes entre majors (6.x→7.x) han cambiado endpoints y formato.
+    test_priority: SHOULD
+
+  - id: YBRA-RISK-006
+    severity: medium
+    title: "Race de reinicio de sesión: setTimeout(0) en restart() vs destroy()"
+    description: >
+      restart() hace _cleanup() y difiere init() con setTimeout(0) (tracker.js:401). Si destroy()
+      llega justo después, _cleanup() limpia _pendingInit con clearTimeout — pero el timing es
+      sensible: bajo carga (CI), el init diferido podría ejecutarse antes del cleanup, abriendo una
+      View huérfana. También: la transición automática de episodio depende de que HLS reinicialice
+      y reemita Events._playing DESPUÉS del setTimeout(0).
+    affected_files:
+      - "src/analytics/youbora/tracker.js"
+    trigger: "load()/destroy() en sucesión rápida, o next-episode con mismo stream URL."
+    mitigation: >
+      _cleanup() siempre hace clearTimeout(_pendingInit). El test GAP-5 está marcado test.fixme en
+      Linux CI por flakiness de timing. La cadena de episodios funciona con contenido real (URLs
+      distintas) pero falla con mock (mismo stream → HLS no reemite playing)."
+    industry_note: ""
+    test_priority: SHOULD
+
+  - id: YBRA-RISK-007
+    severity: low
+    title: "Pre-roll: View de contenido se abre en pausa antes del ad"
+    description: >
+      En onContentPauseRequested, si no había sesión (_started=false), se fuerza fireStart+fireJoin
+      y firePause para que los pings del ad incluyan playhead de contenido. Esto abre la View de
+      contenido 'en pausa' antes de que el contenido reproduzca realmente; si el usuario abandona en
+      el pre-roll, la View de contenido existe sin reproducción real.
+    affected_files:
+      - "src/analytics/youbora/tracker.js"
+    trigger: "Pre-roll con autoplay y abandono durante el ad."
+    mitigation: "Comportamiento intencional documentado en el código para playhead correcto en pings."
+    industry_note: ""
+    test_priority: COULD
+
+  - id: YBRA-RISK-008
+    severity: low
+    title: "Lógica frágil de breakNumber/position en mid-rolls (VMAP)"
+    description: >
+      onAdsStarted manipula getPosition() temporalmente (prevPosition durante fireBreakStart) para
+      evitar que el SDK resetee breakNumber al cambiar de pre→mid. Depende de que fireBreakStart sea
+      síncrono. Cambios internos del SDK que lo hagan async romperían el numbering de breaks/pods.
+    affected_files:
+      - "src/analytics/youbora/tracker.js"
+    trigger: "VMAP con múltiples ad breaks (pre + mid + post)."
+    mitigation: "Workaround con try/finally que restaura getPosition inmediatamente."
+    industry_note: ""
+    test_priority: COULD

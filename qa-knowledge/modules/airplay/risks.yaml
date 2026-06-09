@@ -1,0 +1,123 @@
+version: "1.0"
+module: airplay
+last_updated: "2026-06-08"
+
+risks:
+  - id: APLY-RISK-001
+    severity: high
+    title: "AirPlay solo funciona en WebKit — invisible en el resto de plataformas"
+    description: >
+      AirPlay depende de APIs propietarias de WebKit (webkitShowPlaybackTargetPicker,
+      webkitCurrentPlaybackTargetIsWireless). En Chromium, Firefox y plataformas TV
+      (WebOS, Tizen) la feature simplemente no existe. Un cambio que asuma que la API
+      siempre está disponible (sin pasar por isAirPlaySupported) rompería esas
+      plataformas o lanzaría errores.
+    affected_files:
+      - "src/airplay/isSupported.js"
+      - "src/view/video/atoms/airplay.js"
+    trigger: "Inicialización del player en navegador no-WebKit; o acceso a la API webkit sin feature-detect."
+    mitigation: >
+      isAirPlaySupported() es la única puerta de entrada. El manager solo se instancia
+      si devuelve true; los getters solo se exponen si es true. Degradación elegante.
+    industry_note: "Apple Support confirma que AirPlay desde web es exclusivo de Safari; otros navegadores en dispositivos Apple no lo soportan."
+    test_priority: MUST
+
+  - id: APLY-RISK-002
+    severity: high
+    title: "ManagedMediaSource rompe AirPlay en Safari 17.1+ (hls.js #6197)"
+    description: >
+      Cuando hls.js usa ManagedMediaSource setea video.disableRemotePlayback=true, lo
+      que oculta el botón AirPlay e impide que webkitplaybacktargetavailabilitychanged
+      dispare. Además MMS usa un blob: URL que el Apple TV no puede fetchear, por lo que
+      el handoff falla aunque el usuario logre conectar.
+    affected_files:
+      - "src/player/handler/hls/handler.js"
+      - "src/view/video/atoms/airplay.js"
+    trigger: "Reproducción HLS vía hls.js en Safari 17.1+ con ManagedMediaSource activo."
+    mitigation: >
+      Doble defensa - (1) preferManagedMediaSource: !isAirPlaySupported() desactiva MMS
+      en dispositivos AirPlay-capaces; (2) AirPlayManager fuerza disableRemotePlayback=false
+      al adjuntar y lo restaura al detach; (3) el atom añade un segundo <source> con la URL
+      .m3u8 real para el caso en que MMS sí esté presente.
+    industry_note: "hls.js issue #6197 y WebKit blog 15036 documentan el problema y la solución del segundo <source>. Es un problema conocido del ecosistema, no específico del player."
+    test_priority: MUST
+
+  - id: APLY-RISK-003
+    severity: medium
+    title: "No testeable en CI headless — requiere dispositivo físico y red"
+    description: >
+      Detectar disponibilidad y conectar requieren un receptor AirPlay real (Apple TV /
+      AirPlay 2 TV) en la misma red WiFi. WebKit headless en Playwright no expone
+      receptores, por lo que availability casi siempre es 'not-available' y connect/
+      disconnect no son ejercitables automáticamente.
+    affected_files:
+      - "tests/integration/airplay.spec.ts"
+    trigger: "Ejecución de tests AirPlay en CI / headless."
+    mitigation: >
+      Tests de superficie de API y disponibilidad usan test.skip fuera de WebKit y
+      anotaciones cuando no hay receptor. Connect/disconnect están en test.fixme para
+      verificación manual en macOS real con Apple TV.
+    industry_note: "Falta de cobertura automatizada es estándar de la industria para AirPlay; suele cubrirse con device farms o pruebas manuales."
+    test_priority: SHOULD
+
+  - id: APLY-RISK-004
+    severity: medium
+    title: "Receptor y emisor deben estar en la misma red local"
+    description: >
+      AirPlay opera sobre la LAN (Bonjour/mDNS). Si el dispositivo Apple y el receptor
+      están en VLANs distintas, redes invitado aisladas, o con mDNS bloqueado, el receptor
+      no aparece como disponible aunque la feature esté soportada. El player no puede
+      diferenciar 'no soportado' de 'soportado pero sin receptor visible'.
+    affected_files:
+      - "src/airplay/AirPlayManager.js"
+    trigger: "Red corporativa/educativa con segmentación o firewall mDNS; redes invitado."
+    mitigation: >
+      Ninguna a nivel de player (limitación de red/SO). El estado se refleja como
+      airplayAvailable=false. La UI solo muestra el botón cuando hay disponibilidad.
+    industry_note: "Foros de Jamf y soporte Apple documentan problemas de descubrimiento AirPlay en redes grandes/segmentadas como causa #1 de 'AirPlay no aparece'."
+    test_priority: COULD
+
+  - id: APLY-RISK-005
+    severity: medium
+    title: "Contexto seguro (HTTPS) requerido en producción"
+    description: >
+      Las APIs de media modernas y el comportamiento de AirPlay en Safari requieren un
+      contexto seguro (HTTPS). Embeds del player servidos por HTTP mixto pueden ver
+      bloqueada o degradada la funcionalidad AirPlay y de remote playback.
+    affected_files:
+      - "src/view/video/atoms/airplay.js"
+    trigger: "Player embebido en página HTTP o con contenido mixto."
+    mitigation: "El player se distribuye vía CDN HTTPS; el contenido HLS también debe servirse por HTTPS."
+    industry_note: "Las APIs webkit-prefijadas históricamente toleraban HTTP, pero Safari moderno restringe capacidades de media a secure contexts. Recomendar HTTPS extremo a extremo."
+    test_priority: COULD
+
+  - id: APLY-RISK-006
+    severity: medium
+    title: "El singleton del AirPlayManager no soporta múltiples instancias del player"
+    description: >
+      airPlayManagerInstance es un singleton a nivel de módulo. Dos players en la misma
+      página competirían por el mismo manager y el mismo elemento adjunto, pudiendo
+      reportar estado AirPlay cruzado o erróneo. El mismo patrón problemático existe en
+      expose() (controls/methods.js tiene un TODO al respecto).
+    affected_files:
+      - "src/view/video/atoms/airplay.js"
+      - "src/controls/methods.js"
+    trigger: "Dos o más instancias del player en la misma página/documento."
+    mitigation: "Ninguna explícita. attach() hace detach del elemento previo, pero el estado del singleton es compartido."
+    industry_note: "Multi-instancia es un escenario real en sitios de noticias con varios embeds; conviene un test de regresión."
+    test_priority: SHOULD
+
+  - id: APLY-RISK-007
+    severity: low
+    title: "Evento airPlayAvailabilityChange declarado pero nunca emitido"
+    description: >
+      constants.cjs declara airPlayAvailabilityChange como evento público, pero el atom
+      solo emite _airPlayConnected y _airPlayDisconnected. Un integrador que escuche
+      airPlayAvailabilityChange para mostrar su propio botón nunca recibirá el evento.
+    affected_files:
+      - "constants.cjs"
+      - "src/view/video/atoms/airplay.js"
+    trigger: "Integrador construye UI propia basándose en airPlayAvailabilityChange."
+    mitigation: "El estado de disponibilidad está disponible vía el getter player.airplayAvailable (polling) y vía el atom interno para el skin del player."
+    industry_note: "Apple recomienda usar el evento de disponibilidad para mostrar/ocultar el botón AirPlay; la API pública del player no lo expone como evento."
+    test_priority: SHOULD

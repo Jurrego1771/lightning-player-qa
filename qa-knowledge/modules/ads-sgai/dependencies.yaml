@@ -1,0 +1,127 @@
+version: "1.0"
+module: ads-sgai
+last_updated: "2026-06-08"
+
+internal:
+  - id: hls
+    reason: >
+      SGAI inyecta un custom pLoader en la config de hls.js para interceptar el texto raw
+      de manifests y buscar cue points. Además, engancha el evento FRAG_CHANGED de hls.js
+      para saber qué segmento está reproduciéndose y disparar el ad break en el momento correcto.
+    coupling: high
+    files:
+      - "src/ads/googleSGAI/services/HlsLoader.js"
+      - "src/ads/googleSGAI/services/startFragmentTracking.js"
+      - "src/ads/googleSGAI/getHlsControllerFromPlayer.js"
+    notes: >
+      SGAI solo funciona con HLS vía hls.js. Streams DASH o HLS nativo (Safari sin hls.js)
+      no son soportados. En Safari, AdPlaybackController puede usar HLS nativo para el ad pod,
+      pero el manifest del contenido requiere hls.js para la detección de cues.
+
+  - id: playback-core
+    reason: >
+      SGAI necesita el hls controller del player de contenido para engancharse a FRAG_CHANGED.
+      getHlsControllerFromPlayer() hace polling (hasta 20 intentos × 500ms) esperando que
+      el player exponga su instancia hls.js.
+    coupling: high
+    files:
+      - "src/ads/googleSGAI/getHlsControllerFromPlayer.js"
+    notes: >
+      Si playback-core no expone el hls controller (ej: DASH stream), el fragment tracking
+      falla silenciosamente después de 10s (max retries). SGAI queda inactivo pero el
+      stream reproduce normalmente.
+
+  - id: controls-api
+    reason: >
+      Durante un ad break, SGAI inyecta un controlsOverride en el componente de controles
+      del player para interceptar las acciones de play/pause/volume. Esto asegura que
+      el usuario controla el video del ad, no el stream de contenido.
+    coupling: medium
+    files:
+      - "src/ads/googleSGAI/hooks/useGoogleSGAILifecycle.js"
+    notes: >
+      El override usa controls.addOverride() y controls.removeOverride(). Si el componente
+      de controles no está disponible, el override se ignora. Si el cleanup falla (unmount
+      prematuro), el override puede quedar colgado haciendo el player no responsivo.
+
+  - id: events
+    reason: >
+      SGAI escucha Events._volumechange en internalEmitter para sincronizar el estado
+      mute/volumen con el parámetro vpmute del Google DAI StreamManager.
+    coupling: medium
+    files:
+      - "src/ads/googleSGAI/hooks/useGoogleSGAILifecycle.js"
+    notes: >
+      Race condition conocida: si _volumechange se dispara antes de que STREAM_INITIALIZED
+      llegue del SDK, la llamada a streamManager.replaceAdTagParameters() falla silenciosamente
+      (try/catch). El vpmute inicial puede no ser enviado correctamente.
+
+  - id: platform-config
+    reason: >
+      AdBreakService llama al endpoint de plataforma /api/live-stream/{id}/sgai-ad-break
+      para obtener el adBreakId necesario para construir la URL del ad pod de Google.
+      El contentId viene del contexto del player (ctx.id).
+    coupling: medium
+    files:
+      - "src/ads/googleSGAI/services/AdBreakService.js"
+    notes: >
+      Si el endpoint de plataforma no responde o devuelve error, el ad break se skipea
+      y se emite SGAI_EVENTS.ERROR. El contenido continúa. Este es el comportamiento
+      content-first deseado.
+
+  - id: ads-manager
+    reason: >
+      El contexto del player expone ctx.ads.sgai con la configuración de SGAI (networkCode,
+      customAssetKey, adBreakIdEndpoint). El plugin.jsx lee este contexto via contextMapper.
+    coupling: low
+    files:
+      - "src/ads/googleSGAI/plugin.jsx"
+    notes: >
+      Si ctx.ads.sgai no existe, el plugin renderiza sin activarse (networkCode y customAssetKey
+      serán undefined, y el hook retorna inmediatamente).
+
+external:
+  - id: google-ima-dai-sdk
+    package: "https://imasdk.googleapis.com/js/sdkloader/ima3_dai.js (CDN)"
+    version: "namespace: google.ima.dai (versión no pinneada — carga desde CDN)"
+    reason: >
+      El SDK de Google IMA DAI es el núcleo de SGAI: proporciona StreamManager,
+      PodStreamRequest, y los eventos del lifecycle del ad (STREAM_INITIALIZED,
+      AD_BREAK_STARTED, AD_BREAK_ENDED, STARTED, COMPLETE, AD_PERIOD_ENDED, ERROR, CLICK).
+      El SDK procesa también metadatos ID3 del ad pod via processMetadata().
+    risk: high
+    note: >
+      El SDK se carga lazy desde CDN en el primer uso. Si el CDN de Google no está
+      disponible (red bloqueada, problemas de Google), SGAI falla completamente.
+      SDKLoader tiene manejo de error pero NO tiene retry propio (depende del caller).
+      La versión del SDK no está pinneada — Google puede hacer breaking changes.
+      En entornos con Content Security Policy (CSP) estricto, la carga puede ser
+      bloqueada si imasdk.googleapis.com no está en la allowlist.
+
+  - id: hls-js
+    package: "hls.js"
+    version: "1.6.13 (declarada en package.json del player)"
+    reason: >
+      hls.js provee el mecanismo de carga de manifests que SGAI intercepta con su
+      pLoader personalizado. La API de pLoader y el evento FRAG_CHANGED son contratos
+      internos de hls.js — cambios en estas APIs pueden romper SGAI silenciosamente.
+    risk: high
+    note: >
+      hls.js no parsea EXT-X-CUE-OUT ni EXT-OATCLS-SCTE35 nativamente. Esta es la
+      razón del pLoader custom. Si hls.js eventualmente soporta estos tags, el pLoader
+      puede interferir con el soporte nativo. En hls.js v1.x, el pLoader es un
+      constructor de clase — la API cambió respecto a v0.x.
+
+  - id: platform-endpoint
+    package: "embed.mdstrm.com (prod) / develop.mdstrm.com (dev)"
+    version: "N/A — API REST de la plataforma Mediastream"
+    reason: >
+      AdBreakService.fetchAdBreakId() depende del endpoint /api/live-stream/{id}/sgai-ad-break
+      de la plataforma para resolver el adBreakId. Sin este endpoint, SGAI no puede
+      construir la URL del ad pod y el break se skipea.
+    risk: high
+    note: >
+      El contrato esperado de la respuesta es: {adBreakId, googleDaiToken?, format?}.
+      También acepta alias: ad_break_id, podIdentifier. Si el schema cambia en la
+      plataforma, los tests de integración mock pueden no detectarlo. Se necesita
+      contract test del endpoint.

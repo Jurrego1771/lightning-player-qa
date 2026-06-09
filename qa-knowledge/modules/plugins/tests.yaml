@@ -1,0 +1,97 @@
+version: "1.0"
+module: plugins
+last_updated: "2026-06-08"
+
+existing_tests:
+  []
+  # No existen specs dedicados al sistema de plugins en tests/ (glob *plugin* => 0 resultados).
+  # La cobertura efectiva es indirecta: tests de youbora, ads, drm ejercitan plugins concretos
+  # pero ninguno valida el contrato del cargador (load/pluginsReady/lazy/error-isolation).
+
+coverage_gaps:
+  - id: GAP-PLUG-001
+    priority: MUST
+    ac_ref: PLUG-AC-002
+    title: "Plugin con CDN no disponible no rompe la reproducción"
+    suggested_spec: "tests/integration/plugins-error-isolation.spec.ts"
+    notes: >
+      Bloquear vía route el chunk/SDK de un plugin de analytics y verificar que el video reproduce
+      y los demás plugins se montan. Aislar con un solo plugin caído por test.
+    industry_note: "El aislamiento de fallos es el requisito #1 de toda plugin architecture en producción."
+
+  - id: GAP-PLUG-002
+    priority: MUST
+    ac_ref: PLUG-AC-003
+    title: "Playback no arranca hasta pluginsReady(); src resuelto por plugin DRM persiste"
+    suggested_spec: "tests/integration/plugins-ready-gating.spec.ts"
+    notes: >
+      Verificar que el <video> no se monta mientras un plugin está not-ready y que el src usado es
+      el resuelto por DRM, no el _candidateUrl original (regresión de la race de getDerivedStateFromProps).
+    industry_note: "El gating de readiness afecta el critical path de reproducción."
+
+  - id: GAP-PLUG-003
+    priority: MUST
+    ac_ref: PLUG-AC-004
+    title: "Plugin que rechaza isReady() no cuelga el player; documentar plugin que cuelga"
+    suggested_spec: "tests/integration/plugins-ready-gating.spec.ts"
+    notes: >
+      Caso A (rechazo): _isReady llega a true por finally -> playback arranca. Caso B (promesa eterna):
+      documentar el comportamiento real (DEF-001). Test crítico por riesgo PLUG-RISK-001.
+    industry_note: "Race conditions de init/dispose son la categoría #1 de bugs en plugins de video (Flutter, Angular)."
+
+  - id: GAP-PLUG-004
+    priority: MUST
+    ac_ref: PLUG-AC-001
+    title: "Carga lazy condicional — solo se descargan los chunks de plugins habilitados"
+    suggested_spec: "tests/integration/plugins-lazy-load.spec.ts"
+    notes: >
+      Con youbora habilitado y comscore deshabilitado, observar network: el chunk de Youbora se
+      descarga, el de Comscore no. Federation/PlayingMetadata siempre presentes.
+
+  - id: GAP-PLUG-005
+    priority: SHOULD
+    ac_ref: PLUG-AC-006
+    title: "Fatal error y vista reels retornan {} (sin plugins)"
+    suggested_spec: "tests/integration/plugins-short-circuit.spec.ts"
+    notes: "Verificar que con options.error o view=reels no se inicia ningún SDK externo ni beacon."
+
+  - id: GAP-PLUG-006
+    priority: SHOULD
+    ac_ref: PLUG-AC-007
+    title: "DNT desactiva StreamMetrics y GoogleTracker (no Youbora/Comscore)"
+    suggested_spec: "tests/integration/plugins-dnt.spec.ts"
+    notes: >
+      Con dnt=true, StreamMetrics y GoogleTracker no cargan; documentar que Youbora/Comscore siguen
+      activos según sus flags (posible hallazgo de compliance, DEF-005).
+    industry_note: "Compliance de privacidad — el comportamiento real de DNT debe quedar documentado."
+
+  - id: GAP-PLUG-007
+    priority: SHOULD
+    ac_ref: PLUG-AC-011
+    title: "Desmontaje de plugin no fuga memoria (restart(true) + cleanup de listeners)"
+    suggested_spec: "tests/performance/plugins-memory-leak.spec.ts"
+    notes: >
+      Montar/desmontar player N veces con todos los plugins; medir listeners de internalEmitter y
+      heap/observers vía CDP. Riesgo PLUG-RISK-004 / DEF-004.
+    industry_note: "Video.js automatiza dispose; Lightning lo delega a restart(true) -> auditar leaks."
+
+  - id: GAP-PLUG-008
+    priority: SHOULD
+    ac_ref: PLUG-AC-008
+    title: "Google DAI tiene prioridad sobre MediaTailor DAI (no doble inserción)"
+    suggested_spec: "tests/integration/plugins-dai-priority.spec.ts"
+    notes: "Config con ambos habilitados -> solo GoogleDAI se monta; sin doble inserción de ads."
+
+  - id: GAP-PLUG-009
+    priority: COULD
+    ac_ref: PLUG-AC-010
+    title: "Re-render por cambio de options no re-monta plugins con keys idénticas"
+    suggested_spec: "tests/integration/plugins-idempotent-mount.spec.ts"
+    notes: "Cambiar options preservando el set de plugins -> no se reinicializan SDKs ni se duplican listeners."
+
+  - id: GAP-PLUG-010
+    priority: COULD
+    ac_ref: PLUG-AC-005
+    title: "Reels no carga plugins globales; cada instancia carga los suyos"
+    suggested_spec: "tests/integration/plugins-reels.spec.ts"
+    notes: "Verificar comportamiento de plugins en contexto reels (gap relacionado con módulo reels)."

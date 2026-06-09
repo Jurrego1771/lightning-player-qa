@@ -2,29 +2,25 @@ name: Dev — Suite Completa (Diario + Push)
 
 # ─── Cuándo corre y qué jobs ───────────────────────────────────────────────
 #
-#  TRIGGER             smoke  e2e(chr)  e2e(ff/wk)  a11y  visual  perf
-#  ─────────────────────────────────────────────────────────────────────
-#  PR → main           ✅     —         —           —     —       —
-#  push → main         ✅     —         —           —     —       —
-#  schedule Mar-Vie    ✅     ✅        —           ✅    ✅      —
-#  schedule Lunes      ✅     ✅        ✅          ✅    ✅      ✅
-#  workflow_dispatch   ✅     full      full        full  full    full
+#  TRIGGER            contract  smoke  integration  e2e  a11y  visual  perf
+#  ─────────────────────────────────────────────────────────────────────────
+#  PR → main          ✅        ✅     ✅            —    —     —       —
+#  push → main        ✅        ✅     —             —    —     —       —
+#  schedule (L-V)     ✅        ✅     ✅            ✅   ✅    ✅      lunes
+#  workflow_dispatch  ✅        full   full          full full  full    —
 #
-#  Integration (incl. analytics Youbora/Konodrac): ELIMINADA de CI por ser
-#  lenta (>30 min, con cuelgues) y poco probable de romper a diario.
-#
-#  Estrategia: el camino crítico diario (Mar-Vie) corre solo chromium e2e +
-#  a11y + visual. Los lunes se suma la cobertura completa: cross-browser
-#  (firefox/webkit) y performance.
+#  PR: contract → smoke → integration (~5-7 min feedback pre-merge).
+#  push a main: contract + smoke (suite completa ya validó el PR).
+#  schedule: suite completa diaria contra develop del player.
 
 on:
   pull_request:
-    branches: [main]        # Solo smoke en cada PR (feedback pre-merge rápido)
+    branches: [main]
   schedule:
     - cron: '0 12 * * 2-5'  # Mar-Vie 7 AM Colombia — diario ligero (chromium)
     - cron: '0 12 * * 1'    # Lunes 7 AM Colombia — suite completa (cross-browser + perf)
   push:
-    branches: [main]        # Solo smoke post-merge (ya validado en PR)
+    branches: [main]
   workflow_dispatch:
     inputs:
       suite:
@@ -43,40 +39,46 @@ env:
   MOCK_VAST_BASE_URL: http://localhost:9999
   PLATFORM_API_URL: https://dev.platform.mediastre.am/api
   CI: true
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  # ── JOB 1: Smoke rápido (siempre corre primero, falla rápido) ────────────
+  # ── JOB 1: Contract tests (siempre, gate antes de smoke) ─────────────────
+  contract:
+    name: Contract — API Shape
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-qa
+        with:
+          browser: chromium
+          fixtures: 'false'
+      - name: Contract tests
+        run: npx playwright test tests/contract/ --project=chromium
+        env:
+          PLATFORM_API_TOKEN: ${{ secrets.PLATFORM_API_TOKEN }}
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: contract-report
+          path: playwright-report/
+          retention-days: 7
+
+  # ── JOB 2: Smoke rápido (falla rápido, gate para el resto) ───────────────
   smoke:
     name: Smoke — Dev
     runs-on: ubuntu-latest
+    needs: contract
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: '20', cache: 'npm' }
-      - run: npm ci
-
-      - name: Cache Playwright browsers
-        uses: actions/cache@v4
-        id: playwright-cache
+      - uses: ./.github/actions/setup-qa
         with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-chromium-${{ hashFiles('package-lock.json') }}
-
-      - name: Install Playwright + deps
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: npx playwright install chromium --with-deps
-
-      - name: Install Playwright system deps
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium
-
-      - run: sudo apt-get install -y ffmpeg
-
+          browser: chromium
       - name: Smoke tests
         run: npx playwright test tests/smoke/ --project=chromium
         env:
           PLATFORM_API_TOKEN: ${{ secrets.PLATFORM_API_TOKEN }}
-
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
@@ -84,97 +86,26 @@ jobs:
           path: playwright-report/
           retention-days: 7
 
-  # ── JOB 2: E2E Chromium (diario — el grueso de la señal de regresión) ─────
-  e2e-chromium:
-    name: E2E — chromium
-    runs-on: ubuntu-latest
-    needs: smoke
-    if: ${{ github.event_name == 'schedule' || github.event.inputs.suite == 'full' || github.event.inputs.suite == 'e2e-only' }}
-
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: '20', cache: 'npm' }
-      - run: npm ci
-
-      - name: Cache Playwright browsers
-        uses: actions/cache@v4
-        id: playwright-cache
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-chromium-${{ hashFiles('package-lock.json') }}
-
-      - name: Install Playwright + deps
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: npx playwright install chromium --with-deps
-
-      - name: Install Playwright system deps
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium
-
-      # Los HLS fixtures (vod/audio/vod-with-error) están gitignored y se
-      # generan con ffmpeg. Sin esto el global-setup aborta el job.
-      - name: Preparar HLS fixtures
-        run: |
-          sudo apt-get install -y ffmpeg
-          npm run fixtures:generate
-
-      - name: E2E tests
-        run: npx playwright test tests/e2e/ --project=chromium
-        env:
-          PLATFORM_API_TOKEN: ${{ secrets.PLATFORM_API_TOKEN }}
-
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: e2e-report-chromium
-          path: playwright-report/
-          retention-days: 14
-
-  # ── JOB 3: E2E Cross-Browser (Firefox + WebKit) — solo lunes ─────────────
-  # Los bugs específicos de motor son raros; no justifican correr 147 tests ×2
-  # navegadores extra todos los días. Cobertura cross-browser semanal (lunes).
-  e2e-cross-browser:
+  # ── JOB 3: Suite completa E2E (Chromium + Firefox + WebKit) ─────────────
+  e2e-full:
     name: E2E — ${{ matrix.project }}
     runs-on: ubuntu-latest
     needs: smoke
-    if: ${{ github.event.schedule == '0 12 * * 1' || github.event.inputs.suite == 'full' || github.event.inputs.suite == 'e2e-only' }}
+    timeout-minutes: 30
+    if: ${{ github.event_name == 'schedule' || github.event.inputs.suite == 'full' || github.event.inputs.suite == 'e2e-only' }}
     strategy:
       fail-fast: false
       matrix:
-        project: [firefox, webkit]
-
+        project: [chromium, firefox, webkit]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: '20', cache: 'npm' }
-      - run: npm ci
-
-      - name: Cache Playwright browsers
-        uses: actions/cache@v4
-        id: playwright-cache
+      - uses: ./.github/actions/setup-qa
         with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ matrix.project }}-${{ hashFiles('package-lock.json') }}
-
-      - name: Install Playwright + deps
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: npx playwright install ${{ matrix.project }} --with-deps
-
-      - name: Install Playwright system deps
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: npx playwright install-deps ${{ matrix.project }}
-
-      - name: Preparar HLS fixtures
-        run: |
-          sudo apt-get install -y ffmpeg
-          npm run fixtures:generate
-
+          browser: ${{ matrix.project }}
       - name: E2E tests
         run: npx playwright test tests/e2e/ --project=${{ matrix.project }}
         env:
           PLATFORM_API_TOKEN: ${{ secrets.PLATFORM_API_TOKEN }}
-
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -182,46 +113,71 @@ jobs:
           path: playwright-report/
           retention-days: 14
 
-  # ── Integración: ELIMINADA de CI ─────────────────────────────────────────
-  # Los jobs de integration (incl. analytics Youbora/Konodrac) se removieron:
-  # eran lentos (>30 min, con cuelgues) y poco probables de romper a diario.
-  # Si se reintroducen, considerar sharding (--shard) y diagnosticar el hang.
+  # ── JOB 4: Integration tests (PRs + schedule, solo Chromium, 2 shards) ──────
+  integration:
+    name: Integration — Shard ${{ matrix.shard }}/2
+    runs-on: ubuntu-latest
+    needs: smoke
+    timeout-minutes: 12
+    if: ${{ github.event_name == 'pull_request' || github.event_name == 'schedule' || github.event.inputs.suite == 'full' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-qa
+        with:
+          browser: chromium
+      - name: Integration tests (shard ${{ matrix.shard }}/2)
+        run: npx playwright test tests/integration/ --project=chromium --shard=${{ matrix.shard }}/2 --reporter=blob
+        env:
+          PLATFORM_API_TOKEN: ${{ secrets.PLATFORM_API_TOKEN }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: integration-report-shard-${{ matrix.shard }}
+          path: blob-report/
+          retention-days: 14
 
-  # ── JOB 4: Accessibility (diario) ────────────────────────────────────────
+  # ── JOB 4b: Merge integration shard reports ──────────────────────────────
+  integration-merge:
+    name: Integration — Merge Reports
+    runs-on: ubuntu-latest
+    needs: integration
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci --ignore-scripts
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: integration-report-shard-*
+          path: all-blob-reports
+          merge-multiple: true
+      - run: npx playwright merge-reports --reporter=html ./all-blob-reports
+      - uses: actions/upload-artifact@v4
+        with:
+          name: integration-report-merged
+          path: playwright-report/
+          retention-days: 14
+
+  # ── JOB 5: Accessibility ─────────────────────────────────────────────────
   accessibility:
     name: Accessibility (WCAG 2.1 AA)
     runs-on: ubuntu-latest
     needs: smoke
+    timeout-minutes: 15
     if: ${{ github.event_name == 'schedule' || github.event.inputs.suite == 'full' }}
-
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: '20', cache: 'npm' }
-      - run: npm ci
-
-      - name: Cache Playwright browsers
-        uses: actions/cache@v4
-        id: playwright-cache
+      - uses: ./.github/actions/setup-qa
         with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-chromium-${{ hashFiles('package-lock.json') }}
-
-      - name: Install Playwright + deps
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: npx playwright install chromium --with-deps
-
-      - name: Install Playwright system deps
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium
-
-      - name: Preparar HLS fixtures
-        run: |
-          sudo apt-get install -y ffmpeg
-          npm run fixtures:generate
-
+          browser: chromium
       - run: npx playwright test tests/a11y/ --project=chromium
-
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -229,41 +185,19 @@ jobs:
           path: playwright-report/
           retention-days: 14
 
-  # ── JOB 7: Visual Regression (diario) ────────────────────────────────────
+  # ── JOB 6: Visual Regression (schedule + workflow_dispatch) ───────────────
   visual:
     name: Visual Regression
     runs-on: ubuntu-latest
     needs: smoke
+    timeout-minutes: 20
     if: ${{ github.event_name == 'schedule' || github.event.inputs.suite == 'full' }}
-
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: '20', cache: 'npm' }
-      - run: npm ci
-
-      - name: Cache Playwright browsers
-        uses: actions/cache@v4
-        id: playwright-cache
+      - uses: ./.github/actions/setup-qa
         with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-chromium-${{ hashFiles('package-lock.json') }}
-
-      - name: Install Playwright + deps
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: npx playwright install chromium --with-deps
-
-      - name: Install Playwright system deps
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium
-
-      - name: Preparar HLS fixtures
-        run: |
-          sudo apt-get install -y ffmpeg
-          npm run fixtures:generate
-
+          browser: chromium
       - run: npx playwright test tests/visual/ --project=chromium
-
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -271,52 +205,24 @@ jobs:
           path: test-results/
           retention-days: 14
 
-  # ── JOB 8: Performance / QoE — solo lunes + workflow_dispatch full ────────
-  # El QoE no cambia día a día; cobertura semanal es suficiente.
+  # ── JOB 7: Performance / QoE (schedule + workflow_dispatch full) ──────────
   performance:
     name: QoE Metrics
     runs-on: ubuntu-latest
     needs: smoke
-    if: ${{ github.event.schedule == '0 12 * * 1' || github.event.inputs.suite == 'full' }}
-
+    timeout-minutes: 20
+    if: ${{ github.event_name == 'schedule' || github.event.inputs.suite == 'full' }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: '20', cache: 'npm' }
-      - run: npm ci
-
-      - name: Cache Playwright browsers
-        uses: actions/cache@v4
-        id: playwright-cache
+      - uses: ./.github/actions/setup-qa
         with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-chromium-${{ hashFiles('package-lock.json') }}
-
-      - name: Install Playwright + deps
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: npx playwright install chromium --with-deps
-
-      - name: Install Playwright system deps
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium
-
-      - name: Preparar HLS fixtures
-        run: |
-          sudo apt-get install -y ffmpeg
-          npm run fixtures:generate
-
+          browser: chromium
       - name: Run performance tests
         run: npx playwright test tests/performance/ --project=performance
         env:
           PLATFORM_API_TOKEN: ${{ secrets.PLATFORM_API_TOKEN }}
-
-      # Compara contra baseline commiteado. Falla el job si alguna métrica
-      # empeoró > 20% respecto al baseline. Si el baseline está vacío (primera
-      # ejecución), el script hace exit 0 y no bloquea CI.
-      # Para actualizar el baseline: npm run perf:update-baseline + commit.
       - name: Compare against performance baseline
         run: npm run perf:compare
-
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -326,28 +232,25 @@ jobs:
             perf-results/current-run.json
           retention-days: 30
 
-  # ── Notificación de resultados ────────────────────────────────────────────
+  # ── Notificación de resultados (solo schedule) ────────────────────────────
   notify-results:
     name: Notificar Resultados
     runs-on: ubuntu-latest
-    needs: [smoke, e2e-chromium, e2e-cross-browser, accessibility, visual, performance]
+    needs: [smoke, integration, integration-merge, e2e-full, accessibility, visual, performance]
     if: always() && github.event_name == 'schedule'
-    # secrets no puede usarse en condiciones if: — se promueve a env del job
-    # para poder evaluarlo en el paso de Slack.
     env:
       SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
     steps:
       - name: Evaluar resultado global
         run: |
           SMOKE="${{ needs.smoke.result }}"
-          E2E_CHR="${{ needs.e2e-chromium.result }}"
-          E2E_XB="${{ needs.e2e-cross-browser.result }}"
+          INTEGRATION="${{ needs.integration.result }}"
+          E2E="${{ needs.e2e-full.result }}"
+          VISUAL="${{ needs.visual.result }}"
           PERFORMANCE="${{ needs.performance.result }}"
           ACCESSIBILITY="${{ needs.accessibility.result }}"
-          VISUAL="${{ needs.visual.result }}"
 
-          # skipped (jobs que solo corren lunes) NO cuenta como fallo.
-          if [[ "$SMOKE" == "failure" || "$E2E_CHR" == "failure" || "$E2E_XB" == "failure" || "$PERFORMANCE" == "failure" ]]; then
+          if [[ "$SMOKE" == "failure" || "$INTEGRATION" == "failure" || "$PERFORMANCE" == "failure" || "$E2E" == "failure" || "$VISUAL" == "failure" ]]; then
             echo "RESULT=failure" >> $GITHUB_ENV
             echo "ICON=❌" >> $GITHUB_ENV
           else
@@ -355,16 +258,19 @@ jobs:
             echo "ICON=✅" >> $GITHUB_ENV
           fi
 
-          echo "SMOKE_R=$SMOKE"               >> $GITHUB_ENV
-          echo "E2E_CHR_R=$E2E_CHR"           >> $GITHUB_ENV
-          echo "E2E_XB_R=$E2E_XB"             >> $GITHUB_ENV
-          echo "PERFORMANCE_R=$PERFORMANCE"   >> $GITHUB_ENV
+          echo "SMOKE_R=$SMOKE"             >> $GITHUB_ENV
+          echo "INTEGRATION_R=$INTEGRATION" >> $GITHUB_ENV
+          echo "E2E_R=$E2E"                 >> $GITHUB_ENV
+          echo "VISUAL_R=$VISUAL"           >> $GITHUB_ENV
+          echo "PERFORMANCE_R=$PERFORMANCE" >> $GITHUB_ENV
           echo "ACCESSIBILITY_R=$ACCESSIBILITY" >> $GITHUB_ENV
-          echo "VISUAL_R=$VISUAL"             >> $GITHUB_ENV
 
       - name: Notificar Slack
-        if: ${{ env.SLACK_WEBHOOK != '' }}
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
         run: |
+          [ -z "$SLACK_WEBHOOK" ] && exit 0
+          STATUS_EMOJI() { [[ "$1" == "success" ]] && echo "✅" || [[ "$1" == "skipped" ]] && echo "⏭️" || echo "❌"; }
           curl -s -X POST "$SLACK_WEBHOOK" \
             -H "Content-Type: application/json" \
             -d "{
@@ -373,10 +279,10 @@ jobs:
                 \"color\": \"$([ '${{ env.RESULT }}' = 'success' ] && echo 'good' || echo 'danger')\",
                 \"fields\": [
                   {\"title\": \"Smoke\",        \"value\": \"${{ env.SMOKE_R }}\",        \"short\": true},
-                  {\"title\": \"E2E chromium\", \"value\": \"${{ env.E2E_CHR_R }}\",      \"short\": true},
-                  {\"title\": \"E2E ff/wk\",    \"value\": \"${{ env.E2E_XB_R }}\",       \"short\": true},
-                  {\"title\": \"A11y\",         \"value\": \"${{ env.ACCESSIBILITY_R }}\",\"short\": true},
+                  {\"title\": \"Integration\",  \"value\": \"${{ env.INTEGRATION_R }}\",  \"short\": true},
+                  {\"title\": \"E2E\",          \"value\": \"${{ env.E2E_R }}\",          \"short\": true},
                   {\"title\": \"Visual\",       \"value\": \"${{ env.VISUAL_R }}\",       \"short\": true},
+                  {\"title\": \"A11y\",         \"value\": \"${{ env.ACCESSIBILITY_R }}\",\"short\": true},
                   {\"title\": \"Performance\",  \"value\": \"${{ env.PERFORMANCE_R }}\",  \"short\": true}
                 ]
               }]

@@ -1,0 +1,72 @@
+version: "1.0"
+module: dash
+last_updated: "2026-06-08"
+
+internal:
+  - id: playback-core
+    reason: "DashHandler es el handler concreto del playback-core. Se monta como componente React dentro del árbol del player cuando el source es DASH. Implementa la misma interfaz get/set que HlsHandler."
+    coupling: high
+    files:
+      - "src/player/handler/dash/handler.js"
+      - "src/player/base.js"
+
+  - id: events
+    reason: "El handler emite todos los eventos públicos y privados via internalEmitter. El mapeo dash.js → player events ocurre en _bindDashEvents(). Los eventos HTML5 se bridgean via _nativeProps."
+    coupling: high
+    files:
+      - "src/player/handler/dash/handler.js"
+      - "constants.cjs"
+
+  - id: drm
+    reason: "getDashProtectionData() es invocado antes de player.initialize() para pasar datos de protección Widevine/PlayReady a dash.js. Sin DRM el módulo opera normalmente."
+    coupling: medium
+    files:
+      - "src/player/drm/getDashProtectionData.js"
+      - "src/player/handler/dash/handler.js"
+
+  - id: platform-config
+    reason: "La URL del MPD se obtiene de la plataforma via src.mpd. El tipo de contenido (vod/live/dvr) determina el comportamiento del handler (duration, seek, DVR window). context.mse.bufferlength controla la configuración de buffer de dash.js."
+    coupling: medium
+    files:
+      - "src/platform/loadConfig.js"
+
+  - id: text-tracks
+    reason: "El handler renderiza <TextTracks /> dentro del elemento <video>. Las subtítulos/captions de streams DASH se manejan via este componente."
+    coupling: low
+    files:
+      - "src/player/textTracks/index.js"
+
+  - id: audio-tracks
+    reason: "AudioTrackListProxy wraps las audio tracks de dash.js para exponerlas con la misma interfaz que HLS."
+    coupling: low
+    files:
+      - "src/player/handler/utils/audioTrackListProxy.js"
+
+external:
+  - id: dashjs
+    package: "dashjs"
+    version: "^5.1.1"
+    reason: "Motor principal de reproducción DASH. Gestiona fetch del MPD, parseo, selección de segmentos, MSE (SourceBuffer), ABR automático (BOLA/DYNAMIC), DRM (EME), DVR window."
+    risk: high
+    note: "dash.js 5.x introduce cambios en la API de representaciones vs 4.x. El player usa getRepresentationsByType(), setRepresentationForTypeByIndex(), getCurrentRepresentationForType() — verificar compatibilidad al actualizar. La API getDvrWindow() expone { start, size } — documentada en dash.js 5.x timing-apis."
+
+  - id: system73-sdk
+    package: "cdn externo (URL configurable en metadata.peering.system73.dash)"
+    version: "variable (lazy-loaded desde CDN)"
+    reason: "SDK P2P opcional de System73 que wraps dash.js para optimización CDN P2P. Se carga únicamente cuando metadata.peering.system73.enabled=true."
+    risk: medium
+    note: "El SDK es externo y puede no estar disponible. getSystem73DashSDK() tiene manejo de error: si falla, el player continúa sin P2P (degradación suave). El SDK debe exponerse como window.S73DashjsWrapper. La integración usa el patrón wrapPlayer(player) antes de initialize()."
+
+  - id: mse-browser
+    package: "MediaSource API (Web Platform — no npm)"
+    version: "W3C Media Source Extensions Level 1 / Level 2 (draft)"
+    reason: "dash.js usa MSE nativo del browser (SourceBuffer) para gestionar el buffer de video y audio. Sin MSE nativo (ej: iOS Safari < 17.1) DASH no funciona."
+    risk: high
+    note: "iOS Safari no soporta MSE para video con DRM hasta versiones recientes. DASH no funciona nativamente en iOS Safari — el player debe servir HLS para Apple devices. En Playwright WebKit (basado en Safari), DASH puede tener comportamiento diferente al Chrome. Los tests e2e de DASH tienen skip en WebKit."
+
+  - id: eme-browser
+    package: "Encrypted Media Extensions (Web Platform — no npm)"
+    version: "W3C EME"
+    reason: "Requerido para reproducción de streams DASH con DRM (Widevine, PlayReady). dash.js gestiona EME internamente."
+    risk: medium
+    note: "Widevine L1 requiere hardware seguro — solo disponible en Chrome/Edge en hardware certificado. En CI (Linux headless) solo Widevine L3 está disponible."

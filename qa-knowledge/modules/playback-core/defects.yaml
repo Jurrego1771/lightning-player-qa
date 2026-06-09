@@ -1,0 +1,81 @@
+version: "1.0"
+module: playback-core
+last_updated: "2026-06-08"
+
+defects:
+  - id: PLAY-DEF-001
+    status: known_workaround
+    severity: low
+    title: "seeking event no se emite cuando target de seek es posición 0"
+    description: "Cuando se asigna player.currentTime = 0, el browser no emite el evento 'seeking' del HTMLMediaElement — solo emite 'seeked'. Esto viola el orden esperado de eventos (seeking → seeked) para todos los valores de seek."
+    workaround: "Tests de seeking deben usar un valor > 0 como target (ej: seek a 5 en lugar de 0). La lógica de negocio que depende de 'seeking' antes de 'seeked' debe ser consciente de que este par puede no emitirse para seeks a posición 0."
+    source_comment: "tests/integration/playback-core-edge.spec.ts — comentario: 'BUG-PLAYBACK-001: seeking hacia 0 omite el evento seeking. Para otros valores de seek el comportamiento es correcto'"
+    industry_known: true
+    regression_risk: low
+    notes: "Comportamiento del browser nativo (HTMLMediaElement): algunos browsers no emiten 'seeking' cuando currentTime ya es 0 y se asigna 0 nuevamente. No es un bug del player en sí."
+
+  - id: PLAY-DEF-002
+    status: known_limitation
+    severity: medium
+    title: "play() antes de ready no es testeable con el harness actual"
+    description: "El harness QA (goto()) espera window.__qa.initialized === true antes de retornar, que se setea después de que el player emite 'ready'. Por tanto, no es posible llamar play() antes de ready usando el flujo normal del harness. El comportamiento documentado (lanzar 'Player is not ready') no está cubierto por tests automáticos."
+    workaround: "Se requiere un hook de pre-ready en el harness (window.__preReadyPlayer) o un test de iframe sin harness para testear este escenario. El test existe como test.fixme() en playback-core-edge.spec.ts."
+    source_comment: "tests/integration/playback-core-edge.spec.ts test.fixme línea 253"
+    industry_known: false
+    regression_risk: medium
+    notes: "El comportamiento del player es correcto — el bug es la limitación del harness. Sin embargo, si este guard se elimina del player, no hay test que lo detecte."
+
+  - id: PLAY-DEF-003
+    status: known_limitation
+    severity: low
+    title: "DASH no expone propiedades ABR (level, levels, bandwidth, bitrate)"
+    description: "DashHandler usa playback nativo del browser (MSE nativo, sin dash.js). Las propiedades level/levels/bandwidth/bitrate/nextLevel/autoLevelEnabled retornan undefined o null para contenido DASH. player.sourceType === 'native', no 'dash', lo que puede confundir a integradores que esperan distinguir el tipo de stream."
+    workaround: "Verificar player.sourceType !== 'native' antes de acceder a propiedades ABR. Para content DASH, el ABR es manejado completamente por el browser sin posibilidad de control desde el player."
+    source_comment: "src/player/base.js comentario línea 461: '// DASH has no native browser support; always use dashjs.' — este comentario es incorrecto, el código usa nativo, no dashjs."
+    industry_known: false
+    regression_risk: low
+    notes: "El comentario en el código dice 'always use dashjs' pero la implementación real usa MSE nativo. Esta discrepancia puede confundir a futuros desarrolladores."
+
+  - id: PLAY-DEF-004
+    status: known_workaround
+    severity: medium
+    title: "volumechange event puede ser suprimido por workaround de bug de Chrome"
+    description: "Chrome puede resetear el volumen a 1 aleatoriamente al cargar contenido. NativeHandler tiene un workaround que detecta este reset y lo corrige, pero como efecto secundario puede suprimir eventos volumechange legítimos cuando el volumen del elemento coincide con props.volume antes de la corrección."
+    workaround: "Tests que verifiquen volumen deben usar player.volume getter directamente con expect.poll() en lugar de esperar el evento volumechange. Si se necesita el evento, esperar a que el player esté en estado 'playing' antes de cambiar el volumen."
+    source_comment: "src/player/handler/native.js _handleEvent() case volumechange — comentario: 'Por alguna razon el volumen salta a 1 de forma random al cargar contenidos'"
+    industry_known: true
+    regression_risk: low
+    notes: "Bug de Chromium reportado en bug #969049. NativeHandler tiene el workaround correcto pero con el efecto secundario mencionado."
+
+  - id: PLAY-DEF-005
+    status: known_limitation
+    severity: low
+    title: "loadedHLSHandler global contamina selección de variant en multi-instancia"
+    description: "La variable global loadedHLSHandler en base.js cachea el primer HLS handler variant que se carga en la página. Instancias posteriores con diferente hlsVariant pueden recibir el variant ya cacheado en lugar del solicitado."
+    workaround: "No hay workaround directo. Si se necesitan distintos hlsVariants, usar iframes separados. En producción, todas las instancias del player en la misma página deben usar el mismo hlsVariant."
+    source_comment: "src/player/base.js — variable global `let loadedHLSHandler = null` línea 29"
+    industry_known: false
+    regression_risk: medium
+    notes: "Afecta principalmente casos de multi-instancia con configuraciones divergentes de hlsVariant."
+
+  - id: PLAY-DEF-006
+    status: known_limitation
+    severity: low
+    title: "FairPlay DRM solo funciona en Safari real — no en Playwright WebKit"
+    description: "FairPlay requiere WebKitMediaKeys y webkitneedkey events, que no están disponibles en Playwright WebKit (no tiene el CDM de FairPlay). Tests de DRM con FairPlay requieren Safari real en macOS físico o BrowserStack Tier 2."
+    workaround: "Tests de FairPlay están marcados como Tier 2 y se ejecutan en Safari real. En Playwright, los tests de HLS con FairPlay se skipean con 'HLS via hls.js no soportado en Playwright WebKit'."
+    source_comment: "src/player/handler/native.js _setupFairPlay() — verifica typeof window.WebKitMediaKeys !== 'undefined'"
+    industry_known: true
+    regression_risk: low
+    notes: "Limitación del ecosistema, no del player. Widevine (Chrome) y PlayReady (Edge) sí son testeables en Playwright."
+
+  - id: PLAY-DEF-007
+    status: open
+    severity: low
+    title: "Comentario incorrecto en código: DashHandler dice 'always use dashjs' pero usa MSE nativo"
+    description: "En base.js getDerivedStateFromProps existe el comentario 'DASH has no native browser support; always use dashjs.' seguido de código que establece _canPlayNative = false para DASH, lo que en realidad hace que se use DashHandler (que usa MSE nativo). El comentario es factualmente incorrecto y puede confundir a desarrolladores que crean que hay dash.js en el proyecto."
+    workaround: "Ninguno requerido para funcionalidad. Solo documentar la inconsistencia para evitar confusión en onboarding."
+    source_comment: "src/player/base.js línea 350-351 comentario sobre DASH"
+    industry_known: false
+    regression_risk: low
+    notes: "Impacto en QA: cualquier test que asuma dash.js o propiedades ABR para DASH será incorrecto."
