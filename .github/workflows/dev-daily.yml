@@ -55,14 +55,13 @@ jobs:
       - uses: ./.github/actions/setup-qa
         with:
           browser: chromium
-          fixtures: 'false'
+          # fixtures default 'true': algunos contract tests cargan media HLS real
+          # (waitForEvent 'loadedmetadata') y necesitan los streams locales en :9001.
+          # setup-qa cachea los fixtures, así que solo la 1ª corrida paga la generación.
       - name: Contract tests
         run: npx playwright test tests/contract/ --project=contract
         env:
           PLATFORM_API_TOKEN: ${{ secrets.PLATFORM_API_TOKEN }}
-          # Contract son tests de API-shape: no usan streams HLS locales, así que
-          # no requieren ffmpeg/fixtures. Saltamos el check fatal del globalSetup.
-          QA_SKIP_HLS_FIXTURE_CHECK: '1'
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
