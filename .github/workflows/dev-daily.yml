@@ -373,6 +373,7 @@ jobs:
           CRIT_S: ${{ needs.integration-critical.outputs.summary }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           RUN_NUM: ${{ github.run_number }}
+          PAGES_URL: https://jurrego1771.github.io/lightning-player-qa/
         run: |
           [ -z "$SLACK_WEBHOOK" ] && exit 0
           # Veredicto: bloqueantes = contract + smoke + (en completo) integration/e2e/visual/perf.
@@ -413,7 +414,7 @@ jobs:
               {"type":"divider"},
               {"type":"section","fields":[$FIELDS]}$CRIT_BLOCK,
               {"type":"divider"},
-              {"type":"context","elements":[{"type":"mrkdwn","text":"<$RUN_URL|Run #$RUN_NUM ↗>"}]}
+              {"type":"context","elements":[{"type":"mrkdwn","text":"<$PAGES_URL|📊 Ver reporte HTML ↗>  ·  <$RUN_URL|run #$RUN_NUM>"}]}
             ]
           }
           EOF
