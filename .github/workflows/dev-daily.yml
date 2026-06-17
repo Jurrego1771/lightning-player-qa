@@ -286,7 +286,7 @@ jobs:
     # Notifica en cron (schedule) y también en workflow_dispatch (para validar el flujo Slack bajo demanda).
     if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     env:
-      SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+      SLACK_WEBHOOK: ${{ secrets.SLACK_TEST_BATTERY_WEBHOOK_URL }}
     steps:
       - name: Evaluar resultado global
         run: |
@@ -318,7 +318,7 @@ jobs:
 
       - name: Notificar Slack
         env:
-          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          SLACK_WEBHOOK: ${{ secrets.SLACK_TEST_BATTERY_WEBHOOK_URL }}
         run: |
           [ -z "$SLACK_WEBHOOK" ] && exit 0
           STATUS_EMOJI() { [[ "$1" == "success" ]] && echo "✅" || [[ "$1" == "skipped" ]] && echo "⏭️" || echo "❌"; }
