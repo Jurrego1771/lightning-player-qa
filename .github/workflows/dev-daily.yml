@@ -125,7 +125,9 @@ jobs:
     name: Integration — Shard ${{ matrix.shard }}/2
     runs-on: ubuntu-latest
     needs: smoke
-    timeout-minutes: 12
+    # CI es más lento que local: 2 shards de ~256 tests no terminan en 12 min.
+    # 20 min da margen; si vuelve a timeoutear, subir a 3-4 shards en vez del timeout.
+    timeout-minutes: 20
     if: ${{ github.event_name == 'pull_request' || github.event_name == 'schedule' || github.event.inputs.suite == 'full' }}
     strategy:
       fail-fast: false
