@@ -59,7 +59,7 @@ export const ContentIds = {
   episodeWithNext: process.env.CONTENT_ID_EPISODE_WITH_NEXT || 'TODO_EPISODE_WITH_NEXT_ID',
 
   /** VOD DASH — stream VOD con manifiesto MPD (type: 'media') */
-  dashVod: process.env.CONTENT_ID_DASH_VOD || '69b0918a741d2bbba0cacf78',
+  dashVod: process.env.CONTENT_ID_DASH_VOD || '6a1448a663e206efb1ae2ded',
 
   /** Live DASH — stream live con manifiesto MPD (type: 'live') */
   dashLive: process.env.CONTENT_ID_DASH_LIVE || '6a0f2956a2a6f91404c3cc0c',

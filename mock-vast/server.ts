@@ -11,6 +11,7 @@
  *   GET /vast/empty            → VAST vacío (no ads)
  *   GET /vast/error-303        → VAST error redirect (code 303)
  *   GET /vast/pod              → VAST con 3 ads en pod
+ *   GET /vast/pausead          → VAST NonLinear para pause ad (overlay)
  *   GET /vmap/preroll-midroll  → VMAP con pre-roll + mid-roll a los 30s
  *   GET /vmap/midroll-only     → VMAP con mid-roll único a los 5s (sin pre-roll)
  *   GET /vast/full-metadata    → VAST con AdSystem/AdTitle/MediaFile poblados + skippable
@@ -28,6 +29,18 @@
 import express from 'express'
 import * as fs from 'fs'
 import * as path from 'path'
+import { PNG } from 'pngjs'
+
+// Imagen del creativo para pause ads (NonLinear). Un PNG sólido 320x180 con tamaño
+// no-cero para que el overlay sea visible (toBeVisible). El VAST de pausead apunta a
+// /track/pausead-image.jpg como StaticResource.
+const TRACK_IMAGE: Buffer = (() => {
+  const png = new PNG({ width: 320, height: 180 })
+  for (let i = 0; i < png.data.length; i += 4) {
+    png.data[i] = 60; png.data[i + 1] = 90; png.data[i + 2] = 140; png.data[i + 3] = 255
+  }
+  return PNG.sync.write(png)
+})()
 
 const app = express()
 const PORT = process.env.MOCK_VAST_PORT ? parseInt(process.env.MOCK_VAST_PORT) : 9999
@@ -60,6 +73,19 @@ app.get('/vast/midroll', serve('midroll.xml'))
 app.get('/vast/empty', serve('empty.xml'))
 app.get('/vast/error-303', serve('error-303.xml'))
 app.get('/vast/pod', serve('pod.xml'))
+app.get('/vast/pausead', serve('pausead.xml'))
+
+// ── Tracking / creative assets del pause ad ────────────────────────────────────
+// El VAST de pausead referencia /track/pausead-image.jpg (creativo) y beacons
+// (/track/pausead-impression, /track/pausead-click). Servimos una imagen real para
+// el creativo y 204 para los beacons (fire-and-forget).
+app.get('/track/:name', (req: express.Request, res: express.Response) => {
+  if (/\.(jpg|jpeg|png|gif|webp)$/i.test(String(req.params.name))) {
+    res.type('image/png').send(TRACK_IMAGE)
+  } else {
+    res.status(204).end() // beacon de tracking
+  }
+})
 app.get('/vmap/preroll-midroll', serve('vmap-preroll-midroll.xml'))
 app.get('/vmap/midroll-only', serve('vmap-midroll-only.xml'))
 app.get('/vast/full-metadata', serve('vast-full-metadata.xml'))
