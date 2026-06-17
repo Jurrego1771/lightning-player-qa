@@ -50,6 +50,8 @@ jobs:
     name: Contract — API Shape
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    outputs:
+      summary: ${{ steps.summary.outputs.summary }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-qa
@@ -62,6 +64,17 @@ jobs:
         run: npx playwright test tests/contract/ --project=contract
         env:
           PLATFORM_API_TOKEN: ${{ secrets.PLATFORM_API_TOKEN }}
+      - name: Summary
+        id: summary
+        if: always()
+        run: |
+          if [ -f playwright-report/report.json ]; then
+            P=$(jq -r '.stats.expected // 0' playwright-report/report.json)
+            F=$(jq -r '.stats.unexpected // 0' playwright-report/report.json)
+            echo "summary=$P/$((P+F))" >> "$GITHUB_OUTPUT"
+          else
+            echo "summary=—" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
@@ -75,6 +88,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: contract
     timeout-minutes: 20
+    outputs:
+      summary: ${{ steps.summary.outputs.summary }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-qa
@@ -84,6 +99,17 @@ jobs:
         run: npx playwright test tests/smoke/ --project=chromium
         env:
           PLATFORM_API_TOKEN: ${{ secrets.PLATFORM_API_TOKEN }}
+      - name: Summary
+        id: summary
+        if: always()
+        run: |
+          if [ -f playwright-report/report.json ]; then
+            P=$(jq -r '.stats.expected // 0' playwright-report/report.json)
+            F=$(jq -r '.stats.unexpected // 0' playwright-report/report.json)
+            echo "summary=$P/$((P+F))" >> "$GITHUB_OUTPUT"
+          else
+            echo "summary=—" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
@@ -127,6 +153,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: smoke
     timeout-minutes: 12
+    outputs:
+      summary: ${{ steps.summary.outputs.summary }}
     # NO-BLOQUEANTE: corre informativo. Hoy estos tests de media son inestables
     # (timing) — se reportan en Slack pero no marcan el daily en rojo. Cuando se
     # estabilicen (validar en CI limpio), quitar continue-on-error para hacerlo gate.
@@ -146,6 +174,17 @@ jobs:
         run: npx playwright test tests/integration/ --project=chromium --grep "@critical" --workers=1
         env:
           PLATFORM_API_TOKEN: ${{ secrets.PLATFORM_API_TOKEN }}
+      - name: Summary
+        id: summary
+        if: always()
+        run: |
+          if [ -f playwright-report/report.json ]; then
+            P=$(jq -r '.stats.expected // 0' playwright-report/report.json)
+            F=$(jq -r '.stats.unexpected // 0' playwright-report/report.json)
+            echo "summary=$F fallos / $P ok" >> "$GITHUB_OUTPUT"
+          else
+            echo "summary=—" >> "$GITHUB_OUTPUT"
+          fi
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
@@ -282,60 +321,69 @@ jobs:
   notify-results:
     name: Notificar Resultados
     runs-on: ubuntu-latest
-    needs: [smoke, integration-critical, integration, integration-merge, e2e-full, accessibility, visual, performance]
+    needs: [contract, smoke, integration-critical, integration, integration-merge, e2e-full, accessibility, visual, performance]
     # Notifica en cron (schedule) y también en workflow_dispatch (para validar el flujo Slack bajo demanda).
     if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     env:
       SLACK_WEBHOOK: ${{ secrets.SLACK_TEST_BATTERY_WEBHOOK_URL }}
     steps:
-      - name: Evaluar resultado global
-        run: |
-          SMOKE="${{ needs.smoke.result }}"
-          INTEGRATION_CRIT="${{ needs.integration-critical.result }}"
-          INTEGRATION="${{ needs.integration.result }}"
-          E2E="${{ needs.e2e-full.result }}"
-          VISUAL="${{ needs.visual.result }}"
-          PERFORMANCE="${{ needs.performance.result }}"
-          ACCESSIBILITY="${{ needs.accessibility.result }}"
-
-          # integration-critical es NO-BLOQUEANTE (informativo) → NO entra en la condición.
-          # Bloqueantes: smoke + (en completo) integration/e2e/visual/perf.
-          if [[ "$SMOKE" == "failure" || "$INTEGRATION" == "failure" || "$PERFORMANCE" == "failure" || "$E2E" == "failure" || "$VISUAL" == "failure" ]]; then
-            echo "RESULT=failure" >> $GITHUB_ENV
-            echo "ICON=❌" >> $GITHUB_ENV
-          else
-            echo "RESULT=success" >> $GITHUB_ENV
-            echo "ICON=✅" >> $GITHUB_ENV
-          fi
-
-          echo "SMOKE_R=$SMOKE"             >> $GITHUB_ENV
-          echo "INTEGRATION_CRIT_R=$INTEGRATION_CRIT" >> $GITHUB_ENV
-          echo "INTEGRATION_R=$INTEGRATION" >> $GITHUB_ENV
-          echo "E2E_R=$E2E"                 >> $GITHUB_ENV
-          echo "VISUAL_R=$VISUAL"           >> $GITHUB_ENV
-          echo "PERFORMANCE_R=$PERFORMANCE" >> $GITHUB_ENV
-          echo "ACCESSIBILITY_R=$ACCESSIBILITY" >> $GITHUB_ENV
-
       - name: Notificar Slack
         env:
           SLACK_WEBHOOK: ${{ secrets.SLACK_TEST_BATTERY_WEBHOOK_URL }}
+          CONTRACT_R: ${{ needs.contract.result }}
+          SMOKE_R: ${{ needs.smoke.result }}
+          CRIT_R: ${{ needs.integration-critical.result }}
+          INTEGRATION_R: ${{ needs.integration.result }}
+          E2E_R: ${{ needs.e2e-full.result }}
+          A11Y_R: ${{ needs.accessibility.result }}
+          VISUAL_R: ${{ needs.visual.result }}
+          PERF_R: ${{ needs.performance.result }}
+          CONTRACT_S: ${{ needs.contract.outputs.summary }}
+          SMOKE_S: ${{ needs.smoke.outputs.summary }}
+          CRIT_S: ${{ needs.integration-critical.outputs.summary }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RUN_NUM: ${{ github.run_number }}
         run: |
           [ -z "$SLACK_WEBHOOK" ] && exit 0
-          STATUS_EMOJI() { [[ "$1" == "success" ]] && echo "✅" || [[ "$1" == "skipped" ]] && echo "⏭️" || echo "❌"; }
-          curl -s -X POST "$SLACK_WEBHOOK" \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"text\": \"${{ env.ICON }} *QA Dev — Suite Diaria* (<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|Run #${{ github.run_number }}>)\",
-              \"attachments\": [{
-                \"color\": \"$([ '${{ env.RESULT }}' = 'success' ] && echo 'good' || echo 'danger')\",
-                \"fields\": [
-                  {\"title\": \"Smoke\",        \"value\": \"${{ env.SMOKE_R }}\",        \"short\": true},
-                  {\"title\": \"Integration @critical\", \"value\": \"${{ env.INTEGRATION_CRIT_R }}\", \"short\": true},
-                  {\"title\": \"Integration\",  \"value\": \"${{ env.INTEGRATION_R }}\",  \"short\": true},
-                  {\"title\": \"E2E\",          \"value\": \"${{ env.E2E_R }}\",          \"short\": true},
-                  {\"title\": \"Visual\",       \"value\": \"${{ env.VISUAL_R }}\",       \"short\": true},
-                  {\"title\": \"A11y\",         \"value\": \"${{ env.ACCESSIBILITY_R }}\",\"short\": true},
-                  {\"title\": \"Performance\",  \"value\": \"${{ env.PERFORMANCE_R }}\",  \"short\": true}
-                ]
-              }]
-            }"
+          # Veredicto: bloqueantes = contract + smoke + (en completo) integration/e2e/visual/perf.
+          # integration-critical NO entra (es informativo).
+          VERDICT="PASÓ"; TITLE_ICON="✅"
+          for r in "$CONTRACT_R" "$SMOKE_R" "$INTEGRATION_R" "$E2E_R" "$VISUAL_R" "$PERF_R" "$A11Y_R"; do
+            [ "$r" = "failure" ] && { VERDICT="FALLÓ"; TITLE_ICON="❌"; }
+          done
+
+          # Fields solo de jobs que corrieron (no skipped), sin iconos por job.
+          FIELDS=""
+          addf() {
+            local label="$1" res="$2" val="$3"
+            [ -z "$res" ] || [ "$res" = "skipped" ] && return
+            [ -z "$val" ] && val="$res"
+            [ -n "$FIELDS" ] && FIELDS="$FIELDS,"
+            FIELDS="$FIELDS{\"type\":\"mrkdwn\",\"text\":\"*$label*\n$val\"}"
+          }
+          addf "Contract" "$CONTRACT_R" "$CONTRACT_S"
+          addf "Smoke" "$SMOKE_R" "$SMOKE_S"
+          addf "Integration" "$INTEGRATION_R" ""
+          addf "E2E" "$E2E_R" ""
+          addf "A11y" "$A11Y_R" ""
+          addf "Visual" "$VISUAL_R" ""
+          addf "Performance" "$PERF_R" ""
+
+          # Línea informativa de @critical (si corrió).
+          CRIT_BLOCK=""
+          if [ -n "$CRIT_R" ] && [ "$CRIT_R" != "skipped" ]; then
+            CRIT_BLOCK=",{\"type\":\"section\",\"text\":{\"type\":\"mrkdwn\",\"text\":\"*Integration @critical* (informativo, no bloquea): ${CRIT_S:-$CRIT_R}\"}}"
+          fi
+
+          curl -s -X POST "$SLACK_WEBHOOK" -H "Content-Type: application/json" -d @- <<EOF
+          {
+            "blocks": [
+              {"type":"header","text":{"type":"plain_text","text":"⚡ Lightning Suite Daily — $VERDICT $TITLE_ICON","emoji":true}},
+              {"type":"section","text":{"type":"mrkdwn","text":"rama \`develop\` · gate diario"}},
+              {"type":"divider"},
+              {"type":"section","fields":[$FIELDS]}$CRIT_BLOCK,
+              {"type":"divider"},
+              {"type":"context","elements":[{"type":"mrkdwn","text":"<$RUN_URL|Run #$RUN_NUM ↗>"}]}
+            ]
+          }
+          EOF
