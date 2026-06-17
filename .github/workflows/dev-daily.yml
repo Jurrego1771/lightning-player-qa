@@ -221,7 +221,10 @@ jobs:
         with:
           browser: chromium
       - name: Integration tests (shard ${{ matrix.shard }}/4)
-        run: npx playwright test tests/integration/ --project=chromium --shard=${{ matrix.shard }}/4 --reporter=blob
+        # Excluye @analytics (youbora: 94 tests con beacons reales a youboranqs01.com,
+        # lentos y dependientes de red). NO se ejecutan en el daily — correrlos manualmente
+        # cuando se necesite validar analytics: npx playwright test tests/integration/youbora.spec.ts
+        run: npx playwright test tests/integration/ --project=chromium --grep-invert "@analytics" --shard=${{ matrix.shard }}/4 --reporter=blob
         env:
           PLATFORM_API_TOKEN: ${{ secrets.PLATFORM_API_TOKEN }}
       - uses: actions/upload-artifact@v4
