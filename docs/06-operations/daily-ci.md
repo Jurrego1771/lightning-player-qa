@@ -1,7 +1,7 @@
 # Daily QA en GitHub Actions (`dev-daily.yml`)
 
 Suite QA automatizada contra `develop` del player. Filosofía: **a diario corre solo
-lo crítico y rápido ("lo que no puede fallar"); lo amplio/lento corre semanal o en PR.**
+lo crítico y rápido ("lo que no puede fallar"); lo amplio/lento corre en PR o bajo demanda.**
 
 ## Cuándo corre y qué ejecuta
 
@@ -9,13 +9,13 @@ lo crítico y rápido ("lo que no puede fallar"); lo amplio/lento corre semanal 
 |---|---|---|
 | **push → main** | contract + smoke | sí |
 | **PR → main** | contract + smoke + integration completo | sí |
-| **schedule Mar–Vie 7 AM** (`0 12 * * 2-5`) | contract + smoke + integration `@critical` | contract/smoke sí · `@critical` **no** |
-| **schedule Lunes 7 AM** (`0 12 * * 1`) | + e2e cross-browser + integration completo + a11y + visual + perf | sí |
+| **schedule L–V 7 AM** (`0 12 * * 1-5`) | contract + smoke + integration `@critical` | contract/smoke sí · `@critical` **no** |
 | **workflow_dispatch** | según input `suite` (full / e2e-only / smoke-only) + `@critical` | sí |
 
-El split ligero/completo se decide con `github.event.schedule` (el cron exacto).
+La suite completa (e2e cross-browser + integration full + a11y + visual + perf) **ya no corre
+en ningún cron** — solo bajo demanda con `workflow_dispatch suite=full` (o en PR para integration).
 
-## El gate diario (Mar–Vie)
+## El gate diario (L–V)
 
 - **Bloqueante** (si falla → daily rojo, accionable): **contract** (API shape) + **smoke** (init/play/pause). Deterministas, ~10 min con cache.
 - **Informativo** (`continue-on-error: true`): **integration `@critical`** (`--workers=1`). Hoy estos tests de media (DASH/HLS/sourcechange/playback) son **flaky** (timing) — se reportan en Slack pero **no marcan el daily en rojo**. Confirmado flaky en CI limpio, no solo local.
