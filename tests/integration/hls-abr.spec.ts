@@ -19,7 +19,7 @@ import {
   measureStartup,
 } from '../../helpers/qoe-metrics'
 
-test.describe('HLS Adaptive Bitrate', { tag: ['@integration', '@hls'] }, () => {
+test.describe('HLS Adaptive Bitrate', { tag: ['@critical', '@integration', '@hls'] }, () => {
 
   test('bajo bandwidth degradado, player selecciona calidad baja', async ({ isolatedPlayer: player, page }) => {
     const cdp = await createCDPSession(page)
@@ -99,7 +99,7 @@ test.describe('HLS Adaptive Bitrate', { tag: ['@integration', '@hls'] }, () => {
   })
 })
 
-test.describe('HLS ABR — nextLevel vs level', { tag: ['@integration', '@hls'] }, () => {
+test.describe('HLS ABR — nextLevel vs level', { tag: ['@critical', '@integration', '@hls'] }, () => {
 
   test('nextLevel es -1 (auto) al inicio — no hay nivel forzado', async ({ isolatedPlayer: player }) => {
     await player.goto({ type: 'media', id: MockContentIds.vod, autoplay: true })

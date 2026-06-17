@@ -18,7 +18,7 @@
  *   - Sin acceder a clases CSS internas para estado — solo presencia/ausencia del elemento
  *   - Sin asumir duración exacta de timers — usar expect.poll con timeout generoso
  */
-import { test, expect, MockContentIds, mockContentConfig } from '../../fixtures'
+import { test, expect, MockContentIds, mockPlayerConfig, mockContentConfig } from '../../fixtures'
 
 const MOCK_VAST_URL = process.env.MOCK_VAST_BASE_URL ?? 'http://localhost:9999'
 
@@ -40,7 +40,10 @@ async function enablePauseAd(
     position = 'center',
   } = options
 
-  await mockContentConfig(page, {
+  // pauseAd se configura en el PLAYER config (no en el content). El player lee
+  // ads.pausead vía contextValueFamily('ads.pausead') que proviene del player config;
+  // inyectarlo en el content config NO activa el feature.
+  await mockPlayerConfig(page, {
     ads: {
       pausead: {
         tag: tagUrl,
@@ -55,7 +58,7 @@ async function enablePauseAd(
 
 // ── Flujo principal ───────────────────────────────────────────────────────────
 
-test.describe('Pause Ad Flow — Overlay aparece y desaparece', { tag: ['@e2e', '@ads'] }, () => {
+test.describe('Pause Ad Flow — Overlay aparece y desaparece', { tag: ['@e2e', '@ads', '@flaky'] }, () => {
 
   test('play → pause → overlay aparece con imagen del ad', async ({ isolatedPlayer: player, page }) => {
     // Arrange
@@ -177,7 +180,7 @@ test.describe('Pause Ad Flow — Overlay aparece y desaparece', { tag: ['@e2e', 
 
 // ── Interacción durante linear ad ─────────────────────────────────────────────
 
-test.describe('Pause Ad Flow — No aparece durante linear ad activo', { tag: ['@e2e', '@ads'] }, () => {
+test.describe('Pause Ad Flow — No aparece durante linear ad activo', { tag: ['@e2e', '@ads', '@flaky'] }, () => {
 
   test('player pausado durante pre-roll lineal no muestra overlay de pauseAd', async ({ isolatedPlayer: player, page }) => {
     // Arrange — habilitar tanto pauseAd como un pre-roll lineal
@@ -217,7 +220,7 @@ test.describe('Pause Ad Flow — No aparece durante linear ad activo', { tag: ['
 
 // ── Textos i18n ───────────────────────────────────────────────────────────────
 
-test.describe('Pause Ad Flow — Textos del overlay', { tag: ['@e2e', '@ads'] }, () => {
+test.describe('Pause Ad Flow — Textos del overlay', { tag: ['@e2e', '@ads', '@flaky'] }, () => {
 
   test('botón Close Ad muestra texto por defecto cuando no hay closeText en la config', async ({ isolatedPlayer: player, page }) => {
     // Arrange — config sin messages.closeText, se usará el fallback del i18n

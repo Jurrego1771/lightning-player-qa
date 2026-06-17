@@ -39,7 +39,9 @@ function waitForAdBreak(
   })
 }
 
-test.describe('IMA ad tag parameters', () => {
+// @flaky: pega a pubads.g.doubleclick.net REAL → depende del fill de Google
+// (no-determinista, no-fill intermitente en headless/CI). Excluido del gate diario.
+test.describe('IMA ad tag parameters', { tag: ['@flaky'] }, () => {
   test.setTimeout(45_000)
 
   // El IMA SDK de Google no dispara requests en headless WebKit ni Firefox —

@@ -26,7 +26,7 @@
  */
 import { test, expect, MockContentIds } from '../../fixtures'
 
-test.describe('sourcechange — cambio de contenido via load()', { tag: ['@integration'] }, () => {
+test.describe('sourcechange — cambio de contenido via load()', { tag: ['@critical', '@integration'] }, () => {
 
   test('sourcechange se emite al cargar contenido con src diferente', async ({ isolatedPlayer: player, page }) => {
     await player.goto({ type: 'media', id: MockContentIds.vod, autoplay: true })

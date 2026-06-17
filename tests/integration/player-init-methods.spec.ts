@@ -47,7 +47,7 @@ async function initPlayer(
 
 for (const { id: method, label } of INIT_METHODS) {
 
-  test.describe(`Init: ${label}`, { tag: ['@integration'] }, () => {
+  test.describe(`Init: ${label}`, { tag: ['@critical', '@integration'] }, () => {
 
     test(`player inicializa sin error [${method}]`, async ({ isolatedPlayer: player }) => {
       await initPlayer(player, { type: 'media', id: MockContentIds.vod, autoplay: false }, method)

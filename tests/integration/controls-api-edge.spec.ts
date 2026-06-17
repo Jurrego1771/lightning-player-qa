@@ -17,7 +17,7 @@ import { test, expect, MockContentIds } from '../../fixtures'
 // ── AC-CONTROLS-003: play() concurrente ──────────────────────────────────────
 
 test.describe('Controls API — play() concurrente', {
-  tag: ['@integration', '@controls'],
+  tag: ['@critical', '@integration', '@controls'],
 }, () => {
   // Cubre: AC-CONTROLS-003
   // Controls.play() tiene un guard `_calledPlaying` que previene que dos llamadas
@@ -100,7 +100,7 @@ test.describe('Controls API — play() concurrente', {
 // ── AC-CONTROLS-006: currentTime setter ──────────────────────────────────────
 
 test.describe('Controls API — currentTime setter (seek)', {
-  tag: ['@integration', '@controls'],
+  tag: ['@critical', '@integration', '@controls'],
 }, () => {
   // Cubre: AC-CONTROLS-006
   // Asignar player.currentTime = N activa el seek en playerHandler o adsManager.

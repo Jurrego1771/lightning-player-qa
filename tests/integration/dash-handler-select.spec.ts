@@ -15,7 +15,7 @@
  */
 import { test, expect, MockContentIds } from '../../fixtures'
 
-test.describe('DASH Handler Selection', { tag: ['@integration'] }, () => {
+test.describe('DASH Handler Selection', { tag: ['@critical', '@integration'] }, () => {
 
   test('A — auto-detect: URL .mpd sin format param selecciona DashHandler', async ({ isolatedPlayer }) => {
     await isolatedPlayer.goto({

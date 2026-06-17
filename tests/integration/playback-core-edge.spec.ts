@@ -20,7 +20,7 @@ import { test, expect, MockContentIds, mockContentConfig, LocalStreams } from '.
 // ── AC-PLAYBACK-005: Evento 'ended' al completar VOD ─────────────────────────
 
 test.describe('Playback Core — evento ended al completar VOD', {
-  tag: ['@integration', '@playback'],
+  tag: ['@critical', '@integration', '@playback'],
 }, () => {
   // Cubre: AC-PLAYBACK-005
   // El evento 'ended' debe emitirse cuando currentTime === duration.
@@ -116,7 +116,7 @@ test.describe('Playback Core — evento ended al completar VOD', {
 // ── AC-PLAYBACK-006: Error fatal con URL de stream inaccesible ────────────────
 
 test.describe('Playback Core — error fatal con stream HLS inaccesible', {
-  tag: ['@integration', '@playback'],
+  tag: ['@critical', '@integration', '@playback'],
 }, () => {
   // Cubre: AC-PLAYBACK-006
   // Diferencia con error-recovery.spec.ts:
@@ -235,7 +235,7 @@ test.describe('Playback Core — error fatal con stream HLS inaccesible', {
 // ── AC-PLAYBACK-007: play() antes de ready arroja error ───────────────────────
 
 test.describe('Playback Core — play() antes de ready', {
-  tag: ['@integration', '@playback'],
+  tag: ['@critical', '@integration', '@playback'],
 }, () => {
   // Cubre: AC-PLAYBACK-007 (fixme — harness limitation)
   // El player debe arrojar "Player is not ready" si se llama play() antes del evento ready.

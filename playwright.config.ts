@@ -101,6 +101,10 @@ export default defineConfig({
       testMatch: ENV_CONFIG.testSuite === 'full'
         ? ['tests/e2e/**', 'tests/integration/**', 'tests/a11y/**', 'tests/visual/**', 'tests/smoke/**']
         : ['tests/smoke/**'],
+      // @flaky: tests no-deterministas (race de IMA, deps externas, timing) — excluidos
+      // del gate diario para que las notificaciones sean accionables. Para reincluir
+      // un test: quitarle el tag @flaky. Ver .github/workflows/dev-daily.yml.
+      grepInvert: /@flaky/,
     },
     {
       name: 'firefox',

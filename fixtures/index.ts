@@ -36,6 +36,8 @@ export { expect } from '@playwright/test'
 export { ContentIds, ContentAccess, ExternalStreams, Streams, NetworkProfiles, MockContentIds, LocalStreams, PlayerIds } from './streams'
 export type { InitConfig, LoadOptions, PlayerStatus, QoEMetrics, AdInfo, LightningPlayerPage } from './player'
 export { setupPlatformMocks, mockContentConfig, mockPlayerConfig, mockContentError, mockAudioPlayerConfig, mockContentConfigById } from './platform-mock'
+export { ImaSampleTags, ImaSampleTagList, StaticVastTags, PubadsSampleTags } from './ima-sample-tags'
+export type { ImaSampleTag, ImaSampleTagKey, StaticVastTagKey } from './ima-sample-tags'
 export { generateAccessToken, isAccessTokenAvailable } from '../helpers/access-token'
 
 // ── Custom Fixtures ───────────────────────────────────────────────────────
