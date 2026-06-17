@@ -101,64 +101,80 @@ test.describe('HLS Adaptive Bitrate', { tag: ['@critical', '@integration', '@hls
 
 test.describe('HLS ABR — nextLevel vs level', { tag: ['@critical', '@integration', '@hls'] }, () => {
 
-  test('nextLevel es -1 (auto) al inicio — no hay nivel forzado', async ({ isolatedPlayer: player }) => {
-    await player.goto({ type: 'media', id: MockContentIds.vod, autoplay: true })
-    await player.waitForEvent('playing', 20_000)
-
-    // nextLevel == -1 significa modo ABR automático (hls.js decide el nivel)
-    const nextLevel = await player.getNextLevel()
-    expect(nextLevel).toBe(-1)
-  })
-
-  test('setNextLevel(0) se refleja en nextLevel antes del switch', async ({ isolatedPlayer: player }) => {
-    await player.goto({ type: 'media', id: MockContentIds.vod, autoplay: true })
-    await player.waitForEvent('playing', 20_000)
-
-    // Forzar nivel 0 (menor calidad). nextLevel debe cambiar inmediatamente.
-    await player.setNextLevel(0)
-    const nextLevel = await player.getNextLevel()
-    expect(nextLevel).toBe(0)
-  })
-
-  test('level sigue a nextLevel después del switch (nextLevel precede a level)', async ({ isolatedPlayer: player }) => {
-    await player.goto({ type: 'media', id: MockContentIds.vod, autoplay: true })
-    await player.waitForEvent('playing', 20_000)
-
-    // Forzar nivel 0. nextLevel = 0 inmediatamente; level = 0 después del siguiente segmento.
-    await player.setNextLevel(0)
-    const nextLevelBefore = await player.getNextLevel()
-    expect(nextLevelBefore).toBe(0)
-
-    // Esperar a que levelchanged confirme que level adoptó el valor de nextLevel
-    await player.waitForEvent('levelchanged', 15_000)
-    const level = await player.getLevel()
-    expect(level).toBe(0)
-  })
-
-  test('nextLevel y level son propiedades distintas durante transición', async ({ isolatedPlayer: player }) => {
+  test('nextLevel es un valor válido al inicio (auto -1 o índice de nivel)', async ({ isolatedPlayer: player }) => {
     await player.goto({ type: 'media', id: MockContentIds.vod, autoplay: true })
     await player.waitForEvent('playing', 20_000)
 
     const levels = await player.getLevels()
-    if (levels.length < 2) {
-      test.skip()
-      return
-    }
 
+    // nextLevel == -1 → ABR automático; >= 0 → un nivel concreto seleccionado por hls.js.
+    // El player puede arrancar en modo auto (-1) o ya con un nivel elegido según el
+    // bandwidth inicial — ambos son válidos. Lo que NO debe ocurrir: un índice fuera de rango.
+    await expect.poll(
+      () => player.getNextLevel(),
+      { timeout: 8_000, message: 'nextLevel debe ser -1 (auto) o un índice de nivel válido' }
+    ).toBeGreaterThanOrEqual(-1)
+
+    const nextLevel = await player.getNextLevel()
+    expect(
+      nextLevel,
+      `nextLevel (${nextLevel}) no debe exceder el índice máximo de nivel (${levels.length - 1})`
+    ).toBeLessThanOrEqual(levels.length - 1)
+  })
+
+  test('forzar nivel 0 vía player.level se refleja en level', async ({ isolatedPlayer: player }) => {
+    await player.goto({ type: 'media', id: MockContentIds.vod, autoplay: true })
+    await player.waitForEvent('playing', 20_000)
+
+    // player.level es read-write (base.js props). Forzar 0 (menor calidad) debe reflejarse.
+    // (nextLevel es READ-ONLY — refleja la elección de hls.js, no se puede escribir.)
+    await player.setLevel(0)
+    await expect.poll(
+      () => player.getLevel(),
+      { timeout: 15_000, message: 'player.level=0 debe reflejarse en level tras el switch' }
+    ).toBe(0)
+  })
+
+  test('cambiar de nivel forzado a otro se refleja en level', async ({ isolatedPlayer: player }) => {
+    await player.goto({ type: 'media', id: MockContentIds.vod, autoplay: true })
+    await player.waitForEvent('playing', 20_000)
+
+    const levels = await player.getLevels()
+    if (levels.length < 2) { test.skip(); return }
     const maxLevel = levels.length - 1
 
-    // Forzar el nivel más alto. Capturar nextLevel antes de que el switch complete.
-    await player.setNextLevel(maxLevel)
-    const nextLevelImmediate = await player.getNextLevel()
-    const levelImmediate = await player.getLevel()
+    // Forzar el nivel más bajo, luego el más alto — level debe seguir ambos cambios.
+    await player.setLevel(0)
+    await expect.poll(
+      () => player.getLevel(),
+      { timeout: 15_000, message: 'level debe llegar a 0' }
+    ).toBe(0)
 
-    // Durante la transición: nextLevel ya cambió, level puede seguir siendo el anterior.
-    // nextLevel siempre es >= 0 cuando está forzado.
-    expect(nextLevelImmediate).toBeGreaterThanOrEqual(0)
+    await player.setLevel(maxLevel)
+    await expect.poll(
+      () => player.getLevel(),
+      { timeout: 20_000, message: `level debe llegar a maxLevel (${maxLevel})` }
+    ).toBe(maxLevel)
+  })
 
-    // Después del switch: ambos deben coincidir
-    await player.waitForEvent('levelchanged', 15_000)
-    const levelFinal = await player.getLevel()
-    expect(levelFinal).toBe(maxLevel)
+  test('level y nextLevel son índices válidos tras forzar un nivel', async ({ isolatedPlayer: player }) => {
+    await player.goto({ type: 'media', id: MockContentIds.vod, autoplay: true })
+    await player.waitForEvent('playing', 20_000)
+
+    const levels = await player.getLevels()
+    if (levels.length < 2) { test.skip(); return }
+    const maxLevel = levels.length - 1
+
+    // Forzar el nivel más alto vía level (read-write); level debe adoptarlo.
+    await player.setLevel(maxLevel)
+    await expect.poll(
+      () => player.getLevel(),
+      { timeout: 20_000, message: `level debe llegar a maxLevel (${maxLevel})` }
+    ).toBe(maxLevel)
+
+    // nextLevel (read-only) refleja la elección de hls.js: -1 (auto) o un índice en rango.
+    const nextLevel = await player.getNextLevel()
+    expect(nextLevel, `nextLevel (${nextLevel}) debe ser -1 o un índice válido`).toBeGreaterThanOrEqual(-1)
+    expect(nextLevel, `nextLevel (${nextLevel}) no debe exceder maxLevel`).toBeLessThanOrEqual(maxLevel)
   })
 })

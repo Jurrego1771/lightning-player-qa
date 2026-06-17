@@ -151,12 +151,14 @@ test.describe('Playback Core — error fatal con stream HLS inaccesible', {
     // hls.js intenta el manifest, recibe 404, emite error fatal → player emite 'error'
     await player.waitForEvent('error', 20_000)
 
-    // El error debe ser registrado
-    const errors = await player.getErrors()
-    expect(
-      errors.length,
-      'getErrors() debe tener error tras manifest 404'
-    ).toBeGreaterThan(0)
+    // El player debe registrar el estado de error. Verificamos player.error (la propiedad
+    // pública que el player expone), no __qa.errors: el manifest 404 dispara 'error' tan
+    // temprano (durante el init) que el listener del harness puede no haberlo acumulado aún.
+    // player.error refleja el estado real del player de forma confiable.
+    await expect.poll(
+      () => page.evaluate(() => !!(window as any).__player?.error),
+      { timeout: 10_000, message: 'player.error debe ser truthy tras manifest 404' }
+    ).toBe(true)
 
     // Sin crashes JS del player
     expect(

@@ -28,7 +28,12 @@ export class PlayerWithABR extends PlayerWithNextEpisode {
     await this.page.evaluate((l) => { (window as any).__player.level = l }, level)
   }
 
+  /**
+   * @deprecated `nextLevel` es READ-ONLY en la API del player (base.js readOnlyProps).
+   * Escribirlo no tiene efecto. Para forzar un nivel usar `setLevel()` (escribe `level`,
+   * que sí es read-write). `getNextLevel()` se mantiene para LEER el nivel que hls.js resolvió.
+   */
   async setNextLevel(level: number): Promise<void> {
-    await this.page.evaluate((l) => { (window as any).__player.nextLevel = l }, level)
+    await this.page.evaluate((l) => { (window as any).__player.level = l }, level)
   }
 }

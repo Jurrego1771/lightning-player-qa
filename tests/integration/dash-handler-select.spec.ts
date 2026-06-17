@@ -6,10 +6,13 @@
  *  B) Regresión HLS — URL .m3u8 sigue usando HLS handler (sin format)
  *  C) format=dash explícito — selectedSrcType='dash' fuerza DashHandler
  *
- * Fixture: isolatedPlayer (plataforma mockeada, sin streams reales)
- * El fixture mock-dash-vod-1 sirve src.hls = src.mpd = 'localhost:9001/vod/fake.mpd'.
- * DashHandler monta (handler set en _setInnerRef) antes de que dashjs intente
- * cargar el stream — el 404 posterior es irrelevante para estos tests.
+ * Fixture: isolatedPlayer (plataforma mockeada). mock-dash-vod-1 sirve un MPD válido
+ * local (localhost:9001/vod-dash/manifest.mpd) con segmentos reales.
+ *
+ * IMPORTANTE: el handler (DashHandler/HLSHandler) es LAZY — monta cuando la media
+ * empieza a REPRODUCIRSE, no al inicializar el player. Por eso estos tests usan
+ * autoplay:true y esperan 'playing' antes de leer player.handler. Con autoplay:false
+ * el handler nunca monta y player.handler queda "".
  *
  * Tag: @integration
  */
@@ -17,52 +20,28 @@ import { test, expect, MockContentIds } from '../../fixtures'
 
 test.describe('DASH Handler Selection', { tag: ['@critical', '@integration'] }, () => {
 
-  test('A — auto-detect: URL .mpd sin format param selecciona DashHandler', async ({ isolatedPlayer }) => {
-    await isolatedPlayer.goto({
-      type: 'media',
-      id: MockContentIds.dashVod,
-      autoplay: false,
-    })
-
-    // initialized fires after _controlsReady (Controls mounts), before lazy handler mounts.
-    // Poll until handler string is set (network-free — set on _setInnerRef on component mount).
-    await expect.poll(
-      async () => {
-        const initialized = await isolatedPlayer.page.evaluate(() => (window as any).__qa?.initialized)
-        const initError = await isolatedPlayer.page.evaluate(() => (window as any).__qa?.initError)
-        return initialized === true || initError != null
-      },
-      { timeout: 20_000 }
-    ).toBe(true)
-
-    await expect.poll(
-      () => isolatedPlayer.page.evaluate(() => (window as any).__player?.handler ?? ''),
-      { timeout: 15_000 }
-    ).toMatch(/.+/)
-
-    const handler = await isolatedPlayer.getHandler()
-    expect(
-      handler.toLowerCase(),
-      `Auto-detect DASH por URL .mpd falló. Handler: '${handler}'. ` +
-      'Verificar src/player/base.js getDerivedStateFromProps — urlLower.includes(".mpd").'
-    ).toMatch(/dash/)
-  })
+  // NOTA: no existe un test de "auto-detect por .mpd" — loadConfig.js resuelve
+  // src = useDash ? mpd : (hls || mp3), y useDash solo es true con format:'dash'.
+  // Sin format, src nunca es la URL .mpd, así que el auto-detect por extensión
+  // (base.js:337) es inalcanzable: el default es SIEMPRE HLS y DASH es opt-in vía
+  // format. Por eso solo testeamos: B (HLS default) y C (DASH explícito con format).
 
   test('B — regresión HLS: URL .m3u8 sigue usando HLS handler (sin format)', async ({ isolatedPlayer }) => {
     await isolatedPlayer.goto({
       type: 'media',
       id: MockContentIds.vod,
-      autoplay: false,
+      autoplay: true,
     })
 
-    await isolatedPlayer.waitForReady(20_000)
-    // loadedmetadata garantiza que el lazy HLS chunk montó y _handler !== null
-    await isolatedPlayer.waitForEvent('loadedmetadata', 15_000)
+    // El HLSHandler monta al reproducir → esperar 'playing' antes de leer el handler.
+    await isolatedPlayer.waitForEvent('playing', 25_000)
 
-    const handler = await isolatedPlayer.getHandler()
-    expect(
-      handler.toLowerCase(),
-      `Regresión HLS: URL .m3u8 debe usar HLS handler, no DASH. Handler: '${handler}'.`
+    await expect.poll(
+      () => isolatedPlayer.page.evaluate(() => String((window as any).__player?.handler ?? '').toLowerCase()),
+      {
+        timeout: 15_000,
+        message: 'Regresión HLS: URL .m3u8 debe usar HLS handler, no DASH — handler nunca llegó a "hls"/"native".',
+      }
     ).toMatch(/hls|native/)
   })
 
@@ -70,29 +49,20 @@ test.describe('DASH Handler Selection', { tag: ['@critical', '@integration'] }, 
     await isolatedPlayer.goto({
       type: 'media',
       id: MockContentIds.dashVod,
-      autoplay: false,
+      autoplay: true,
       format: 'dash',
     } as any)
 
-    await expect.poll(
-      async () => {
-        const initialized = await isolatedPlayer.page.evaluate(() => (window as any).__qa?.initialized)
-        const initError = await isolatedPlayer.page.evaluate(() => (window as any).__qa?.initError)
-        return initialized === true || initError != null
-      },
-      { timeout: 20_000 }
-    ).toBe(true)
+    // El DashHandler monta al reproducir → esperar 'playing' antes de leer el handler.
+    await isolatedPlayer.waitForEvent('playing', 25_000)
 
     await expect.poll(
-      () => isolatedPlayer.page.evaluate(() => (window as any).__player?.handler ?? ''),
-      { timeout: 15_000 }
-    ).toMatch(/.+/)
-
-    const handler = await isolatedPlayer.getHandler()
-    expect(
-      handler.toLowerCase(),
-      `format=dash explícito debe forzar DashHandler. Handler: '${handler}'. ` +
-      'Verificar src/platform/loadConfig.js — selectedSrcType="dash" cuando format=dash.'
+      () => isolatedPlayer.page.evaluate(() => String((window as any).__player?.handler ?? '').toLowerCase()),
+      {
+        timeout: 15_000,
+        message: 'format=dash explícito no forzó DashHandler — handler nunca llegó a "dash". ' +
+          'Verificar src/platform/loadConfig.js — selectedSrcType="dash" cuando format=dash.',
+      }
     ).toMatch(/dash/)
   })
 })
