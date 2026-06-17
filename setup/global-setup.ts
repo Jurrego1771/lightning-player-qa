@@ -81,9 +81,12 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
   console.log(' Pre-suite Health Check')
   console.log(`${LINE}${R}`)
 
-  // ── 1. HLS Fixtures (FATAL) ──────────────────────────────────────────────
+  // ── 1. HLS Fixtures (FATAL salvo opt-out explícito) ──────────────────────
+  // Jobs que no usan streams HLS locales (p.ej. contract/API-shape) pueden saltar
+  // este check con QA_SKIP_HLS_FIXTURE_CHECK=1 para no requerir ffmpeg en CI.
   console.log(`\n${bold(' HLS Fixtures')}`)
 
+  const skipHlsCheck = process.env.QA_SKIP_HLS_FIXTURE_CHECK === '1'
   try {
     const fixtures = checkHlsFixtures()
     for (const f of fixtures) {
@@ -91,8 +94,13 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
       console.log(`  ${ok(f.label)}${note}`)
     }
   } catch (err: unknown) {
-    console.log(`  ${fail('HLS fixtures unavailable — suite aborted')}\n`)
-    throw err
+    if (skipHlsCheck) {
+      console.log(`  ${warn('HLS fixtures no disponibles — check saltado (QA_SKIP_HLS_FIXTURE_CHECK=1)')}`)
+      console.log(`  ${dim('Tests que usan streams HLS locales harán test.skip() o fallarán individualmente.')}`)
+    } else {
+      console.log(`  ${fail('HLS fixtures unavailable — suite aborted')}\n`)
+      throw err
+    }
   }
 
   // ── 2. Platform Schema Validation (WARN) ────────────────────────────────

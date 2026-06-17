@@ -2,16 +2,19 @@ name: Dev — Suite Completa (Diario + Push)
 
 # ─── Cuándo corre y qué jobs ───────────────────────────────────────────────
 #
-#  TRIGGER            contract  smoke  integration  e2e  a11y  visual  perf
-#  ─────────────────────────────────────────────────────────────────────────
-#  PR → main          ✅        ✅     ✅            —    —     —       —
-#  push → main        ✅        ✅     —             —    —     —       —
-#  schedule (L-V)     ✅        ✅     ✅            ✅   ✅    ✅      lunes
-#  workflow_dispatch  ✅        full   full          full full  full    —
+#  TRIGGER              contract  smoke  integration  e2e            a11y visual perf
+#  ──────────────────────────────────────────────────────────────────────────────────
+#  PR → main            ✅        ✅     ✅            —              —    —      —
+#  push → main          ✅        ✅     —             —              —    —      —
+#  schedule LIGERO M-V  ✅        ✅     ✅            chromium       —    —      —
+#  schedule COMPLETA L  ✅        ✅     ✅            chr+ff+webkit  ✅   ✅     ✅
+#  workflow_dispatch    ✅        full   full          full           full full   full
 #
 #  PR: contract → smoke → integration (~5-7 min feedback pre-merge).
 #  push a main: contract + smoke (suite completa ya validó el PR).
-#  schedule: suite completa diaria contra develop del player.
+#  schedule Mar-Vie (cron '0 12 * * 2-5'): ligero — solo chromium (e2e+integration).
+#  schedule Lunes   (cron '0 12 * * 1'):   completa — cross-browser + a11y + visual + perf.
+#  El split por cron usa github.event.schedule para diferenciar ligero vs completo.
 
 on:
   pull_request:
@@ -54,9 +57,12 @@ jobs:
           browser: chromium
           fixtures: 'false'
       - name: Contract tests
-        run: npx playwright test tests/contract/ --project=chromium
+        run: npx playwright test tests/contract/ --project=contract
         env:
           PLATFORM_API_TOKEN: ${{ secrets.PLATFORM_API_TOKEN }}
+          # Contract son tests de API-shape: no usan streams HLS locales, así que
+          # no requieren ffmpeg/fixtures. Saltamos el check fatal del globalSetup.
+          QA_SKIP_HLS_FIXTURE_CHECK: '1'
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
@@ -96,7 +102,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        project: [chromium, firefox, webkit]
+        # Cross-browser solo en la suite COMPLETA (Lunes / dispatch full|e2e-only).
+        # En el cron LIGERO (Mar-Vie) corre solo chromium.
+        project: ${{ (github.event.schedule == '0 12 * * 1' || github.event.inputs.suite == 'full' || github.event.inputs.suite == 'e2e-only') && fromJSON('["chromium","firefox","webkit"]') || fromJSON('["chromium"]') }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-qa
@@ -171,7 +179,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: smoke
     timeout-minutes: 15
-    if: ${{ github.event_name == 'schedule' || github.event.inputs.suite == 'full' }}
+    # Solo en la suite COMPLETA: cron del Lunes ('0 12 * * 1') o dispatch full.
+    if: ${{ (github.event_name == 'schedule' && github.event.schedule == '0 12 * * 1') || github.event.inputs.suite == 'full' }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-qa
@@ -191,7 +200,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: smoke
     timeout-minutes: 20
-    if: ${{ github.event_name == 'schedule' || github.event.inputs.suite == 'full' }}
+    # Solo en la suite COMPLETA: cron del Lunes ('0 12 * * 1') o dispatch full.
+    if: ${{ (github.event_name == 'schedule' && github.event.schedule == '0 12 * * 1') || github.event.inputs.suite == 'full' }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-qa
@@ -211,7 +221,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: smoke
     timeout-minutes: 20
-    if: ${{ github.event_name == 'schedule' || github.event.inputs.suite == 'full' }}
+    # Solo en la suite COMPLETA: cron del Lunes ('0 12 * * 1') o dispatch full.
+    if: ${{ (github.event_name == 'schedule' && github.event.schedule == '0 12 * * 1') || github.event.inputs.suite == 'full' }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-qa
