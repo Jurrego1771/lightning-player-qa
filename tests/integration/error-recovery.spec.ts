@@ -15,7 +15,7 @@
 import { test, expect, MockContentIds, mockContentError, mockContentConfig, LocalStreams } from '../../fixtures'
 import { injectSegmentError } from '../../helpers/stream-injector'
 
-test.describe('Error Recovery — Content Config', { tag: ['@critical', '@integration', '@error'] }, () => {
+test.describe('Error Recovery — Content Config', { tag: ['@integration', '@error'] }, () => {
 
   test('content 403: error event se emite y getErrors() reporta el fallo', async ({ isolatedPlayer: player, page }) => {
     // mockContentError tiene precedencia LIFO sobre setupPlatformMocks del fixture isolatedPlayer
@@ -40,7 +40,7 @@ test.describe('Error Recovery — Content Config', { tag: ['@critical', '@integr
 
 })
 
-test.describe('Error Recovery — Error Types', { tag: ['@critical', '@integration', '@error'] }, () => {
+test.describe('Error Recovery — Error Types', { tag: ['@integration', '@error'] }, () => {
 
   test('error 403 expone type NETWORK_ERROR o mensaje de error legible', async ({ isolatedPlayer: player, page }) => {
     await mockContentError(page, 403)
@@ -95,7 +95,7 @@ test.describe('Error Recovery — Error Types', { tag: ['@critical', '@integrati
 
 })
 
-test.describe('Error Recovery — HLS Segments', { tag: ['@critical', '@integration', '@error'] }, () => {
+test.describe('Error Recovery — HLS Segments', { tag: ['@integration', '@error'] }, () => {
 
   test('fallo persistente: player emite error tras agotar retries de hls.js', async ({ isolatedPlayer: player, page }) => {
     // Bloquear todos los segmentos — hls.js agotará su retry budget y emitirá error fatal.
@@ -153,7 +153,7 @@ test.describe('Error Recovery — HLS Segments', { tag: ['@critical', '@integrat
 
 })
 
-test.describe('Error Recovery — HTTP 503 Mid-Stream', { tag: ['@critical', '@integration', '@error'] }, () => {
+test.describe('Error Recovery — HTTP 503 Mid-Stream', { tag: ['@integration', '@error'] }, () => {
 
   test('503 transitorio (3 segmentos): player recupera y continúa playing', async ({ isolatedPlayer: player, page }) => {
     // Diferencia vs abort tests: 503 es error HTTP-level, no TCP-level.

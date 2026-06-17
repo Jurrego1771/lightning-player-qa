@@ -18,7 +18,7 @@
  */
 import { test, expect, MockContentIds } from '../../fixtures'
 
-test.describe('DASH Handler Selection', { tag: ['@critical', '@integration'] }, () => {
+test.describe('DASH Handler Selection', { tag: ['@integration'] }, () => {
 
   // NOTA: no existe un test de "auto-detect por .mpd" — loadConfig.js resuelve
   // src = useDash ? mpd : (hls || mp3), y useDash solo es true con format:'dash'.
