@@ -131,7 +131,9 @@ jobs:
     # (timing) — se reportan en Slack pero no marcan el daily en rojo. Cuando se
     # estabilicen (validar en CI limpio), quitar continue-on-error para hacerlo gate.
     continue-on-error: true
-    if: ${{ github.event_name == 'schedule' && github.event.schedule == '0 12 * * 2-5' }}
+    # Corre en el cron ligero (Mar-Vie) Y en cualquier workflow_dispatch, para poder
+    # validar el gate crítico bajo demanda (sin esperar al cron).
+    if: ${{ (github.event_name == 'schedule' && github.event.schedule == '0 12 * * 2-5') || github.event_name == 'workflow_dispatch' }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-qa
@@ -281,7 +283,8 @@ jobs:
     name: Notificar Resultados
     runs-on: ubuntu-latest
     needs: [smoke, integration-critical, integration, integration-merge, e2e-full, accessibility, visual, performance]
-    if: always() && github.event_name == 'schedule'
+    # Notifica en cron (schedule) y también en workflow_dispatch (para validar el flujo Slack bajo demanda).
+    if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     env:
       SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
     steps:
