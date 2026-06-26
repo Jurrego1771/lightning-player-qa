@@ -63,6 +63,13 @@ echo ""
 
 cd "$PLAYER_LOCAL_REPO"
 
+# CRÍTICO: el publicPath del player apunta por defecto al CDN
+# (webpack.prod.cjs: https://player.cdn.mdstrm.com/player/develop/). Sin esto el
+# api.js carga local pero los chunks lazy (msp_*.js) se piden al CDN con el hash
+# del build LOCAL → 404 → "Loading chunk failed". Forzamos el publicPath al serve
+# local para que los chunks resuelvan desde :$PORT.
+export PUBLIC_PATH="http://localhost:$PORT/"
+
 # Instalar deps si faltan (primera vez).
 if [ ! -d node_modules ]; then
   echo "📦 node_modules ausente — instalando (npm ci)…"
