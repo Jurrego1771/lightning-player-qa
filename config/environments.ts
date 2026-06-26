@@ -10,7 +10,7 @@
  * Default: 'dev'
  */
 
-export type Environment = 'dev' | 'staging' | 'prod'
+export type Environment = 'dev' | 'staging' | 'prod' | 'local'
 
 export interface EnvironmentConfig {
   name: string
@@ -34,6 +34,23 @@ export interface EnvironmentConfig {
 }
 
 export const ENVIRONMENTS: Record<Environment, EnvironmentConfig> = {
+  // Bundle compilado localmente desde PLAYER_LOCAL_REPO y servido por
+  // scripts/build-player-local.sh (webpack-dev-server con HMR en :8080, o
+  // `serve dist` para el build prod). Permite el loop ATDD: escribir tests →
+  // implementar en el player → compilar → correr contra el bundle local → iterar.
+  //
+  // El puerto/URL es configurable con PLAYER_LOCAL_URL (default :8080/api.js).
+  // platformDomain = develop.mdstrm.com: el build local pega a develop por
+  // defecto, así isolatedPlayer (page.route) sigue interceptando la plataforma.
+  // Si el player team cambia el target del build local, actualizar aquí.
+  local: {
+    name: 'Local Build',
+    playerScriptUrl: process.env.PLAYER_LOCAL_URL || 'http://localhost:8080/api.js',
+    platformDomain: 'develop.mdstrm.com',
+    description: 'Bundle compilado localmente desde PLAYER_LOCAL_REPO (loop ATDD)',
+    testSuite: 'full',
+    allowRealAds: false,
+  },
   dev: {
     name: 'Development',
     playerScriptUrl: 'https://player.cdn.mdstrm.com/lightning_player/develop/api.js',

@@ -238,6 +238,7 @@
         dev:     'https://player.cdn.mdstrm.com/lightning_player/develop/api.js',
         staging: 'https://player.cdn.mdstrm.com/lightning_player/staging/api.js',
         prod:    'https://player.cdn.mdstrm.com/lightning_player/api.js',
+        local:   'http://localhost:8080/api.js',  // bundle local (build-player-local.sh)
       }
 
       var env = params.get('env') || 'dev'
