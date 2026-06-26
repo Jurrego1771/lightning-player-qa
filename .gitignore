@@ -61,3 +61,4 @@ allure-report/
 # Stryker mutation reports
 reports/mutation/
 .stryker-tmp/
+.tmp-gh-npmrc
