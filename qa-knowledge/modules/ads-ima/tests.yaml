@@ -141,3 +141,99 @@ coverage_gaps:
       Usar page.route() para bloquear el VAST endpoint (no el SDK). Verificar que
       adsError se emite y el content reproduce normalmente. Distinguir del caso
       donde el SDK mismo está bloqueado (GAP ya cubierto por AC-003).
+
+  # ── OVERLAY ADS (NonLinear) ───────────────────────────────────────────────
+
+existing_tests_overlay:
+
+  - spec_file: "tests/e2e/ads-ima-overlay-behavior.spec.ts"
+    description: |
+      Tests E2E de comportamiento básico del overlay nonlinear IMA.
+      Basados en observaciones directas via MCP QA (2026-06-22) sobre content 6a3946726e0d2c90d67907a9:
+      VAST request sz=480x70 confirmado, video playing durante overlay confirmado.
+      Cubre: VAST request se dispara (AC-018), video no pausa (AC-017 / BR-IMA-OVL-001),
+      overlay aparece en primeros 30s (overlayPosition=0), sin crash durante sesión.
+    ac_coverage:
+      - "IMA-AC-017"
+      - "IMA-AC-018"
+    notes: "Solo Chromium. Usa ContentIds.vodWithOverlay (6a3946726e0d2c90d67907a9). Sin pre-requisitos de setup."
+
+  - spec_file: "tests/integration/ads-ima-macro-resolution.spec.ts"
+    description: |
+      Resolución de macros en VAST URL de pre-roll/overlay usando mock VAST server.
+      Cubre: $cust_params$, $listenerid$, $without_cookies$, $markers$, $random-number$,
+      macros desconocidas, múltiples macros en una URL, VAST 404 no crashea (BR-IMA-004).
+      Estrategia: page.route() intercepta la request al mock server, verifica searchParams.
+    ac_coverage:
+      - "IMA-AC-018"
+
+  - spec_file: "tests/integration/ads-ima-overlay-macro-resolution.spec.ts"
+    description: |
+      Resolución de macros en el flujo OverlayAds usando mock environment (isolatedPlayer).
+      Cubre: nuevas props (custom, listenerId, withoutCookies) no crashean el player,
+      metadata.adMarkers ausente usa destructuring default, load() con nuevas props
+      no rompe árbol React, compatibilidad hacia atrás sin las nuevas props.
+      LIMITACIÓN: No puede verificar el VAST URL del overlay directamente (BLOQUEADOR-1).
+    ac_coverage:
+      - "IMA-AC-019"
+      - "IMA-AC-022"
+
+  - spec_file: "tests/e2e/ads-ima-overlay-macro-e2e.spec.ts"
+    description: |
+      E2E con plataforma real (dev). Carga el media fixture con overlay ad configurado
+      (6a36f0857896eb99d5beffc9), intercepta la request a pubads.g.doubleclick.net
+      con sz=480x70 (nonlinear), verifica que $custom.tag_custom$ se resolvió a "web".
+      También verifica que el pre-roll no se rompió (regresión de adsRequest.js).
+      Requiere: npx ts-node scripts/setup-overlay-ad-fixture.ts ejecutado previamente.
+    ac_coverage:
+      - "IMA-AC-017"
+      - "IMA-AC-018"
+
+coverage_gaps_overlay:
+
+  - id: GAP-IMA-OVL-001
+    priority: MUST
+    ac_ref: "IMA-AC-017"
+    title: "Overlay no pausa el video — verificación de currentTime durante overlay activo"
+    suggested_spec: "tests/e2e/ads-ima-overlay-behavior.spec.ts"
+    status: "COVERED"
+    notes: |
+      Cubierto en ads-ima-overlay-behavior.spec.ts (test 2):
+      - Detecta la request VAST del overlay (sz=480x70)
+      - Mide video.paused === false y currentTime avanza en 3s
+      Pendiente: verificar que adsContentPauseRequested NO se emite (requiere exponer evento IMA).
+    industry_ref: "BR-IMA-OVL-001 / IAB VAST 3.0 §3.5"
+
+  - id: GAP-IMA-OVL-002
+    priority: SHOULD
+    ac_ref: "IMA-AC-020"
+    title: "overlayPosition=N — overlay aparece al alcanzar N segundos (no antes)"
+    suggested_spec: "tests/e2e/ads-ima-overlay-position.spec.ts"
+    notes: |
+      Requiere un media fixture con overlayPosition > 0 (ej: 30s). Verificar que no hay
+      request a pubads nonlinear antes de los 30s, y sí la hay después. Usa expect.poll()
+      sobre el array de requests capturadas. Depende de disponer de un content fixture
+      con overlayPosition configurado en la plataforma.
+
+  - id: GAP-IMA-OVL-003
+    priority: SHOULD
+    ac_ref: "IMA-AC-021"
+    title: "Error en overlay VAST (404) — contenido sigue reproduciendo sin crash"
+    suggested_spec: "tests/integration/ads-ima-overlay-macro-resolution.spec.ts (ampliar)"
+    notes: |
+      Existe cobertura parcial via BR-IMA-004 test en ads-ima-macro-resolution.spec.ts
+      (Suite 6, último test). Pero ese test usa el flujo de adsMap, no el flujo de
+      overlay (overlayAds.jsx). Necesita un test dedicado que use el fixture de overlay
+      real y mockee la respuesta del VAST con 404 — verificar que el video sigue y no hay
+      crash. Actualmente bloqueado por BLOQUEADOR-1 (no hay fixture de overlay en mock env).
+
+  - id: GAP-IMA-OVL-004
+    priority: COULD
+    ac_ref: "IMA-AC-022"
+    title: "Overlay no se monta si ads.overlay no está configurado — sin request nonlinear"
+    suggested_spec: "tests/integration/ads-ima-overlay-macro-resolution.spec.ts"
+    notes: |
+      Verificar que con isolatedPlayer sin overlay URL configurado, no hay request a
+      ningún ad server nonlinear. Uso de page.route() para interceptar cualquier request
+      a pubads y verificar que sz=480x70 nunca aparece. Cobertura parcial ya existe
+      (tests de compatibilidad hacia atrás en el spec de overlay).

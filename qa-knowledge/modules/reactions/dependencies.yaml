@@ -1,0 +1,105 @@
+version: "1.0"
+module: reactions
+last_updated: "2026-06-10"
+
+internal:
+  - id: analytics-reactions
+    reason: "El ReactionsManager (lógica de emisión, validación, rate-limit, circuit breaker, transporte) vive en src/analytics/reactions/ y es el backend de esta UI. La UI lo descubre vía getComponent('reactions')."
+    coupling: high
+    files:
+      - "src/analytics/reactions/core/ReactionsManager.js"
+      - "src/analytics/reactions/index.jsx"
+      - "src/analytics/reactions/core/ReactionValidator.js"
+      - "src/analytics/reactions/core/ReactionScheduler.js"
+      - "src/analytics/reactions/core/FirebaseTransport.js"
+
+  - id: events
+    reason: "internalEmitter para escuchar _ready, _adsStarted, _adsAllAdsCompleted, _buffering, _playing y emitir _reactionEmitted / _error. El gating de visibilidad y habilitación depende de estos eventos."
+    coupling: high
+    files:
+      - "src/view/video/components/reactions/useReactionsManager.js"
+      - "src/analytics/reactions/core/ReactionsManager.js"
+
+  - id: plugins
+    reason: "El plugin LiveReactions se registra solo si liveReactions && isLive (plugins/index.js). register('reactions', manager) es el contrato de descubrimiento entre capas."
+    coupling: high
+    files:
+      - "src/plugins/index.js"
+      - "src/analytics/reactions/index.jsx"
+
+  - id: metadata
+    reason: "useReactionsListener usa useFirestore (mismo subsistema Firestore que ID3/now-playing) para suscribirse a la colección live_reactions."
+    coupling: medium
+    files:
+      - "src/analytics/reactions/hooks/useReactionsListener.js"
+      - "src/metadata/firestore"
+
+  - id: platform-config
+    reason: "loadConfig propaga options.liveReactions y context.reactions (la config de emojis) desde la respuesta de plataforma. Sin reactions config no hay reacciones soportadas."
+    coupling: medium
+    files:
+      - "src/platform/loadConfig.js"
+
+  - id: ads-manager
+    reason: "Las reacciones se deshabilitan durante ad breaks vía _adsStarted/_adsAllAdsCompleted. Cambios en la emisión de esos eventos rompen el gating."
+    coupling: medium
+    files:
+      - "src/analytics/reactions/core/ReactionsManager.js"
+
+  - id: ui-video
+    reason: "El FAB se posiciona según controlHeightAtom/showSkin y consume hooks de estado (useIsPlaying, useIsBuffering, useIsAdsPlaying, useContextValue). Montado en container/index.jsx."
+    coupling: medium
+    files:
+      - "src/view/video/components/container/index.jsx"
+      - "src/view/video/hooks/useControlsRight.js"
+
+  - id: i18n
+    reason: "Tooltip del FAB usa la clave reactions.tooltip (en/es/pt). Falta de clave degrada a fallback hardcodeado."
+    coupling: low
+    files:
+      - "src/view/i18n/en/video.json"
+      - "src/view/i18n/es/video.json"
+      - "src/view/i18n/pt/video.json"
+
+  - id: controls-api
+    reason: "emitReaction y getReactions se exponen vía controls/methods (expose) como API pública del player."
+    coupling: medium
+    files:
+      - "src/controls/methods"
+      - "src/analytics/reactions/index.jsx"
+
+external:
+  - id: firebase-firestore
+    package: "firebase (Firestore) — vía @/metadata/firestore"
+    version: "según player (subsistema firestore compartido)"
+    reason: "Backend real-time: suscripción a colección live_reactions para reacciones remotas; el POST de emisión va a /api/live-stream/{playbackId}/reactions (plataforma Mediastream), no directo a Firestore."
+    risk: high
+    note: "Firebase aplica throttling/quotas en bursts; si la suscripción falla la feature degrada en silencio (no debe crashear). NO mockear endpoints firebase/lma de forma que rompa el SDK (ver learning npaw_lma_no_mock)."
+
+  - id: web-animations-api
+    package: "Web Animations API (Element.animate) — nativo del navegador"
+    version: "navegador"
+    reason: "Animación flotante de cada reacción (float-up + fade) en ReactionsViewer."
+    risk: medium
+    note: "WAAPI no respeta prefers-reduced-motion automáticamente; la animación es JS-driven. Riesgo de accesibilidad si el usuario pidió movimiento reducido."
+
+  - id: requestIdleCallback
+    package: "requestIdleCallback — nativo del navegador (con fallback setTimeout)"
+    version: "navegador"
+    reason: "Limpieza periódica de reacciones expiradas y del Set de IDs procesados sin bloquear el hilo principal."
+    risk: low
+    note: "No disponible en Safari/algunos WebViews TV; el código ya provee fallback setTimeout."
+
+  - id: navigator-vibrate
+    package: "Vibration API (navigator.vibrate) — nativo"
+    version: "navegador"
+    reason: "Feedback háptico opcional al abrir/seleccionar."
+    risk: low
+    note: "No soportado en iOS Safari ni desktop; el código lo gatea con guard, no es bloqueante."
+
+  - id: fontawesome-pro
+    package: "@fortawesome/react-fontawesome + font-awesome-pro/pro-regular-svg-icons"
+    version: "pro"
+    reason: "Iconos faSmile (trigger), faChevronRight/faChevronDown (cerrar selector)."
+    risk: low
+    note: "Dependencia de iconografía; no afecta lógica de reacciones."

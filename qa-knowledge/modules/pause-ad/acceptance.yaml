@@ -1,0 +1,191 @@
+version: "1.0"
+module: pause-ad
+last_updated: "2026-06-22"
+
+acceptance_criteria:
+
+  # ── ACTIVACIÓN ───────────────────────────────────────────────────────────────
+
+  - id: PAUSE-AC-001
+    priority: MUST
+    scenario: "Pause ad aparece al pausar el video después del primer play"
+    given: "Player con ads.pausead.tag configurado, video reproduciéndose después del primer play"
+    when: "El usuario pausa el video"
+    then:
+      - "Se hace fetch al VAST tag configurado"
+      - "La imagen del staticResource se renderiza sobre el player"
+      - "El video permanece pausado (no reanuda solo)"
+      - "No hay crash de JS"
+    industry_ref: "IAB CTV Ad Portfolio Dec 2025 — Pause Ad definition"
+    covered_by: []
+
+  - id: PAUSE-AC-002
+    priority: MUST
+    scenario: "Pause ad NO aparece antes del primer play"
+    given: "Player con ads.pausead.tag configurado, video cargado pero aún no reproducido"
+    when: "El player está en estado pre-play (buffering, poster visible)"
+    then:
+      - "No se hace ningún fetch al VAST tag"
+      - "No se renderiza ningún pause ad"
+    covered_by: []
+
+  - id: PAUSE-AC-003
+    priority: MUST
+    scenario: "Pause ad NO aparece durante un ad break lineal activo (BR-PAUSE-002)"
+    given: "Player con IMA pre-roll activo (isAdsPlaying === true)"
+    when: "El usuario pausa durante el ad lineal"
+    then:
+      - "No se hace fetch al VAST tag del pause ad"
+      - "No se renderiza el pause ad"
+      - "El ad lineal continúa en estado pausado (comportamiento IMA normal)"
+    covered_by: []
+
+  - id: PAUSE-AC-004
+    priority: MUST
+    scenario: "Pause ad no aparece cuando el contenido ha terminado"
+    given: "Player con ads.pausead.tag configurado, video en estado ended"
+    when: "Se recibe un evento pause (ej: programático)"
+    then:
+      - "No se renderiza el pause ad"
+      - "No se hace fetch al VAST tag"
+    covered_by: []
+
+  # ── RENDERIZADO ──────────────────────────────────────────────────────────────
+
+  - id: PAUSE-AC-005
+    priority: MUST
+    scenario: "Imagen del pause ad se renderiza desde staticResource del VAST"
+    given: "VAST del pause ad retorna un creativo nonLinear con staticResource válido"
+    when: "El pause ad se activa"
+    then:
+      - "Se renderiza un <img> con la URL del staticResource"
+      - "La imagen es visible sobre el contenido del player"
+      - "La posición corresponde al valor configurado en ads.pausead.position"
+    covered_by: []
+
+  - id: PAUSE-AC-006
+    priority: MUST
+    scenario: "VAST sin staticResource — pause ad no se renderiza, no hay error"
+    given: "VAST del pause ad retorna respuesta vacía o sin creativo nonLinear"
+    when: "El sistema intenta renderizar el pause ad"
+    then:
+      - "No se renderiza ningún elemento visual"
+      - "No hay crash de JS ni error fatal del player"
+      - "El video sigue pausado normalmente"
+    covered_by: []
+
+  - id: PAUSE-AC-007
+    priority: MUST
+    scenario: "Impresión trackeada exactamente una vez por activación (BR-PAUSE-006)"
+    given: "VAST del pause ad retorna URLs de impression tracking"
+    when: "El pause ad se renderiza"
+    then:
+      - "Se hace fetch a cada URL de impression exactamente una vez"
+      - "Si el pause ad sigue visible 30s después, no se re-dispara el beacon"
+    covered_by: []
+
+  # ── CIERRE ───────────────────────────────────────────────────────────────────
+
+  - id: PAUSE-AC-008
+    priority: MUST
+    scenario: "El pause ad desaparece inmediatamente cuando el usuario reanuda (BR-PAUSE-009)"
+    given: "Pause ad visible sobre el player"
+    when: "El usuario hace play (click en play button, barra de espacio, player.play())"
+    then:
+      - "El pause ad inicia animación de salida (500ms)"
+      - "El video reanuda la reproducción"
+      - "El pause ad no vuelve a aparecer hasta el próximo pause"
+    covered_by: []
+
+  - id: PAUSE-AC-009
+    priority: MUST
+    scenario: "close_button=-1: botón X visible inmediatamente"
+    given: "ads.pausead.close_button = -1, pause ad activo"
+    when: "El pause ad se renderiza"
+    then:
+      - "El botón X es visible desde el primer frame"
+      - "Click en X llama api.play() → video reanuda"
+      - "El pause ad desaparece"
+    covered_by: []
+
+  - id: PAUSE-AC-010
+    priority: MUST
+    scenario: "close_button=0: sin botón X, solo click en overlay cierra"
+    given: "ads.pausead.close_button = 0, pause ad activo"
+    when: "El pause ad se renderiza"
+    then:
+      - "No hay botón X visible"
+      - "Click en el área del overlay (fuera de la imagen) cierra el pause ad y reanuda"
+    covered_by: []
+
+  - id: PAUSE-AC-011
+    priority: SHOULD
+    scenario: "close_button=N: botón X aparece después de N segundos"
+    given: "ads.pausead.close_button = 5, pause ad activo"
+    when: "Han pasado < 5s desde que el pause ad aparece"
+    then: ["El botón X no es visible"]
+    and_when: "Han pasado >= 5s"
+    then_also: ["El botón X aparece y es funcional"]
+    covered_by: []
+
+  - id: PAUSE-AC-012
+    priority: SHOULD
+    scenario: "duration > 0: auto-cierre después de N segundos"
+    given: "ads.pausead.duration = 10, pause ad activo"
+    when: "Han pasado 10 segundos"
+    then:
+      - "El pause ad se cierra automáticamente"
+      - "El video NO reanuda solo (el auto-cierre no llama api.play())"
+      - "El usuario puede seguir con el video pausado"
+    covered_by: []
+
+  # ── CLICK-THROUGH ────────────────────────────────────────────────────────────
+
+  - id: PAUSE-AC-013
+    priority: SHOULD
+    scenario: "Click en imagen del pause ad abre clickThrough y reanuda"
+    given: "Pause ad visible con VAST que incluye clickThrough URL"
+    when: "El usuario hace click sobre la imagen del pause ad"
+    then:
+      - "Se abre la URL del clickThrough en una nueva pestaña"
+      - "Se disparan los pixels de clickThroughTracking"
+      - "api.play() se llama → video reanuda"
+    covered_by: []
+
+  # ── MOBILE ───────────────────────────────────────────────────────────────────
+
+  - id: PAUSE-AC-014
+    priority: SHOULD
+    scenario: "En mobile usa tag_mobile si está configurado"
+    given: "ads.pausead.tag_mobile configurado con URL diferente a tag, player en viewport mobile"
+    when: "El usuario pausa el video"
+    then:
+      - "El fetch se hace al tag_mobile, no al tag"
+      - "La imagen retornada es la del VAST mobile"
+    covered_by: []
+
+  # ── INTERACCIÓN CON IMA ──────────────────────────────────────────────────────
+
+  - id: PAUSE-AC-015
+    priority: MUST
+    scenario: "Ad lineal que arranca mientras pause ad visible — pause ad desaparece"
+    given: "Pause ad visible, a continuación arranca un mid-roll IMA"
+    when: "isAdsPlaying pasa a true"
+    then:
+      - "El pause ad desaparece (pauseAdShowAtom = false)"
+      - "El ad lineal se reproduce normalmente"
+      - "No hay superposición de pause ad + ad lineal"
+    covered_by: []
+
+  # ── ERROR / DEGRADACIÓN ──────────────────────────────────────────────────────
+
+  - id: PAUSE-AC-016
+    priority: MUST
+    scenario: "VAST tag del pause ad retorna error de red — player no crashea"
+    given: "ads.pausead.tag configurado con endpoint que falla (timeout, 500, red caída)"
+    when: "El sistema intenta hacer fetch del VAST"
+    then:
+      - "No hay crash de JS"
+      - "No se renderiza el pause ad"
+      - "El video sigue pausado normalmente (el usuario puede resumir)"
+    covered_by: []

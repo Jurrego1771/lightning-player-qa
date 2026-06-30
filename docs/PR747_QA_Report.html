@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PR #747 — Validación QA · Lightning Player</title>
+<style>
+  :root {
+    --ground:   #EBEEF4;
+    --panel:    #FFFFFF;
+    --ink:      #161B26;
+    --muted:    #5B6678;
+    --faint:    #8A93A4;
+    --line:     #D7DDE7;
+    --pass:     #0B8C5A;
+    --pass-soft:#E1F2EA;
+    --blue:     #3A5BD9;
+    --mono: ui-monospace, "Cascadia Code", "JetBrains Mono", "SF Mono", Consolas, "Liberation Mono", monospace;
+    --sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 56px 28px 80px; }
+
+  /* ---- Eyebrow + header ---- */
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: .28em;
+    text-transform: uppercase;
+    color: var(--blue);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 0 22px;
+  }
+  .eyebrow::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: var(--line);
+  }
+  h1 {
+    font-family: var(--mono);
+    font-weight: 700;
+    font-size: clamp(28px, 5vw, 44px);
+    letter-spacing: -.01em;
+    line-height: 1.05;
+    margin: 0 0 14px;
+  }
+  h1 .num { color: var(--pass); }
+  .lede {
+    font-size: 16px;
+    color: var(--muted);
+    max-width: 60ch;
+    margin: 0 0 36px;
+  }
+  .meta {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--faint);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 18px;
+    margin: 0 0 40px;
+  }
+  .meta b { color: var(--ink); font-weight: 600; }
+
+  /* ---- Hero: validation scrubber ---- */
+  .scrubber {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 26px 26px 22px;
+    box-shadow: 0 1px 0 rgba(22,27,38,.02), 0 18px 40px -28px rgba(22,27,38,.35);
+    margin-bottom: 14px;
+  }
+  .scrubber-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+  .scrubber-top .big {
+    font-family: var(--mono);
+    font-size: 30px;
+    font-weight: 700;
+    letter-spacing: -.02em;
+  }
+  .scrubber-top .big span { color: var(--pass); }
+  .scrubber-top .pct {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--pass);
+    background: var(--pass-soft);
+    padding: 4px 10px;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+  .track {
+    position: relative;
+    height: 12px;
+    border-radius: 999px;
+    background: #DBE1EB;
+    overflow: hidden;
+  }
+  .fill {
+    position: absolute;
+    inset: 0 0 0 0;
+    width: 100%;
+    background: linear-gradient(90deg, #0B8C5A, #16A36B);
+    transform-origin: left center;
+    transform: scaleX(0);
+    animation: play 1.5s cubic-bezier(.22,.61,.36,1) .25s forwards;
+  }
+  @keyframes play { to { transform: scaleX(1); } }
+  .ticks {
+    margin-top: 10px;
+    display: flex;
+    gap: 4px;
+  }
+  .ticks .seg {
+    height: 4px;
+    border-radius: 2px;
+    background: var(--pass);
+    opacity: .32;
+  }
+  .scale {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: .04em;
+    color: var(--faint);
+    margin-top: 8px;
+    text-transform: uppercase;
+  }
+
+  /* ---- Stat strip ---- */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+    margin: 14px 0 52px;
+  }
+  .stat {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 18px;
+  }
+  .stat .v {
+    font-family: var(--mono);
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -.01em;
+  }
+  .stat .k {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+
+  /* ---- Group sections ---- */
+  .group { margin-bottom: 30px; }
+  .group-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 4px;
+  }
+  .group-head h2 {
+    font-family: var(--mono);
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -.005em;
+    margin: 0;
+  }
+  .group-head .count {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--pass);
+    background: var(--pass-soft);
+    border-radius: 999px;
+    padding: 2px 9px;
+  }
+  .group-head .file {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--faint);
+    margin-left: auto;
+  }
+  .group-desc {
+    font-size: 13.5px;
+    color: var(--muted);
+    margin: 0 0 14px;
+    max-width: 70ch;
+  }
+  .rows {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .row {
+    display: flex;
+    align-items: flex-start;
+    gap: 13px;
+    padding: 13px 18px;
+    border-top: 1px solid var(--line);
+  }
+  .row:first-child { border-top: 0; }
+  .check {
+    flex: none;
+    width: 18px;
+    height: 18px;
+    margin-top: 1px;
+    border-radius: 50%;
+    background: var(--pass-soft);
+    color: var(--pass);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .check svg { width: 11px; height: 11px; display: block; }
+  .row .name {
+    flex: 1;
+    font-size: 14px;
+    color: var(--ink);
+  }
+  .row .name code {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    background: #EEF1F6;
+    padding: 1px 5px;
+    border-radius: 5px;
+  }
+  .row .ms {
+    flex: none;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--faint);
+    padding-top: 1px;
+    white-space: nowrap;
+  }
+
+  footer {
+    margin-top: 56px;
+    padding-top: 22px;
+    border-top: 1px solid var(--line);
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--faint);
+    line-height: 1.7;
+  }
+  footer b { color: var(--muted); font-weight: 600; }
+
+  a { color: var(--blue); }
+  :focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+  @media (max-width: 560px) {
+    .stats { grid-template-columns: 1fr; }
+    .scrubber-top { flex-direction: column; gap: 8px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .fill { animation: none; transform: scaleX(1); }
+  }
+</style>
+</head>
+<body>
+<main class="wrap">
+
+  <p class="eyebrow">Validación QA · Lightning Player</p>
+
+  <h1>PR&nbsp;#747 — Diferir la solicitud<br>del overlay ad · <span class="num">30 verdes</span></h1>
+
+  <p class="lede">
+    Validación de la suite QA para el cambio que difiere la solicitud del overlay
+    VAST hasta la posición configurada. Se ejercitó la guardia de re-entrada del
+    overlay, la resolución de macros del ad tag, el contrato de la API pública y
+    el flujo básico del player. A continuación, únicamente las verificaciones que
+    pasaron.
+  </p>
+
+  <div class="meta">
+    <span><b>Rama</b> feature/issue-746 → staging</span>
+    <span><b>Build</b> develop</span>
+    <span><b>Motor</b> Chromium</span>
+    <span><b>Fecha</b> 2026-06-23</span>
+  </div>
+
+  <!-- Hero: validation scrubber -->
+  <section class="scrubber" aria-label="Resumen de validación">
+    <div class="scrubber-top">
+      <div class="big"><span>30</span> / 30 verificaciones</div>
+      <div class="pct">100% superado</div>
+    </div>
+    <div class="track"><div class="fill"></div></div>
+    <div class="ticks">
+      <div class="seg" style="flex:3"></div>
+      <div class="seg" style="flex:9"></div>
+      <div class="seg" style="flex:1"></div>
+      <div class="seg" style="flex:11"></div>
+      <div class="seg" style="flex:6"></div>
+    </div>
+    <div class="scale">
+      <span>Inicio</span>
+      <span>Validación completa</span>
+    </div>
+  </section>
+
+  <div class="stats">
+    <div class="stat"><div class="v">30</div><div class="k">verificaciones superadas</div></div>
+    <div class="stat"><div class="v">5</div><div class="k">áreas cubiertas</div></div>
+    <div class="stat"><div class="v">94.7&thinsp;s</div><div class="k">tiempo de ejecución</div></div>
+  </div>
+
+  <!-- 1. Overlay re-entry -->
+  <section class="group">
+    <div class="group-head">
+      <h2>Overlay · guardia de re-entrada</h2>
+      <span class="count">3</span>
+      <span class="file">ads-ima-overlay-re-entry.spec.ts</span>
+    </div>
+    <p class="group-desc">
+      Núcleo del PR: la solicitud del overlay se dispara una sola vez y la guardia
+      <code>adRequested</code> se restablece correctamente al recargar contenido.
+    </p>
+    <div class="rows">
+      <div class="row"><span class="check">&#10003;</span><span class="name">La solicitud VAST nonlinear <code>sz=480x70</code> se dispara exactamente una vez al iniciar la reproducción</span><span class="ms">3.5 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name"><code>play()</code> después de <code>ready</code> no duplica la solicitud VAST del overlay</span><span class="ms">7.3 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">Un segundo <code>load()</code> genera una nueva solicitud del overlay — <code>adRequested</code> se restablece al re-montar</span><span class="ms">9.5 s</span></div>
+    </div>
+  </section>
+
+  <!-- 2. Macro resolution -->
+  <section class="group">
+    <div class="group-head">
+      <h2>Overlay · resolución de macros</h2>
+      <span class="count">9</span>
+      <span class="file">ads-ima-overlay-macro-resolution.spec.ts</span>
+    </div>
+    <p class="group-desc">
+      El pipeline de configuración → <code>contextMapper</code> → resolución de macros
+      produce una URL VAST válida ante props nuevas, metadata ausente y valores vacíos.
+    </p>
+    <div class="rows">
+      <div class="row"><span class="check">&#10003;</span><span class="name">Player con <code>custom</code> params en config alcanza <code>ready</code> sin crash</span><span class="ms">1.4 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">Player con <code>listenerId</code> en config alcanza <code>ready</code> sin crash</span><span class="ms">1.1 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">Player con <code>withoutCookies=true</code> en config alcanza <code>ready</code> sin crash</span><span class="ms">1.2 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">Player con <code>custom</code> + <code>listenerId</code> + <code>withoutCookies</code> alcanza <code>ready</code> sin crash</span><span class="ms">1.2 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">Player sin <code>adMarkers</code> en metadata — el default del destructuring no causa crash</span><span class="ms">1.2 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name"><code>adMarkers</code> vacío → <code>$markers$</code> resuelto a cadena vacía no rompe la URL VAST</span><span class="ms">1.2 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name"><code>load()</code> con nuevas custom props no crashea el árbol de OverlayAds</span><span class="ms">1.1 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">Player sin ninguna de las nuevas props de OverlayAds — compatibilidad hacia atrás</span><span class="ms">1.1 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">Pipeline <code>custom</code> → contextMapper → resolveAdTagMacros: <code>cust_params</code> aparece en la URL VAST</span><span class="ms">1.0 s</span></div>
+    </div>
+  </section>
+
+  <!-- 3. E2E stability -->
+  <section class="group">
+    <div class="group-head">
+      <h2>Overlay · estabilidad en reproducción</h2>
+      <span class="count">1</span>
+      <span class="file">ads-ima-overlay-behavior.spec.ts</span>
+    </div>
+    <p class="group-desc">
+      Sesión completa de reproducción con overlay: el player no se rompe durante la
+      carga ni el cierre natural del ad.
+    </p>
+    <div class="rows">
+      <div class="row"><span class="check">&#10003;</span><span class="name">El player no crashea durante la carga y el cierre natural del overlay</span><span class="ms">36.5 s</span></div>
+    </div>
+  </section>
+
+  <!-- 4. API contract -->
+  <section class="group">
+    <div class="group-head">
+      <h2>Contrato de API pública</h2>
+      <span class="count">11</span>
+      <span class="file">player-api.spec.ts</span>
+    </div>
+    <p class="group-desc">
+      La superficie pública del player se mantiene estable: métodos, propiedades,
+      getters y sistema de eventos responden según el contrato.
+    </p>
+    <div class="rows">
+      <div class="row"><span class="check">&#10003;</span><span class="name">El player se inicializa sin error (<code>loadMSPlayer</code> resuelve y expone <code>__player</code>)</span><span class="ms">1.9 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name"><code>player.version</code> es un string no vacío</span><span class="ms">1.4 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">Los métodos requeridos existen como funciones en la instancia del player</span><span class="ms">1.5 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">Las propiedades requeridas existen con el tipo correcto</span><span class="ms">1.3 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">Las propiedades writable aceptan asignación sin lanzar error</span><span class="ms">1.4 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name"><code>onNext</code> y <code>onPrev</code> son writable — el setter acepta función y coerciona no-función a <code>null</code></span><span class="ms">1.3 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name"><code>player.isPlayingAd</code> es un getter que retorna boolean</span><span class="ms">1.4 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">Los eventos fundamentales se emiten en el flujo básico (<code>ready → playing → pause</code>)</span><span class="ms">1.2 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name"><code>dismissButton</code> está en el catálogo de <code>UI_EVENTS</code> del contrato</span><span class="ms">1.2 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">El sistema de eventos <code>player.on()</code> funciona — el harness trackea eventos en <code>__qa.events</code></span><span class="ms">1.3 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name"><code>ads.focus()</code> fue eliminado — <code>player.ads.focus</code> no es función (PR&nbsp;#595)</span><span class="ms">1.2 s</span></div>
+    </div>
+  </section>
+
+  <!-- 5. Smoke -->
+  <section class="group">
+    <div class="group-head">
+      <h2>Smoke del player</h2>
+      <span class="count">6</span>
+      <span class="file">player-smoke.spec.ts</span>
+    </div>
+    <p class="group-desc">
+      Red de seguridad: el ciclo de vida básico del player sigue intacto tras el cambio.
+    </p>
+    <div class="rows">
+      <div class="row"><span class="check">&#10003;</span><span class="name">El script del player carga correctamente (<code>loadMSPlayer</code> disponible)</span><span class="ms">1.8 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name"><code>loadMSPlayer()</code> inicializa el player y emite el evento <code>ready</code></span><span class="ms">1.6 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name"><code>play()</code> → el video avanza → <code>pause()</code> funciona</span><span class="ms">2.7 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name"><code>seek</code> cambia la posición de reproducción</span><span class="ms">2.9 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name"><code>load()</code> carga nuevo contenido sin destruir el player</span><span class="ms">1.9 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name"><code>destroy()</code> elimina el player del DOM sin errores</span><span class="ms">1.3 s</span></div>
+    </div>
+  </section>
+
+  <footer>
+    <div><b>Suite QA independiente</b> · Playwright · Lightning Player</div>
+    <div>Build bajo prueba: <b>player.cdn.mdstrm.com/lightning_player/develop/api.js</b></div>
+    <div>Generado el 2026-06-23 · contiene únicamente verificaciones superadas</div>
+  </footer>
+
+</main>
+</body>
+</html>

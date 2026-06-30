@@ -1,0 +1,154 @@
+version: "1.0"
+module: quizzes
+last_updated: "2026-06-10"
+
+acceptance_criteria:
+  # ─── VOD activation & pause ───────────────────────────────────────────────
+  - id: QUIZ-AC-001
+    priority: MUST
+    scenario: "Quiz VOD se activa por trigger_time y pausa la reproducción"
+    given: "Contenido VOD (type=media|episode) con metadata.quizzes que contiene un quiz con trigger_time=T y al menos una pregunta válida"
+    when: "currentTime entra en la ventana [T, T+2s] y el quiz no fue completado"
+    then:
+      - "el overlay de quiz se renderiza con role='dialog' y aria-modal='true'"
+      - "controls.pause() es invocado (la reproducción se detiene)"
+      - "se muestra la primera pregunta (currentIndex=0) con sus opciones"
+
+  - id: QUIZ-AC-002
+    priority: MUST
+    scenario: "Respuesta correcta de opción única con feedback y reporte a analytics"
+    given: "Quiz VOD activo mostrando una pregunta de opción única (exactamente una opción isCorrect=true)"
+    when: "el usuario selecciona la opción correcta y pulsa Submit"
+    then:
+      - "se emite el evento interno quizAnswered con quiz_id, question_id, answer_index y correct_answer_index"
+      - "StreamMetrics envía el beacon quiz_answered con POST inmediato"
+      - "el footer muestra feedback 'Correct answer!' (quiz.feedbackCorrect) en un contenedor role='status' aria-live='polite'"
+      - "la opción correcta recibe el estado visual correcto y los inputs quedan deshabilitados"
+
+  - id: QUIZ-AC-003
+    priority: MUST
+    scenario: "Respuesta incorrecta muestra feedback y marca la respuesta del usuario"
+    given: "Quiz VOD activo con una pregunta de opción única"
+    when: "el usuario selecciona una opción incorrecta y pulsa Submit"
+    then:
+      - "result.isCorrect es false y se reporta quizAnswered con la respuesta seleccionada"
+      - "el footer muestra 'Incorrect answer' (quiz.feedbackIncorrect)"
+      - "la opción seleccionada se marca como incorrecta y la(s) correcta(s) se resaltan"
+
+  - id: QUIZ-AC-004
+    priority: MUST
+    scenario: "Submit bloqueado sin selección"
+    given: "Quiz activo con una pregunta y ninguna opción seleccionada (hasSelectedOption=false)"
+    when: "el usuario intenta pulsar Submit"
+    then:
+      - "el botón está disabled (canSubmit=false)"
+      - "submitAnswer retorna sin emitir quizAnswered ni calcular resultado"
+
+  - id: QUIZ-AC-005
+    priority: MUST
+    scenario: "Avance entre preguntas y finalización reanuda la reproducción (VOD)"
+    given: "Quiz VOD activo con N>1 preguntas, mostrando un resultado ya calculado en la pregunta actual"
+    when: "el usuario pulsa Continue en preguntas no finales y Finish en la última"
+    then:
+      - "Continue avanza currentIndex+1 y resetea selectedOption/result a null"
+      - "Finish (isLastQuestion) dispara COMPLETE_QUIZ y el quiz se marca como completado"
+      - "tras completar, resumePlayback() invoca api.play() y el overlay desaparece"
+
+  - id: QUIZ-AC-006
+    priority: MUST
+    scenario: "Quiz completado en VOD no se reactiva en la misma sesión"
+    given: "Un quiz VOD ya completado (su _id está en completedQuizzes)"
+    when: "currentTime vuelve a entrar en la ventana [trigger_time, trigger_time+2s] (e.g. tras un seek hacia atrás)"
+    then:
+      - "el quiz NO se reactiva"
+      - "la reproducción continúa sin pausa"
+
+  # ─── Multiple choice ──────────────────────────────────────────────────────
+  - id: QUIZ-AC-007
+    priority: SHOULD
+    scenario: "Pregunta de opción múltiple usa checkboxes y exige todas las correctas"
+    given: "Pregunta con más de una opción isCorrect=true (isMultipleChoice=true)"
+    when: "el usuario marca un subconjunto de opciones y pulsa Submit"
+    then:
+      - "las opciones se renderizan como type='checkbox' (no radio)"
+      - "result.isCorrect es true solo si el conjunto seleccionado coincide exactamente (orden-insensible) con las correctas"
+      - "answer_index/answer_text se reportan unidos por '||' en orden ascendente de índice"
+
+  - id: QUIZ-AC-008
+    priority: SHOULD
+    scenario: "Cierre manual del quiz reanuda la reproducción sin completar el resto"
+    given: "Quiz activo (VOD o live) con el overlay visible"
+    when: "el usuario pulsa el botón de cierre (X)"
+    then:
+      - "COMPLETE_QUIZ se dispara para el quiz activo"
+      - "resumePlayback() invoca api.play()"
+      - "el siguiente quiz en cola (si existe) se procesa"
+
+  # ─── LIVE ─────────────────────────────────────────────────────────────────
+  - id: QUIZ-AC-009
+    priority: MUST
+    scenario: "Quiz live se dispara desde Firestore y se carga vía API"
+    given: "Contenido live (type=live) con liveId, escuchando la colección Firestore live_quizzes"
+    when: "aparece un documento con status='active' y timestamp reciente (≤15s)"
+    then:
+      - "FIREBASE_QUIZ_TRIGGER se dispara con el quiz_id del documento"
+      - "si el quiz no está cacheado, se hace GET /api/live-stream/{liveId}/quizzes/{quizId}"
+      - "al recibir un quiz válido (_id + questions.length) el overlay aparece"
+      - "la reproducción NO se pausa (el efecto de pausa solo aplica a VOD)"
+
+  - id: QUIZ-AC-010
+    priority: SHOULD
+    scenario: "Trigger live antiguo se descarta por frescura"
+    given: "Contenido live escuchando live_quizzes"
+    when: "llega un documento con timestamp con antigüedad > 15s respecto a ahora"
+    then:
+      - "isQuizRecent retorna false y el documento se filtra"
+      - "no se dispara FIREBASE_QUIZ_TRIGGER ni aparece overlay para ese quiz"
+
+  - id: QUIZ-AC-011
+    priority: SHOULD
+    scenario: "Reintentos en fallo de carga del quiz live"
+    given: "Trigger de quiz live recibido cuyo GET al API falla"
+    when: "fetchQuizWithRetry recibe error en el intento N (N<3)"
+    then:
+      - "reintenta hasta 3 veces con backoff lineal (2000ms * intento)"
+      - "si todos los intentos fallan, no aparece overlay y no se lanza excepción no manejada"
+
+  # ─── Encolado y reset ─────────────────────────────────────────────────────
+  - id: QUIZ-AC-012
+    priority: SHOULD
+    scenario: "Segundo quiz se encola mientras hay uno activo"
+    given: "Un quiz ya activo (activeQuiz != null)"
+    when: "se dispara ACTIVATE_QUIZ con un segundo quiz de _id distinto"
+    then:
+      - "el segundo quiz se añade a la cola (sin duplicar por _id)"
+      - "al completar/cerrar el primero, processNextQuizFromQueue activa el segundo"
+
+  - id: QUIZ-AC-013
+    priority: MUST
+    scenario: "Cambio de contenido resetea todo el estado de quizzes"
+    given: "Quiz activo y/o quizzes completados en la sesión actual"
+    when: "el contenido cambia (sourcechange / desmontaje del contexto, id cambia)"
+    then:
+      - "RESET_ALL limpia activeQuiz, sesión, completedQuizzes, cola, mapa live y contador de reintentos"
+      - "el nuevo contenido puede activar sus propios quizzes desde cero"
+
+  # ─── i18n / a11y (PR #705) ────────────────────────────────────────────────
+  - id: QUIZ-AC-014
+    priority: SHOULD
+    scenario: "Textos del quiz se localizan según el idioma activo"
+    given: "Idioma del player en es | en | pt con las claves quiz.* presentes"
+    when: "el overlay de quiz se renderiza"
+    then:
+      - "título, botones (submitAnswer/continue/finish), feedback y etiquetas ARIA usan las traducciones del idioma activo"
+      - "el overlay no se monta hasta que useTranslation('video').ready es true"
+
+  - id: QUIZ-AC-015
+    priority: SHOULD
+    scenario: "Estructura ARIA del overlay para lectores de pantalla"
+    given: "Quiz activo renderizado"
+    when: "un lector de pantalla inspecciona el overlay"
+    then:
+      - "el contenedor es role='dialog', aria-modal='true', aria-labelledby='quiz-title' y aria-describedby apunta a pregunta + progreso"
+      - "el progreso usa role='progressbar' con aria-valuenow/min/max coherentes"
+      - "el feedback de resultado usa role='status' aria-live='polite'"

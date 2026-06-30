@@ -1,0 +1,112 @@
+version: "1.0"
+module: i18n
+last_updated: "2026-06-09"
+
+learnings:
+
+  - id: I18N-LEARN-001
+    title: "El idioma por defecto es 'es', no 'en'"
+    discovery: "Código fuente: useTranslation/index.js línea 94"
+    detail: >
+      contextMapper retorna (context.options || {}).language || 'es'.
+      El fallback hardcodeado es español ('es'), no inglés como podría esperarse
+      en una librería de software. Esto es intencional dado el mercado primario
+      de Mediastream (LATAM).
+    impact_on_tests: >
+      Tests que no especifiquen language deben asumir strings en español.
+      No asumir inglés como idioma por defecto en ningún assertion de texto visible.
+
+  - id: I18N-LEARN-002
+    title: "SettingsLanguageDetector es un detector ONE-SHOT async"
+    discovery: "Código fuente: settingsLanguageDetector.js + useTranslation/index.js línea 59-63"
+    detail: >
+      El detector custom tiene un Promise interno. La primera vez que se llama
+      useTranslation, detector.resolve(language) activa la Promise y i18next carga
+      el idioma. Si después cambia el language en el contexto, el detector ya está
+      resuelto (isResolved=true), y se usa el camino directo changeLanguage(language).
+      Esto significa que el primer idioma usa una ruta diferente al cambio dinámico.
+    impact_on_tests: >
+      No probar cambio dinámico de idioma como si fuera idéntico al init.
+      El primer idioma requiere que el contexto esté listo antes del primer render.
+      Cambios dinámicos pueden tener latencia diferente (changeLanguage() vs detect()).
+
+  - id: I18N-LEARN-003
+    title: "SettingsBackend tiene caché por namespace+language en memory"
+    discovery: "Código fuente: settingsBackend.js líneas 17-47"
+    detail: >
+      #_translations es un mapa en memoria: namespace → { lng: { [language]: Promise } }.
+      Una vez cargado un language+namespace, el resultado se cachea.
+      Si language cambia de 'es' a 'en' y luego vuelve a 'es', el segundo uso
+      de 'es' reutiliza el resultado cacheado (no hace nuevo dynamic import).
+      La caché no expira durante el ciclo de vida del player.
+    impact_on_tests: >
+      El segundo cambio de idioma (incluso a uno diferente) es más rápido que el primero.
+      No asumir que cambio de idioma siempre dispara un network request.
+      Los mocks de dynamic import solo necesitan configurarse para la primera carga.
+
+  - id: I18N-LEARN-004
+    title: "radio.json en inglés y español son idénticos — bug de contenido"
+    discovery: "Código fuente: src/view/i18n/en/radio.json vs src/view/i18n/es/radio.json"
+    detail: >
+      Ambos archivos tienen exactamente el mismo contenido en español.
+      Strings como 'volver en vivo', 'al aire', 'reproducir' aparecen en ambos idiomas.
+      Esto es un bug de contenido, no de código. Significa que language='en' en vista
+      radio produce strings en español.
+    impact_on_tests: >
+      Tests de i18n para namespace 'radio' con language='en' deben verificar
+      el comportamiento actual (strings en español) y marcar como I18N-DEF-001.
+      No usar el namespace radio como referencia para tests de cambio de idioma correcto.
+
+  - id: I18N-LEARN-005
+    title: "Traducciones con HTML embebido en federation.json"
+    discovery: "Código fuente: src/view/i18n/en/federation.json línea 14"
+    detail: >
+      federation.json usa escapeValue: false que permite HTML en los strings.
+      Por ejemplo: 'register.link.register': '<a href="#register">Register</a>'.
+      Si un componente renderiza este string en un nodo de texto (no innerHTML / dangerouslySetInnerHTML),
+      el HTML aparecerá como texto literal. Si lo renderiza como HTML, puede existir
+      riesgo de XSS si el integrador provee traducciones custom con HTML malicioso.
+    impact_on_tests: >
+      Tests de federation deben verificar que los links dentro de strings se renderizan
+      como elementos HTML (no como texto literal).
+      La opción translation del integrador no debería inyectar scripts.
+
+  - id: I18N-LEARN-006
+    title: "El array de claves en t() hace path normalization con dot notation"
+    discovery: "Código fuente: useTranslation/index.js líneas 79-89"
+    detail: >
+      La función t() wrapeada normaliza arrays de strings: cada elemento del array
+      tiene sus brackets [x] convertidos a .x (dot notation).
+      Ejemplo: t(['status[playing]']) → t(['status.playing']).
+      Esto permite pasar rutas con bracket notation sin errores de i18next.
+    impact_on_tests: >
+      Al mockear o spy en t(), usar tanto bracket como dot notation en assertions.
+      El resultado de ambas formas debe ser idéntico.
+
+  - id: I18N-LEARN-007
+    title: "Chromecast language es independiente del i18n de la UI"
+    discovery: "Código fuente: chromecast/CastManager.js línea 34 y 191"
+    detail: >
+      CastManager recibe options.language (la misma opción que configura i18n)
+      pero lo pasa directamente al Cast receiver sin ninguna transformación.
+      El CastManager usa language para configurar el idioma del Google Cast receiver,
+      no para traducir strings de la UI de Chromecast. Los strings de la UI de
+      Chromecast (chromecast.*) sí pasan por el sistema i18n.
+    impact_on_tests: >
+      Tests de Chromecast + i18n deben separar: (1) strings de UI del player
+      (namespace video, chromecast.*) y (2) configuración del receiver de Cast.
+      No asumir que cambiar language también cambia el idioma del receiver de Cast.
+
+  - id: I18N-LEARN-008
+    title: "missingKeyHandler está comentado — no se trackean claves faltantes en producción"
+    discovery: "Código fuente: useTranslation/index.js líneas 22-24 (comentado)"
+    detail: >
+      El bloque missingKeyHandler está comentado en la configuración de i18next.
+      El objeto missingKeys se importa desde el módulo pero el handler que lo popula
+      está desactivado. En producción no se acumulan automáticamente las claves faltantes.
+      api.federation.missingTranslation expone missingKeys pero siempre estará vacío
+      mientras el handler esté comentado.
+    impact_on_tests: >
+      No testear que api.federation.missingTranslation se popula automáticamente —
+      el mecanismo está desactivado. Si se re-activa en el futuro, los tests
+      de I18N-AC-016 se vuelven relevantes.

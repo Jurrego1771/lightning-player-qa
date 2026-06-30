@@ -1,0 +1,140 @@
+version: "1.0"
+module: i18n
+last_updated: "2026-06-09"
+
+risks:
+
+  - id: I18N-RISK-001
+    severity: high
+    title: "UI en blanco o con claves crudas si language resuelve tarde"
+    description: >
+      useTranslation mantiene loading=true hasta que SettingsLanguageDetector.resolve()
+      es llamado con el idioma. Si el contexto tarda en proveer options.language
+      (ej: race condition en init o language llega null), el detector nunca se resuelve
+      y todos los componentes que usen useTranslation quedan con loading=true.
+      Algunos componentes renderizan vacío, otros muestran las translation keys directamente.
+    affected_files:
+      - src/view/common/hook/useTranslation/index.js
+      - src/view/common/hook/useTranslation/settingsLanguageDetector.js
+    trigger: "options.language=null o contexto no inicializado antes del primer render"
+    mitigation: >
+      contextMapper usa || 'es' como fallback. Pero si options es undefined (no null),
+      el fallback aplica. Si options existe pero language es explícitamente null,
+      useEffect no llama detector.resolve() (condición: if (language)).
+    test_priority: MUST
+
+  - id: I18N-RISK-002
+    severity: high
+    title: "Idioma desconocido muestra translation keys sin aviso visible al usuario"
+    description: >
+      Un language code válido BCP47 pero sin archivos JSON en src/view/i18n/
+      (ej: 'fr', 'de', 'zh') causa que dynamic import falle silenciosamente.
+      El error solo aparece en console.error. i18next retorna las claves como texto
+      (missingKeyNoValueFallbackToKey: true). El usuario ve texto como 'status.playing'
+      en lugar de strings legibles.
+    affected_files:
+      - src/view/common/hook/useTranslation/settingsBackend.js
+    trigger: "Integrador pasa language='fr' o cualquier código sin archivos JSON"
+    mitigation: >
+      No hay validación de language codes al init. No hay fallback automático a 'es'.
+      La documentación debe ser explícita sobre los 3 idiomas soportados.
+    test_priority: MUST
+
+  - id: I18N-RISK-003
+    severity: high
+    title: "race condition en primer render — strings visibles antes de que loading=false"
+    description: >
+      useTranslation usa useState(true) para loading. Entre el primer render y
+      el useEffect que llama detector.resolve(), i18next puede devolver strings
+      vacíos o keys. React puede renderizar la UI antes de que loading=false
+      si el contexto resuelve el language en el mismo ciclo que el mount.
+      Esto puede producir un flash de keys/vacío visible al usuario.
+    affected_files:
+      - src/view/common/hook/useTranslation/index.js
+    trigger: "Cualquier init del player en browser con language en el objeto options"
+    mitigation: >
+      Los componentes deben renderizar condicionalmente según loading. Si no lo hacen,
+      puede haber un flash. El comentario en el código dice useSuspense: false 'will do the magic'
+      pero el loading state manual es el mecanismo real.
+    test_priority: SHOULD
+
+  - id: I18N-RISK-004
+    severity: medium
+    title: "Traducciones radio sin traducción real en inglés"
+    description: >
+      Los archivos src/view/i18n/en/radio.json y src/view/i18n/es/radio.json son
+      idénticos — contienen strings en español (ej: 'volver en vivo', 'al aire',
+      'reproducir'). El namespace 'radio' no tiene traducción real a inglés.
+      Usuarios con language='en' ven strings en español en la vista radio.
+    affected_files:
+      - src/view/i18n/en/radio.json
+      - src/view/i18n/es/radio.json
+    trigger: "language='en' con view='radio'"
+    mitigation: "Bug conocido. Los strings en radio.json son idénticos entre 'es' y 'en'."
+    test_priority: MUST
+
+  - id: I18N-RISK-005
+    severity: medium
+    title: "federation.json tiene campos vacíos — returnEmptyString puede confundirse con ausencia"
+    description: >
+      El archivo federation.json tiene múltiples campos con string vacío (''):
+      subtitle, orLoginWith, orRegisterWith, label, placeholder, error:.
+      Con returnEmptyString: true, t() retorna '' para estos campos.
+      Los componentes deben manejar el caso de string vacío diferente al de clave ausente.
+      Un integrador que espere un string de fallback recibirá '' en su lugar.
+    affected_files:
+      - src/view/i18n/en/federation.json
+      - src/view/i18n/es/federation.json
+    trigger: "Componente de federation que muestra subtítulo del modal o labels de formulario"
+    mitigation: >
+      Comportamiento correcto por diseño (campos opcionales). Pero puede confundir
+      a integradores que asuman que campos vacíos usan la clave como fallback.
+    test_priority: SHOULD
+
+  - id: I18N-RISK-006
+    severity: medium
+    title: "Traducciones custom del integrador pueden romper claves existentes via merge"
+    description: >
+      SettingsBackend._loadConf() hace merge(lng, conf) donde conf es el resultado de
+      component.getTranslation() (traducciones del integrador). lodash merge hace
+      deep merge — si el integrador provee un objeto con una estructura incorrecta
+      para una clave existente (ej: { login: 'string' } en lugar de { login: { title: '...' } }),
+      puede sobrescribir el objeto completo de login con un string, rompiendo
+      todas las sub-claves de login en el namespace.
+    affected_files:
+      - src/view/common/hook/useTranslation/settingsBackend.js
+      - src/federation/index.js
+    trigger: "Integrador provee view.federation.translation con estructura incorrecta"
+    mitigation: "No hay validación del schema de las traducciones custom antes del merge."
+    test_priority: SHOULD
+
+  - id: I18N-RISK-007
+    severity: low
+    title: "Singleton de i18next compartido entre múltiples instancias del player"
+    description: >
+      useTranslation/index.js inicializa i18next con i18nextUse(...).init() a nivel de módulo,
+      no dentro del hook. Esto significa que i18next es un singleton compartido.
+      Si hay dos instancias del player en la misma página con diferentes language options,
+      el segundo changeLanguage() afectará a ambas instancias simultáneamente.
+    affected_files:
+      - src/view/common/hook/useTranslation/index.js
+    trigger: "Dos o más instancias del player en la misma página con idiomas diferentes"
+    mitigation: >
+      Caso de uso inusual pero posible. La documentación no advierte sobre este comportamiento.
+      No hay aislamiento por instancia del player.
+    test_priority: COULD
+
+  - id: I18N-RISK-008
+    severity: low
+    title: "ARIA labels de controles no pasan por el sistema i18n"
+    description: >
+      Varios controles usan hardcoded fallback strings (ej: audioTracksAccordionItem.jsx:
+      'Default', 'Track', 'Track ${index + 1}') en lugar de pasar por t().
+      Esto significa que los aria-label de controles de audio muestran texto hardcoded
+      en inglés independientemente del language configurado, afectando accesibilidad
+      para usuarios con screen readers en otros idiomas.
+    affected_files:
+      - src/view/video/components/controls/options/audioTracksAccordionItem.jsx
+    trigger: "language='es' o 'pt' con múltiples audio tracks"
+    mitigation: "No implementado. Strings hardcoded en inglés para fallback de label de track."
+    test_priority: COULD

@@ -1,28 +1,40 @@
 {
-  "schema_version": "1.0",
-  "pipeline_id": "2026-06-07T23:57:40Z",
-  "input_ref": "690",
+  "schema_version": "2.0",
+  "pipeline_id": "2026-06-30T12:00:00.000Z",
+  "input_ref": "760",
   "input_type": "pr",
   "player_github_repo": "mediastream/lightning-player",
-  "created_at": "2026-06-07T23:57:40Z",
+  "created_at": "2026-06-30T12:00:00.000Z",
+  "pr_metadata": {
+    "title": "Bugfix/schedule blackout",
+    "body": null,
+    "head_branch": "bugfix/schedule-blackout",
+    "base_branch": "staging",
+    "labels": [],
+    "author": "WesleiStange",
+    "is_draft": false,
+    "reviewer_signals": [
+      "location.reload() tras unmount puede recargar aunque el player fue destruido — resuelto con AbortController en cleanup",
+      "useEffect deps incompletas sin type/adminToken: poll activo puede recargar cuando ya no corresponde — resuelto con segundo effect shouldListen",
+      "Stale closure en accessToken: poll usa token expirado, puede bloquear usuario legitimo con 403 — resuelto con accessTokenRef",
+      "Errores no-403 en /access poll descartados silenciosamente — resuelto con internalEmitter.debug warn al agotar intentos",
+      "Score final 9/10 — todos los bloqueantes criticos atendidos, listo para staging"
+    ]
+  },
   "diff": {
     "classification_completed": true,
-    "total_files_raw": 6,
-    "total_files_filtered": 3,
+    "total_files_raw": 5,
+    "total_files_filtered": 4,
     "cross_cutting_risk": false,
     "cross_cutting_reasons": [],
     "files_excluded": [
-      ".claude/settings.local.json",
-      "CodeReview.md",
       "package-lock.json"
     ],
-    "modules_noise": [
-      "unknown"
-    ],
-    "change_type": "feature",
-    "test_priority": "GENERATE_AND_RUN",
+    "change_type": "bug-fix",
+    "risk_signal": "high",
     "behavior_status": {
-      "ads-manager": "curated",
+      "api-bootstrap": "missing",
+      "platform-config": "missing",
       "dependency": "missing"
     },
     "files": [
@@ -34,77 +46,243 @@
         "lines_added": 1,
         "lines_removed": 1,
         "status": "modified",
+        "symbols_changed": [],
+        "events_touched": [],
+        "patch_truncated": false,
+        "patch": "@@ -1,6 +1,6 @@\n {\n   \"name\": \"lightning-player\",\n-  \"version\": \"1.0.82\",\n+  \"version\": \"1.0.83\",\n   \"description\": \"\",\n   \"main\": \"src/api/index.js\","
+      },
+      {
+        "path": "src/api/player.jsx",
+        "module": "api-bootstrap",
+        "criticality": "critical",
+        "inferred": false,
+        "lines_added": 2,
+        "lines_removed": 0,
+        "status": "modified",
+        "symbols_changed": [],
+        "events_touched": [],
+        "patch_truncated": false,
+        "patch": "@@ -10,6 +10,7 @@\n import ErrorHandler from \"@/error\"\n+import LiveScheduleWatcher from \"../platform/LiveScheduleWatcher\"\n@@ -111,6 +112,7 @@\n             <ErrorHandler />\n+            <LiveScheduleWatcher />"
+      },
+      {
+        "path": "src/platform/LiveScheduleWatcher.jsx",
+        "module": "platform-config",
+        "criticality": "critical",
+        "inferred": false,
+        "lines_added": 24,
+        "lines_removed": 0,
+        "status": "added",
         "symbols_changed": [
-          "version:1.0.68"
+          "LiveScheduleWatcher",
+          "contextMapper"
         ],
         "events_touched": [],
         "patch_truncated": false,
-        "patch": "@@ -1,6 +1,6 @@ { \"name\": \"lightning-player\", -\"version\": \"1.0.66\", +\"version\": \"1.0.68\","
+        "patch": "@@ -0,0 +1,24 @@\n+import PropTypes from \"prop-types\"\n+import { mapContextToProps } from \"@/context\"\n+import useLiveScheduleCheck from \"./useLiveScheduleCheck\"\n+\n+const contextMapper = ctx => ({ type: ctx.type, id: ctx.id, accessToken: ctx.accessToken, adminToken: ctx.adminToken })\n+\n+function LiveScheduleWatcher ({ type, id, accessToken, adminToken }) {\n+  useLiveScheduleCheck({ type, id, accessToken, adminToken })\n+  return null\n+}\n+\n+export default mapContextToProps(contextMapper)(LiveScheduleWatcher)"
       },
       {
-        "path": "src/view/video/components/ads/adsSkin.jsx",
-        "module": "ads-manager",
-        "criticality": "high",
+        "path": "src/platform/useLiveScheduleCheck.js",
+        "module": "platform-config",
+        "criticality": "critical",
         "inferred": false,
-        "lines_added": 77,
-        "lines_removed": 24,
-        "status": "modified",
+        "lines_added": 176,
+        "lines_removed": 0,
+        "status": "added",
         "symbols_changed": [
-          "AdsSkin",
-          "FONT_SIZES",
-          "VALID_MESSAGE_SIZES",
-          "getFontSizeByMessageSize",
-          "updateCurrentTimeValues",
-          "onAdStarted",
-          "containerStyle",
-          "fontSizeStyle",
-          "remainingClassName",
-          "percentage",
-          "showBackgroundTimer",
-          "messageSize"
-        ],
-        "events_touched": [
-          "Events._adsStarted",
-          "Events._adsTimeUpdate"
-        ],
-        "patch_truncated": false,
-        "patch": "adds percentage state, showBackgroundTimer context value, messageSize validation, FONT_SIZES map, CSS --ad-percentage custom property binding, null-safe poster img, useMemo for containerStyle/fontSizeStyle, ref-based dedup for timeUpdate"
-      },
-      {
-        "path": "src/view/video/components/ads/adsSkin.scss",
-        "module": "ads-manager",
-        "criticality": "high",
-        "inferred": false,
-        "lines_added": 46,
-        "lines_removed": 5,
-        "status": "modified",
-        "symbols_changed": [
-          "ads-skin__remaining",
-          "with-background",
-          "--ad-percentage",
-          "FONT_SIZES-size-variants"
+          "useLiveScheduleCheck",
+          "isTruthy",
+          "isAbortError",
+          "FIRESTORE_DISABLED",
+          "reloadFlagKey",
+          "readReloadFlag",
+          "setReloadFlag",
+          "clearReloadFlag"
         ],
         "events_touched": [],
-        "patch_truncated": false,
-        "patch": "adds CSS custom property --ad-percentage, .with-background::before progress bar, size variants (small/medium/large padding), span z-index for text above bar, removes hardcoded font-size from TV override"
+        "patch_truncated": true,
+        "patch": "@@ -0,0 +1,176 @@ [truncated at line 80]\n+import { useCallback, useEffect, useMemo, useRef } from \"react\"\n+import { useFirestore } from \"@/metadata/firestore\"\n+import { GET } from \"../helper/request\"\n+import { embedHost, protocol } from \"../constants\"\n+import { internalEmitter } from \"@/events\"\n+const FIRESTORE_DISABLED = { collection: \"ignore\" }\n+const ACCESS_POLL_DELAY = 5000\n+const ACCESS_POLL_MAX = 6\n+export default function useLiveScheduleCheck ({ type, id, accessToken, adminToken }) {\n+  const accessTokenRef = useRef(accessToken)\n+  useEffect(() => { accessTokenRef.current = accessToken }, [accessToken])\n+  const cancelActivePolls = useCallback(() => {\n+    controllersRef.current.forEach(c => c.abort())\n+    controllersRef.current.clear()\n+    pollTargetRef.current = null\n+  }, [])\n+  const reloadPage = useCallback(reason => {\n+    if (reloadingRef.current) return\n+    reloadingRef.current = true\n+    cancelActivePolls()\n+    location.reload()\n+  }, [cancelActivePolls])\n+  const shouldListen = (type === \"live\" || type === \"dvr\") && id && !adminToken\n+  useEffect(() => cancelActivePolls, [id, cancelActivePolls])\n+  useEffect(() => { if (!shouldListen) cancelActivePolls() }, [shouldListen, cancelActivePolls])\n+  // ... buildAccessUrl, requestAccessStatus, pollAccessUntil, handleScheduleData, useFirestore"
       }
     ],
     "modules_affected": [
-      "ads-manager",
+      "api-bootstrap",
+      "platform-config",
       "dependency"
     ],
     "modules_by_criticality": {
-      "critical": [],
+      "critical": [
+        "api-bootstrap",
+        "platform-config"
+      ],
       "high": [
-        "ads-manager",
         "dependency"
       ],
       "medium": [],
       "low": []
     }
   },
-  "risk_assessment": null,
+  "risk_assessment": {
+    "assessment_completed": true,
+    "assessed_at": "2026-06-30T21:31:43.000Z",
+    "risk_label_global": "CRITICAL",
+    "rationale": "api-bootstrap (base 0.95) escala a 1.0 por regla directa de módulo CRITICAL — cualquier fallo impide la carga de todos los embeds. platform-config (base 0.91) escala a 1.0 por magnitud del cambio (200 líneas, × 1.2 clampado). dependency (base 0.68) escala de HIGH a CRITICAL por cascade_risk CRITICAL_CASCADE (2 dependientes CRITICAL: playback-core, controls-api); el diff real solo cambia la versión del player 1.0.82→1.0.83 — riesgo práctico del bump es bajo, pero la regla conservativa de cascada se aplica. Global: CRITICAL por regla 2 (≥1 módulo con risk_score ≥ 0.85).",
+    "cross_cutting_active": false,
+    "yaml_source": "risk_map.yaml",
+    "modules": [
+      {
+        "module": "api-bootstrap",
+        "risk_score": 1.0,
+        "risk_label": "CRITICAL",
+        "base_risk_from_yaml": "CRITICAL",
+        "escalation_applied": true,
+        "escalation_reason": "Módulo api-bootstrap — regla de escalado directo a 1.0 (embed bootstrap: si rompe, ningún player carga)",
+        "breaks_if_not_tested": [
+          "El player puede fallar en inicializar si LiveScheduleWatcher lanza un error en el render tree — afecta todos los tipos de contenido y todos los embeds",
+          "Para live/DVR, useLiveScheduleCheck se monta en cada instancia del player — un bug en el hook puede disparar location.reload() de forma no controlada",
+          "El React error boundary del player puede verse afectado si el nuevo componente falla en mount, bloqueando la interfaz completa del player"
+        ],
+        "_breaks_source": "inferido del diff (context.yaml vacío para api-bootstrap en query-context.ts)",
+        "related_issues": []
+      },
+      {
+        "module": "platform-config",
+        "risk_score": 1.0,
+        "risk_label": "CRITICAL",
+        "base_risk_from_yaml": "CRITICAL",
+        "escalation_applied": true,
+        "escalation_reason": "lines_added + lines_removed = 200 > 50 — multiplicador × 1.2 aplicado; 0.91 × 1.2 = 1.092 → clampado a 1.0",
+        "breaks_if_not_tested": [
+          "Live/DVR streams pueden recibir location.reload() inesperado si useLiveScheduleCheck evalúa incorrectamente el estado de blackout en el primer ciclo de Firestore",
+          "El poll /access con ACCESS_POLL_MAX=6 y ACCESS_POLL_DELAY=5000ms puede bloquear usuarios legítimos con 403 persistente si el backend retorna errores transitorios",
+          "Si el AbortController no se limpia en unmount durante un poll activo (player destruido entre reintentos), puede dispararse un reload post-destrucción",
+          "La condición shouldListen (type === 'live' || type === 'dvr') && id && !adminToken puede tener edge cases: adminToken undefined vs null vs string vacío",
+          "Suscripción a Firestore: si useFirestore retorna el fallback FIRESTORE_DISABLED el blackout no se detecta por ese canal y el stream no se corta en schedule blackout"
+        ],
+        "_breaks_source": "inferido del diff (context.yaml vacío para platform-config en query-context.ts)",
+        "related_issues": []
+      },
+      {
+        "module": "dependency",
+        "risk_score": 1.0,
+        "risk_label": "CRITICAL",
+        "base_risk_from_yaml": "HIGH",
+        "escalation_applied": true,
+        "escalation_reason": "cascade_risk: CRITICAL_CASCADE — módulo dependency tiene 2 dependientes CRITICAL (playback-core, controls-api); NOTA: el diff real solo cambia version del player 1.0.82→1.0.83, no versiones de librerías — riesgo estructural de cascada, no práctico en este PR específico",
+        "breaks_if_not_tested": [
+          "NOTA DE DIFF: en este PR solo cambia la versión del player (1.0.82→1.0.83) — no hay bump de hls.js, React, Jotai ni Axios; el riesgo de cascada es estructural del módulo",
+          "Bump mayor de hls.js puede romper API de eventos y config keys (no aplica a este diff)",
+          "Bump mayor de React puede romper hooks y context API (no aplica a este diff)"
+        ],
+        "_breaks_source": "context.yaml (estructural, vía query-context.ts) + diff real (solo player version bump)",
+        "related_issues": []
+      }
+    ],
+    "modules_critical": [
+      "api-bootstrap",
+      "platform-config",
+      "dependency"
+    ],
+    "modules_high": [],
+    "modules_medium": [],
+    "modules_low": []
+  },
   "test_plan": null,
-  "coverage_gaps": null,
+  "coverage_gaps": {
+    "audit_completed": true,
+    "audited_at": "2026-06-30T21:35:18.128192Z",
+    "total_gaps": 2,
+    "must_gaps": 2,
+    "should_gaps": 0,
+    "gaps": [
+      {
+        "priority": "MUST",
+        "module": "api-bootstrap",
+        "file": "src/api/player.jsx",
+        "description": "El componente LiveScheduleWatcher es importado y montado en el render tree sin ningún test que lo cubre. Este componente es crítico para el flujo de schedule blackout en vivo (monta useLiveScheduleCheck como hook).",
+        "symbols_uncovered": [
+          "LiveScheduleWatcher"
+        ],
+        "events_uncovered": [],
+        "known_gap": false,
+        "known_gap_reference": null,
+        "suggested_spec_path": "tests/integration/platform-live-schedule-check.spec.ts",
+        "suggested_spec_type": "integration",
+        "existing_partial_coverage": []
+      },
+      {
+        "priority": "MUST",
+        "module": "platform-config",
+        "file": "src/platform/useLiveScheduleCheck.js, src/platform/LiveScheduleWatcher.jsx",
+        "description": "200 líneas nuevas de lógica crítica (polling HTTP /access, suscripción Firestore para blackout, location.reload condicional, AbortController cleanup, accessTokenRef, shouldListen) sin ningún test. BLOQUEADOR: mocking de Firestore requiere Firestore emulator (useFirestore usa onSnapshot/Listen channel, no getDocs REST — page.route no puede interceptar WebSocket, igual problema que useScheduleId en youbora-live-schedule.spec.ts).",
+        "symbols_uncovered": [
+          "useLiveScheduleCheck",
+          "LiveScheduleWatcher",
+          "isTruthy",
+          "isAbortError",
+          "FIRESTORE_DISABLED",
+          "reloadFlagKey",
+          "readReloadFlag",
+          "setReloadFlag",
+          "clearReloadFlag",
+          "contextMapper"
+        ],
+        "events_uncovered": [],
+        "known_gap": false,
+        "known_gap_reference": null,
+        "suggested_spec_path": "tests/integration/platform-live-schedule-check.spec.ts",
+        "suggested_spec_type": "integration",
+        "existing_partial_coverage": [],
+        "viability_note": "Firestore mock requires emulator (FIRESTORE_EMULATOR_HOST) or player build flag (DISABLE_SCHEDULE_LOOKUP). page.route cannot intercept Firestore gRPC-Web WebSocket."
+      }
+    ],
+    "generation_completed": true,
+    "generated_at": "2026-06-30T21:56:30.303158Z",
+    "generated_specs": [
+      {
+        "path": "tests/integration/platform-live-schedule-check.spec.ts",
+        "gap_module": "platform-config",
+        "gap_modules": [
+          "api-bootstrap",
+          "platform-config"
+        ],
+        "tests_count": 10,
+        "tests_active": 8,
+        "tests_skipped": 2,
+        "covers_symbols": [
+          "LiveScheduleWatcher",
+          "useLiveScheduleCheck",
+          "shouldListen",
+          "setReloadFlag",
+          "readReloadFlag",
+          "clearReloadFlag",
+          "FIRESTORE_DISABLED"
+        ],
+        "helper_created": "helpers/schedule-api.ts",
+        "docs_used": true,
+        "docs_sources": [
+          "qa-knowledge/modules/platform-config/overview.md",
+          "qa-knowledge/modules/platform-config/acceptance.yaml",
+          "qa-knowledge/modules/api-bootstrap/acceptance.yaml",
+          "state/session_state.json (diff patch PR #760)"
+        ],
+        "mode": "basic",
+        "oracle_used": false,
+        "oracle_note": "behavior.json no existe para platform-config ni api-bootstrap en qa-knowledge/",
+        "firestore_note": "onSnapshot/gRPC-Web no mockeable con page.route � E2E real requiere opt-in PLATFORM_SCHEDULE_TEST=true",
+        "access_url_note": "Patron /access incierto (diff truncado) � verificar path real en useLiveScheduleCheck.js en staging",
+        "validation_passed": true,
+        "validation_command": "npx playwright test tests/integration/platform-live-schedule-check.spec.ts --list",
+        "skipped_tests": [
+          {
+            "reason": "AbortController cleanup requiere delay artificial (anti-patron waitForTimeout) � recomendar unit test en player repo (Vitest)",
+            "alternatives": "src/platform/useLiveScheduleCheck.js unit test en Vitest"
+          },
+          {
+            "reason": "Firestore onSnapshot requiere emulator (FIRESTORE_EMULATOR_HOST) o build flag DISABLE_SCHEDULE_POLL � no mockeable con page.route",
+            "reference": "memory/firestore_useschedule_onsnapshot.md"
+          }
+        ]
+      }
+    ]
+  },
   "verdict": null
 }

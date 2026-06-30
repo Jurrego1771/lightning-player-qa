@@ -1,0 +1,110 @@
+version: "1.0"
+module: i18n
+last_updated: "2026-06-09"
+
+internal:
+  - id: context
+    reason: >
+      El idioma activo se lee del React Context via contextMapper:
+      (context.options || {}).language || 'es'. Sin contexto inicializado,
+      el detector no recibe el idioma y useTranslation queda en loading=true indefinidamente.
+    coupling: high
+    files:
+      - src/context/index.jsx
+      - src/context/useContext.js
+      - src/view/common/hook/useTranslation/index.js
+
+  - id: federation-plugin
+    reason: >
+      Federation es el único componente que expone API pública relacionada con i18n:
+      api.federation.translation (traducciones custom), api.federation.missingTranslation,
+      y api.federation.defaultTranslation. También provee getTranslation() que el
+      SettingsBackend usa para merge de traducciones custom.
+    coupling: medium
+    files:
+      - src/federation/index.js
+
+  - id: components-registry
+    reason: >
+      SettingsBackend._loadConf() llama getComponent(namespace) para obtener
+      el plugin registrado. Si el componente no está registrado para un namespace,
+      retorna '{}' (sin traducciones custom). Cualquier plugin puede proveer
+      traducciones via getTranslation().
+    coupling: medium
+    files:
+      - src/view/common/hook/useTranslation/settingsBackend.js
+
+  - id: tv-skin
+    reason: >
+      TVAudioSubtitleSidebar usa useTranslation('video') para strings de controles TV.
+      Los strings tvControls.* son críticos para accesibilidad TV (aria-label de sidebar,
+      sección de audio, sección de subtítulos, estado desactivado).
+    coupling: medium
+    files:
+      - src/view/video/components/skin/tv/TVAudioSubtitleSidebar.jsx
+
+  - id: subtitles
+    reason: >
+      El campo subtitle.language en los objetos de pista de texto es un código ISO
+      (ej: 'es', 'en'). Este campo NO pasa por el sistema i18n — es el idioma del
+      contenido de la pista, no del UI. El UI de selección de idiomas en languagesAccordionItem
+      muestra el label de la pista directamente.
+    coupling: low
+    files:
+      - src/view/video/components/controls/closedCaption/languagesAccordionItem.jsx
+      - src/player/textTracks.js
+
+  - id: chromecast
+    reason: >
+      CastManager recibe options.language y lo pasa al receiver de Cast como configuración
+      de idioma. Este es un canal separado del sistema i18n de la UI.
+    coupling: low
+    files:
+      - src/chromecast/CastManager.js
+
+external:
+  - id: i18next
+    package: "i18next"
+    version: "compatible con compatibilityJSON v3"
+    reason: >
+      Core del sistema de internacionalización. Gestiona el store de recursos,
+      el cambio de idioma, el fallback de claves faltantes y la interpolación de variables.
+    risk: medium
+    note: >
+      Configurado con compatibilityJSON: 'v3' para compatibilidad de browser.
+      missingKeyNoValueFallbackToKey: true — claves faltantes muestran la key como texto.
+      partialBundledLanguages: true — idiomas se cargan lazy por namespace.
+
+  - id: react-i18next
+    package: "react-i18next"
+    version: ">=11.0.0"
+    reason: >
+      Integración React de i18next. Provee useTranslation hook (usado internamente
+      como useI18nTranslation) y el initReactI18next plugin.
+    risk: low
+    note: >
+      useSuspense: false — evita que React Suspense bloquee el render mientras
+      cargan las traducciones. El player gestiona el estado loading manualmente.
+
+  - id: dynamic-import-webpack
+    package: "webpack"
+    version: "5.x"
+    reason: >
+      SettingsBackend usa dynamic import() para cargar JSON de traducciones:
+      import(`@/view/i18n/${language}/${namespace}.json`). Webpack genera
+      chunks separados por idioma+namespace. Si el chunk no existe (idioma
+      desconocido), el import() rechaza la promesa.
+    risk: high
+    note: >
+      El path del import es dinámico — webpack no puede hacer static analysis.
+      Solo idiomas con archivos JSON reales en src/view/i18n/ generan chunks válidos.
+      Un language code inesperado causa un 404 al fetch del chunk.
+
+  - id: lodash-merge
+    package: "lodash"
+    function: "merge"
+    reason: >
+      SettingsBackend.read() hace merge(lng, conf) para combinar traducciones
+      del archivo JSON con traducciones custom del componente. Las traducciones
+      del componente sobreescriben las del JSON cuando hay conflicto de clave.
+    risk: low

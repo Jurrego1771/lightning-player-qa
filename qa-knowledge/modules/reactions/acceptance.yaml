@@ -1,0 +1,114 @@
+version: "1.0"
+module: reactions
+last_updated: "2026-06-10"
+
+acceptance_criteria:
+  - id: REACT-AC-001
+    priority: MUST
+    scenario: "Botón flotante de reacciones aparece solo en live con la feature activa y reproduciendo"
+    given: "contenido type='live', options.liveReactions truthy, context.reactions con config válida, manager registrado y canShowReactions=true"
+    when: "el video está reproduciendo (isPlaying), sin ads ni buffering"
+    then:
+      - "el botón flotante (FAB) con icono faSmile es visible"
+      - "shouldShowReactions devuelve true (isLive && enabled && !ads && !buffering && isPlaying && manager && canShow)"
+      - "en contenido VOD/audio/radio el botón NUNCA se muestra"
+
+  - id: REACT-AC-002
+    priority: MUST
+    scenario: "Emisión exitosa de una reacción válida desde el selector"
+    given: "el selector está abierto y el manager está conectado y habilitado"
+    when: "el usuario selecciona una reacción soportada (ej. 'heart')"
+    then:
+      - "manager.emitReaction('heart') se invoca y resuelve { success: true, reactionCode: 'heart' }"
+      - "se emite el evento público reactionEmitted con { reaction_code, player_id, playback_id, timestamp }"
+      - "aparece inmediatamente una reacción flotante local (eco optimista, source='local')"
+      - "se hace POST a /api/live-stream/{playbackId}/reactions"
+
+  - id: REACT-AC-003
+    priority: MUST
+    scenario: "Reacciones se deshabilitan durante un ad break y se rehabilitan al terminar"
+    given: "reacciones habilitadas en un live reproduciendo"
+    when: "comienza un ad break (_adsStarted) y luego termina (_adsAllAdsCompleted)"
+    then:
+      - "al iniciar ads: manager emite reactionsDisabled('ads'), canShowReactions()=false, FAB se oculta, selector abierto se cierra"
+      - "al terminar ads: manager emite reactionsEnabled, canShowReactions()=true, FAB reaparece (si sigue playing)"
+
+  - id: REACT-AC-004
+    priority: MUST
+    scenario: "Rate limit del cliente bloquea el spam de reacciones"
+    given: "reacciones habilitadas; el usuario ya emitió 10 reacciones en el último minuto"
+    when: "el usuario intenta emitir una 11ª reacción"
+    then:
+      - "emitReaction devuelve { success: false, error: { code: 'RATE_LIMITED', category: 'user_error' } }"
+      - "NO se hace POST adicional al transporte"
+      - "el circuit breaker NO se abre (user_error no incrementa failures)"
+
+  - id: REACT-AC-005
+    priority: MUST
+    scenario: "reactionCode inválido o malicioso es rechazado sin emisión"
+    given: "manager habilitado"
+    when: "se llama emitReaction con un código fuera de la lista del sistema, con longitud >16, o con patrón sospechoso (ej. '<script', 'javascript:')"
+    then:
+      - "emitReaction devuelve { success: false, error: { code: 'VALIDATION_FAILED', category: 'user_error' } }"
+      - "no se hace POST ni se emite reactionEmitted"
+      - "validator valida contra supportedReactions del sistema Y contra la lista específica del live si está configurada"
+
+  - id: REACT-AC-006
+    priority: MUST
+    scenario: "Reacciones remotas de otros espectadores se renderizan deduplicadas"
+    given: "ReactionsViewer suscrito a reactionsUpdate"
+    when: "llega un batch de reacciones desde Firestore (live_reactions)"
+    then:
+      - "solo se renderizan reacciones no procesadas previamente (dedup por key)"
+      - "una reacción remota que hace eco de una local reciente (<5s, mismo playerId+reactionCode) no se duplica"
+      - "el número de reacciones simultáneas visibles nunca supera maxVisibleReactions (5)"
+      - "cada reacción desaparece tras displayDuration (3000ms)"
+
+  - id: REACT-AC-007
+    priority: SHOULD
+    scenario: "Conexión resiliente al manager con backoff exponencial"
+    given: "la UI monta antes de que el plugin LiveReactions registre el manager"
+    when: "useReactionsManager hace polling con backoff (12 intentos, 100ms→1000ms, x1.3)"
+    then:
+      - "el FAB muestra estado 'connecting' (disabled, aria-label 'Connecting reactions...') mientras isConnecting=true"
+      - "al registrarse el manager, isConnecting pasa a false y el botón se habilita"
+      - "si se agotan los 12 intentos, isConnecting=false y el botón no aparece (shouldShowReactions=false)"
+
+  - id: REACT-AC-008
+    priority: SHOULD
+    scenario: "Selector navegable por teclado con roles ARIA correctos"
+    given: "el selector está abierto (role='menu')"
+    when: "el usuario navega con flechas/Tab y activa con Enter/Espacio, cierra con Escape"
+    then:
+      - "cada item es role='menuitem' con aria-label 'React with {reaction}'"
+      - "orientación horizontal usa ArrowLeft/ArrowRight; vertical usa ArrowUp/ArrowDown; Tab/Shift+Tab siempre navegan"
+      - "el foco se mueve de forma circular y wrappea al inicio/fin"
+      - "Escape cierra el selector"
+
+  - id: REACT-AC-009
+    priority: SHOULD
+    scenario: "Fallo total de transporte abre el circuit breaker"
+    given: "reacciones habilitadas y el endpoint Firebase falla repetidamente"
+    when: "se acumulan circuitBreakerThreshold (5) fallos consecutivos no-user_error"
+    then:
+      - "el circuit breaker se abre; los siguientes emitReaction devuelven { error: { code: 'CIRCUIT_BREAKER_OPEN' } } durante 30s"
+      - "tras circuitBreakerTimeout (30000ms) el breaker se resetea y se permite reintentar"
+      - "el player no crashea y la reproducción continúa"
+
+  - id: REACT-AC-010
+    priority: COULD
+    scenario: "Preload de íconos animados al abrir el selector por primera vez"
+    given: "el usuario abre el selector"
+    when: "es la primera apertura (animatedPreloadedRef=false) y el manager expone getReactionsConfig"
+    then:
+      - "preloadAnimatedIcons se llama una sola vez con la config"
+      - "las imágenes animadas se cachean para reproducción fluida de la animación flotante"
+
+  - id: REACT-AC-011
+    priority: COULD
+    scenario: "Feedback háptico al interactuar (dispositivos compatibles)"
+    given: "navigator.vibrate disponible"
+    when: "el usuario abre el FAB o selecciona una reacción"
+    then:
+      - "se invoca navigator.vibrate (50ms al abrir, patrón [30,10,30] al seleccionar)"
+      - "en dispositivos sin vibrate la interacción funciona igual sin error"

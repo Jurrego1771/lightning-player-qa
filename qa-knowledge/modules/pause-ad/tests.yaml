@@ -1,0 +1,125 @@
+version: "1.0"
+module: pause-ad
+last_updated: "2026-06-22"
+
+existing_tests:
+
+  - spec_file: "tests/e2e/pause-ad-flow.spec.ts"
+    description: |
+      Test E2E del flujo completo del pause ad con plataforma real.
+      Revisar qué ACs cubre efectivamente — pendiente de auditoría.
+    ac_coverage: []
+    notes: "Archivo existe pero cobertura exacta no auditada. Ver coverage_gaps."
+
+coverage_gaps:
+
+  - id: GAP-PAUSE-001
+    priority: MUST
+    ac_ref: "PAUSE-AC-001"
+    title: "Pause ad aparece al pausar — imagen renderizada en el DOM"
+    suggested_spec: "tests/integration/pause-ad-activation.spec.ts"
+    notes: |
+      Con isolatedPlayer (si el fixture de plataforma incluye ads.pausead.tag), pausar
+      el video y verificar que se renderiza un <img> en el DOM. Usar page.route() para
+      interceptar el fetch al VAST tag y responder con un VAST con staticResource de
+      imagen conocida. Verificar que el src de <img> coincide con el staticResource.
+
+  - id: GAP-PAUSE-002
+    priority: MUST
+    ac_ref: "PAUSE-AC-003"
+    title: "Pause durante ad lineal activo — pause ad NO aparece"
+    suggested_spec: "tests/integration/pause-ad-activation.spec.ts"
+    notes: |
+      Simular isAdsPlaying=true (interceptar estado del player o simular pre-roll activo).
+      Pausar el video. Verificar que no se hace fetch al tag del pause ad y no hay <img>
+      del pause ad en el DOM. Crítico: doble publicidad simultánea.
+
+  - id: GAP-PAUSE-003
+    priority: MUST
+    ac_ref: "PAUSE-AC-006"
+    title: "VAST sin staticResource — no crash, no renderizado"
+    suggested_spec: "tests/integration/pause-ad-activation.spec.ts"
+    notes: |
+      Interceptar el fetch al VAST tag con page.route() y responder con VAST vacío
+      (0 ads o XML sin creativo nonLinear). Verificar que no hay <img> del pause ad
+      y el player no crashea. El video debe seguir en estado pausa normal.
+
+  - id: GAP-PAUSE-004
+    priority: MUST
+    ac_ref: "PAUSE-AC-007"
+    title: "Impression trackeada exactamente una vez"
+    suggested_spec: "tests/integration/pause-ad-impression.spec.ts"
+    notes: |
+      Interceptar fetch al VAST tag + a las URLs de impression tracking. Verificar que
+      cada URL de impression se llama exactamente una vez tras el renderizado. Esperar
+      10-30s con el pause ad visible y confirmar que no hay segunda llamada.
+
+  - id: GAP-PAUSE-005
+    priority: MUST
+    ac_ref: "PAUSE-AC-008"
+    title: "Play cierra el pause ad inmediatamente"
+    suggested_spec: "tests/integration/pause-ad-dismiss.spec.ts"
+    notes: |
+      Activar el pause ad, verificar que está visible. Llamar api.play() o click en
+      play button. Verificar que el <img> del pause ad desaparece y el video reanuda.
+      Verificar la animación de salida (isExiting — el elemento puede seguir en DOM
+      por 500ms con clase de salida).
+
+  - id: GAP-PAUSE-006
+    priority: MUST
+    ac_ref: "PAUSE-AC-016"
+    title: "VAST tag falla con error de red — no crash"
+    suggested_spec: "tests/integration/pause-ad-activation.spec.ts"
+    notes: |
+      page.route() al VAST tag responde con abort o timeout. Verificar que no hay
+      unhandled promise rejection, no crash, video sigue pausado. El player debe
+      ser recoverable (usuario puede hacer play).
+
+  - id: GAP-PAUSE-007
+    priority: MUST
+    ac_ref: "PAUSE-AC-015"
+    title: "Ad lineal arranca mientras pause ad visible — pause ad desaparece"
+    suggested_spec: "tests/integration/pause-ad-ima-coexistence.spec.ts"
+    notes: |
+      Activar pause ad. Simular inicio de ad lineal (setear isAdsPlaying=true via
+      el estado del player o triggerear un pre-roll real). Verificar que el pause ad
+      desaparece y no hay superposición. Este es el caso de doble publicidad simultánea.
+
+  - id: GAP-PAUSE-008
+    priority: SHOULD
+    ac_ref: "PAUSE-AC-009"
+    title: "close_button=-1: X visible inmediatamente, click reanuda"
+    suggested_spec: "tests/integration/pause-ad-dismiss.spec.ts"
+    notes: |
+      Configurar fixture con close_button=-1. Activar pause ad. Verificar que el botón X
+      está en el DOM inmediatamente. Click en X → verificar que el video reanuda.
+
+  - id: GAP-PAUSE-009
+    priority: SHOULD
+    ac_ref: "PAUSE-AC-012"
+    title: "duration > 0: auto-cierre sin reanudar el video"
+    suggested_spec: "tests/integration/pause-ad-dismiss.spec.ts"
+    notes: |
+      Configurar fixture con duration=3. Activar pause ad. Esperar 3s via expect.poll().
+      Verificar que el pause ad desaparece pero el video sigue pausado (currentTime no avanza).
+      Importante: el auto-cierre NO debe llamar api.play().
+
+  - id: GAP-PAUSE-010
+    priority: SHOULD
+    ac_ref: "PAUSE-AC-013"
+    title: "Click en imagen abre clickThrough y reanuda el video"
+    suggested_spec: "tests/e2e/pause-ad-flow.spec.ts (ampliar)"
+    notes: |
+      Interceptar window.open o page.waitForPopup(). Click en <img> del pause ad.
+      Verificar que se abre la URL del clickThrough. Verificar que el player reanuda
+      (video.paused === false tras el click).
+
+  - id: GAP-PAUSE-011
+    priority: SHOULD
+    ac_ref: "PAUSE-AC-002"
+    title: "Pause antes del primer play — no activa el pause ad"
+    suggested_spec: "tests/integration/pause-ad-activation.spec.ts"
+    notes: |
+      Con player cargado pero video sin haber iniciado (poster visible, autoplay=false).
+      Verificar que no se hace ningún fetch al VAST tag del pause ad. Este test requiere
+      que el isolatedPlayer tenga ads.pausead.tag configurado en su fixture de plataforma.

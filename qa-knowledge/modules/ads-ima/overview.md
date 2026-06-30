@@ -4,6 +4,8 @@
 
 El módulo `ads-ima` integra el **Google IMA SDK v3** (Interactive Media Ads) para reproducir anuncios VAST/VMAP en el Lightning Player. Es el sistema de ads principal del player, utilizado para pre-rolls, mid-rolls y post-rolls en contenido VOD y live. El módulo gestiona el ciclo completo: carga del SDK desde CDN, solicitud del VAST tag, pausa del contenido, reproducción del ad, y reanudación del contenido — todo con manejo de errores que garantiza que un fallo en el sistema de ads nunca interrumpa la reproducción del contenido principal.
 
+Adicionalmente, el módulo gestiona **overlay ads (NonLinear IMA)**: anuncios superpuestos sobre el video que se reproducen concurrentemente con el contenido principal sin pausarlo. Se configuran vía `ads.overlay` en la plataforma y su VAST URL pasa por el mismo sistema de resolución de macros que los ads lineales antes de ser enviada al ad server.
+
 ## Archivos clave
 
 | Archivo | Rol |
@@ -12,7 +14,9 @@ El módulo `ads-ima` integra el **Google IMA SDK v3** (Interactive Media Ads) pa
 | `src/ads/googleIma/handler.js` | `AdsHandler` — orquestador principal, extiende EventEmitter, expone API pública de ads |
 | `src/ads/googleIma/ima.js` | `GoogleIma` — wrapper del SDK IMA, carga lazy desde CDN, Proxy para delegar métodos |
 | `src/ads/googleIma/adsLoader.js` | `AdsLoader` — crea `AdDisplayContainer` + `ima.AdsLoader`, maneja `ADS_MANAGER_LOADED` |
-| `src/ads/googleIma/adsRequest.js` | `AdsRequest` — construye el `ima.AdsRequest`, resuelve macros en el VAST URL, detecta autoplay |
+| `src/ads/googleIma/overlayAds.jsx` | `OverlayAds` — componente React para ads nonlinear (overlay). Monta cuando `ads.overlay` está configurado e `isPlayerReady`. Llama `resolveAdTagMacros` antes de `requestAds()` |
+| `src/ads/googleIma/adTagMacros.js` | `resolveMacro` + `resolveAdTagMacros` — helper compartido que reemplaza tokens `$...$` en el VAST URL. Usado tanto por `AdsRequest` (lineales) como por `OverlayAds` (overlay) |
+| `src/ads/googleIma/adsRequest.js` | `AdsRequest` — construye el `ima.AdsRequest`, delega resolución de macros a `adTagMacros.js`, detecta autoplay |
 | `src/ads/googleIma/adsManager.js` | `AdsManager` — wrapper de `ima.AdsManager`, gestiona init/start/resize/destroy |
 | `src/ads/googleIma/ad.js` | `Ad` — wrapper de `ima.Ad`, expone metadata (duration, skipOffset, isPreRoll, etc.) |
 | `src/ads/googleIma/events.js` | `bindAdsManagerEvents` — mapea eventos IMA SDK → eventos internos del player |
@@ -109,6 +113,43 @@ loadMSPlayer('container', {
 | `player.ad.cuePoints` | number[] | Array de tiempos (segundos) de los ad breaks del VMAP |
 | `player.isPlayingAd` | boolean | `true` durante reproducción de ad |
 
+## Flujo overlay ads (NonLinear)
+
+```
+Platform config: ads.overlay = "https://vast-url?tag=$custom.tag_custom$"
+                 ads.overlayPosition = 0  (segundos, 0 = inmediato)
+        │
+        ▼
+OverlayAds mounts cuando:
+  overlayUrl !== null  AND  isPlayerReady === true
+        │
+        ▼
+contextMapper(context) → extrae:
+  overlay, overlayPosition, element, width, height,
+  custom, listenerId, withoutCookies,
+  metadata.adMarkers → markers (CSV de posiciones)
+        │
+        ▼
+resolveAdTagMacros(overlay, { custom, listenerId, withoutCookies, markers, width, height })
+  → Reemplaza todos los tokens $...$ en la URL
+  → Ej: $custom.tag_custom$ → "web"  (via lodash get en custom object)
+        │
+        ▼
+req.adTagUrl = URL resuelta
+AdsLoader → IMA SDK → requestAds()
+        │
+        ▼
+IMA SDK renderiza el overlay superpuesto sobre el video
+  - pointerEvents activos solo durante el ad
+  - Video NO se pausa (CONTENT_PAUSE_REQUESTED nunca se emite para nonlinear)
+  - Close button gestionado por IMA internamente (uiElements = [])
+  - Posición CSS: bottom = controlHeight + 20px (sobre la barra de controles)
+        │
+        ▼
+ALL_ADS_COMPLETED o AD_ERROR
+  → disablePointerEvents() → overlay ya no intercepta clicks
+```
+
 ### Opciones de configuración avanzada (via contexto del player)
 
 | Opción | Tipo | Default | Descripción |
@@ -120,6 +161,8 @@ loadMSPlayer('container', {
 | `withoutCookies` | boolean | `false` | Deshabilita cookies en el SDK IMA |
 | `googleImaPpid` | string | null | Publisher Provided Identifier para targeting |
 | `listenerId` | string | null | Listener ID para ads de audio |
+| `ads.overlay` | string | null | VAST URL del overlay ad (NonLinear). Activa el componente `OverlayAds` |
+| `ads.overlayPosition` | number | `0` | Tiempo en segundos para mostrar el overlay. 0 = inmediato al primer play |
 
 ### Macros de VAST URL
 
@@ -136,7 +179,10 @@ El player reemplaza automáticamente estas macros en el VAST URL:
 | `$markers$` | Ad markers (cue points) como string |
 | `$random-number$` | Número aleatorio 0–10000000000 |
 | `$mobile$` | `'true'` si es mobile/tablet |
-| `$cust_params$` | Custom params encoded |
+| `$cust_params$` | Custom params encoded (merge de `custom` object + params existentes en la URL) |
+| `$custom.X$` | Acceso directo a campo `X` del objeto `custom` via lodash get (ej: `$custom.tag_custom$` → `custom.tag_custom`) |
+
+Las macros se resuelven vía `adTagMacros.js` (helper compartido entre `AdsRequest` y `OverlayAds`). Una macro desconocida permanece sin sustituir — no se borra de la URL. La macro `$without_cookies$` solo se reemplaza si `withoutCookies === true`; en caso contrario el token queda intacto.
 
 ### Eventos emitidos (todos via `player.on()` y `postMessage msp:`)
 

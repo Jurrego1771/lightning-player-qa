@@ -1,0 +1,80 @@
+version: "1.0"
+module: quizzes
+last_updated: "2026-06-10"
+
+internal:
+  - id: controls-api
+    reason: "useQuiz invoca controls.pause() al activar un quiz VOD y api.play() (resumePlayback) al completar/cerrar. La pausa/resume del quiz depende directamente de la API de controles."
+    coupling: high
+    files:
+      - "src/view/video/hooks/useQuiz.js"
+
+  - id: playback-core
+    reason: "El resume usa get('api').play(); la activación VOD se sincroniza con currentTimeSecondsAtom (posición de reproducción)."
+    coupling: high
+    files:
+      - "src/view/video/hooks/useQuiz.js"
+      - "src/view/video/atoms/quiz.js"
+
+  - id: metadata
+    reason: "Los quizzes VOD se leen de metadata.quizzes vía contextValueFamily('metadata.quizzes')."
+    coupling: high
+    files:
+      - "src/view/video/atoms/quiz.js"
+
+  - id: state
+    reason: "Todo el estado del módulo vive en atoms Jotai (activeQuiz, sesión, cola, mapa live, completados) con atomEffect para activación y cleanup."
+    coupling: high
+    files:
+      - "src/view/video/atoms/quiz.js"
+
+  - id: analytics-streammetrics
+    reason: "Único consumidor del evento interno quizAnswered; lo transforma en el ping quiz_answered con POST inmediato."
+    coupling: medium
+    files:
+      - "src/analytics/streammetrics/tracker.js"
+
+  - id: i18n
+    reason: "Todos los textos visibles y etiquetas ARIA del overlay dependen de las claves quiz.* en video.json. El overlay no se monta hasta ready=true. Relación con PR #705 (i18n video-only)."
+    coupling: medium
+    files:
+      - "src/view/i18n/en/video.json"
+      - "src/view/i18n/es/video.json"
+      - "src/view/i18n/pt/video.json"
+      - "src/view/video/components/quiz/quiz.jsx"
+
+  - id: events
+    reason: "Usa internalEmitter para emitir quizAnswered y Events._error (al fallar submitAnswer). Constante Events._quizAnswered definida en constants.cjs."
+    coupling: medium
+    files:
+      - "src/view/video/hooks/useQuiz.js"
+      - "constants.cjs"
+
+  - id: ui-video
+    reason: "El overlay se monta dentro de la vista de video (src/view/video/index.js) y se posiciona usando controlHeightAtom para quedar sobre la barra de controles."
+    coupling: medium
+    files:
+      - "src/view/video/index.js"
+      - "src/view/video/components/quiz/quiz.jsx"
+
+external:
+  - id: firebase-firestore
+    package: "firebase / firestore (wrapper interno src/metadata/firestore)"
+    version: "según package.json del player (Firebase SDK)"
+    reason: "Quizzes en vivo se disparan por listeners de la colección live_quizzes (status==active, sort timestamp desc). Carga en tiempo real del trigger."
+    risk: high
+    note: "RTT de Firestore reportado ~600-1500ms en la industria vs ~40ms de un websocket directo; la latencia geográfica (distancia a la región de la DB) afecta cuán 'a tiempo' aparece el quiz en directo. No mockear de forma que rompa los snapshots en tiempo real."
+
+  - id: live-stream-quiz-api
+    package: "REST: {protocol}://{embedHost}/api/live-stream/{liveId}/quizzes/{quizId}"
+    version: "n/a"
+    reason: "Carga del payload completo del quiz live tras el trigger Firestore. Soporta dos formas de respuesta: { quiz: {...} } (normalizado) o el quiz directo."
+    risk: medium
+    note: "Reintentos: 3 intentos con backoff lineal (2000ms * intento). Si el endpoint cambia el shape de respuesta, la normalización (quiz.quiz vs quiz) puede romperse."
+
+  - id: react-lazy-suspense
+    package: "react (React.lazy + Suspense)"
+    version: "según package.json del player"
+    reason: "El overlay de quiz se carga con code-splitting (index.jsx). Reduce el bundle inicial."
+    risk: low
+    note: "El fallback de Suspense es null; en redes lentas el overlay puede tardar en aparecer tras la activación."

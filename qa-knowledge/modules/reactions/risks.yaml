@@ -1,0 +1,137 @@
+version: "1.0"
+module: reactions
+last_updated: "2026-06-10"
+
+risks:
+  - id: REACT-RISK-001
+    severity: high
+    title: "getReactionGif puede devolver null y crashear el render del selector/viewer"
+    description: >
+      reactionGifMap.getReactionGif() devuelve null cuando el reactionCode no está en
+      dynamicReactionsConfig. ReactionsSelector destructura gifData.src/gifData.alt directamente
+      (línea ~125) y ReactionAnimation lo usa en useMemo (línea ~265) sin null-check. Si la lista
+      de reacciones soportadas (getSupportedReactions) y el config quedan desincronizados — p.ej.
+      config recargado tras un cambio de live, o una reacción remota con código que ya no está en
+      config — el acceso a .src lanza TypeError y rompe el árbol React del overlay.
+    affected_files:
+      - "src/view/video/components/reactions/utils/reactionGifMap.js"
+      - "src/view/video/components/reactions/components/ReactionsSelector.jsx"
+      - "src/view/video/components/reactions/components/ReactionsViewer.jsx"
+    trigger: "reactionCode sin entrada en config (desync config↔supportedReactions o reacción remota legacy)"
+    mitigation: "Parcial: getSupportedReactions deriva las keys del mismo config, reduciendo el desync en el selector. El Viewer (reacciones remotas) NO está protegido."
+    industry_note: "Optimistic UI + dedup remoto introduce ventanas donde un código remoto desfasado llega antes de que el config local se actualice (state-mirror / echo)."
+    test_priority: MUST
+
+  - id: REACT-RISK-002
+    severity: high
+    title: "Animaciones flotantes ignoran prefers-reduced-motion"
+    description: >
+      ReactionAnimation usa Web Animations API (element.animate) con keyframes de movimiento y
+      escala. No se consulta window.matchMedia('(prefers-reduced-motion: reduce)') ni hay CSS que
+      desactive el movimiento. Usuarios con sensibilidad vestibular/migraña reciben movimiento no
+      esencial — incumple WCAG 2.1 (2.3.3 Animation from Interactions, AAA, pero recomendado AA).
+    affected_files:
+      - "src/view/video/components/reactions/components/ReactionsViewer.jsx"
+    trigger: "usuario con prefers-reduced-motion: reduce y un live con reacciones activas"
+    mitigation: "Ninguna en el código actual."
+    industry_note: "MDN/Josh Comeau: animaciones JS-driven deben consultar matchMedia y degradar a un fade simple o estado estático."
+    test_priority: SHOULD
+
+  - id: REACT-RISK-003
+    severity: high
+    title: "Acumulación de overlays / fuga de memoria bajo alto volumen de reacciones"
+    description: >
+      En un live muy activo (miles de reacciones/min) el Viewer recibe batches frecuentes. La
+      limpieza depende de requestIdleCallback (idleTimeout 2000ms) + intervalo (3000ms) y de
+      onAnimationEnd de WAAPI. Si requestIdleCallback nunca tiene idle (CPU saturada en TV de gama
+      baja) o una animación no dispara onfinish, los nodos y el Set processedReactionIds pueden
+      crecer (cap suave maxProcessedIds=100 → trim a 50, maxVisibleReactions=5).
+    affected_files:
+      - "src/view/video/components/reactions/components/ReactionsViewer.jsx"
+      - "src/analytics/reactions/config/ReactionsConfig.js"
+    trigger: "live de alto tráfico en dispositivo de bajos recursos (Smart TV, WebView)"
+    mitigation: "maxVisibleReactions=5, displayDuration 3s, cap de processedIds y fallback setTimeout cuando no hay requestIdleCallback."
+    industry_note: "Animaciones bajo 60fps en TV; event listeners/timers deben limpiarse en unmount — el código lo hace, pero la presión depende del idle del navegador."
+    test_priority: SHOULD
+
+  - id: REACT-RISK-004
+    severity: medium
+    title: "Doble mecanismo de descubrimiento del manager (backoff vs polling fijo)"
+    description: >
+      ReactionsFloatingButton usa useReactionsManager con backoff exponencial (12 intentos), pero
+      ReactionsButton implementa su PROPIO polling fijo (setInterval 500ms, 10 intentos) y
+      ReactionsViewer otro más (retryInterval 500ms). Tres estrategias distintas para el mismo
+      contrato getComponent('reactions') → inconsistencia de timing y riesgo de un componente
+      conectado y otro no en el mismo frame.
+    affected_files:
+      - "src/view/video/components/reactions/useReactionsManager.js"
+      - "src/view/video/components/reactions/components/ReactionsButton.jsx"
+      - "src/view/video/components/reactions/components/ReactionsViewer.jsx"
+    trigger: "carga lenta del plugin LiveReactions; race entre registro del manager y montaje de la UI"
+    mitigation: "Todos terminan resolviendo al manager si se registra; el límite de intentos evita loops infinitos."
+    industry_note: "n/a"
+    test_priority: SHOULD
+
+  - id: REACT-RISK-005
+    severity: medium
+    title: "Validación de seguridad confía en sanitización antes de chequear lista"
+    description: >
+      ReactionValidator sanitiza (lowercase, strip no [a-z0-9-]) ANTES de comprobar la lista del
+      sistema y los patrones sospechosos. El allowedPattern es /^[a-z]+$/ y la lista del sistema es
+      cerrada (heart/smile/surprised/confetti/claps), así que el riesgo de inyección efectiva es
+      bajo, pero la lógica de sanitizar-luego-validar es frágil ante cambios futuros del patrón.
+    affected_files:
+      - "src/analytics/reactions/core/ReactionValidator.js"
+      - "src/analytics/reactions/core/FirebaseTransport.js"
+    trigger: "input arbitrario vía API pública emitReaction('<payload>')"
+    mitigation: "Doble validación (validator + FirebaseTransport._validateReactionData), lista cerrada del sistema, suspiciousPatterns, _sanitizeId en transporte."
+    industry_note: "Reacciones son user-generated → tratar siempre como entrada no confiable; allowlist sobre denylist."
+    test_priority: MUST
+
+  - id: REACT-RISK-006
+    severity: medium
+    title: "Feature montada solo si plataforma envía reactions config y flag; degradación silenciosa"
+    description: >
+      Si options.liveReactions es falsy, el plugin no se registra y getComponent('reactions') nunca
+      resuelve. Si context.reactions es null, el manager arranca sin reactionsConfig y
+      getSupportedReactions() devuelve []. En ambos casos la UI no aparece sin error visible. QA
+      puede confundir 'feature desactivada por config' con 'feature rota'.
+    affected_files:
+      - "src/plugins/index.js"
+      - "src/analytics/reactions/index.jsx"
+      - "src/platform/loadConfig.js"
+    trigger: "live sin reactions config en la respuesta de plataforma (fixture live.json tiene reactions: null)"
+    mitigation: "Diseño intencional: degradación silenciosa. Requiere una estación de prueba con reactions configurado."
+    industry_note: "n/a"
+    test_priority: MUST
+
+  - id: REACT-RISK-007
+    severity: medium
+    title: "Dedup local↔remoto basado en ventana temporal de 5s puede ocultar reacciones legítimas"
+    description: >
+      isDuplicateReaction y la limpieza de locales en handleReactionsUpdate consideran duplicado
+      cualquier remoto con mismo playerId+reactionCode dentro de 5000ms de un local. Un usuario que
+      reacciona dos veces rápido con el mismo emoji (permitido por debounce 250ms / rate 10min)
+      podría ver suprimida la segunda si el eco remoto cae en la ventana.
+    affected_files:
+      - "src/view/video/components/reactions/components/ReactionsViewer.jsx"
+      - "src/view/video/components/reactions/utils/utils.js"
+    trigger: "mismo usuario emite el mismo reactionCode dos veces en <5s"
+    mitigation: "generateReactionKey incluye timestamp; el match exige mismo playerId+reactionCode+ventana."
+    industry_note: "Echo/state-mirror: el equilibrio dedup vs pérdida de eventos legítimos es un tradeoff conocido en optimistic UI real-time."
+    test_priority: SHOULD
+
+  - id: REACT-RISK-008
+    severity: low
+    title: "normalizeTimestamp asume Firestore Timestamp o number; otros tipos pasan crudos"
+    description: >
+      normalizeTimestamp solo llama .toMillis() si existe; cualquier otro shape (string ISO, undefined)
+      se devuelve tal cual y luego se usa en Math.abs(reactionTime - localTimestamp), que con NaN
+      hace que el dedup no funcione.
+    affected_files:
+      - "src/view/video/components/reactions/utils/utils.js"
+      - "src/view/video/components/reactions/components/ReactionsViewer.jsx"
+    trigger: "timestamp remoto con shape inesperado desde Firestore"
+    mitigation: "El listener mapea desde Firestore donde timestamp suele ser Timestamp; isNaN-guard parcial en el parseo de IDs locales."
+    industry_note: "n/a"
+    test_priority: COULD

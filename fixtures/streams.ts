@@ -52,6 +52,21 @@ export const ContentIds = {
   vodWithImaAds: process.env.CONTENT_ID_VOD_WITH_IMA_ADS || '6a1448a663e206efb1ae2ded',
 
   /**
+   * VOD con overlay ad (nonlinear IMA) cuyo VAST URL contiene $custom.tag_custom$.
+   * Fixture para verificar que el player resuelve macros en el flujo overlay (PR #725).
+   * Requiere haber ejecutado: npx ts-node scripts/setup-overlay-ad-fixture.ts
+   */
+  vodWithOverlayMacroAds: process.env.CONTENT_ID_VOD_WITH_OVERLAY_MACRO_ADS || '6a36f0857896eb99d5beffc9',
+
+  /**
+   * VOD largo (195s) con overlay ad nonlinear IMA configurado en la plataforma dev.
+   * overlayPosition=0 → el overlay aparece inmediatamente al inicio de la reproducción.
+   * Confirmado via MCP QA: VAST request sz=480x70 → HTTP 200, video continúa playing.
+   * Usar para tests de comportamiento del overlay (no de resolución de macros).
+   */
+  vodWithOverlay: process.env.CONTENT_ID_VOD_WITH_OVERLAY || '6a3946726e0d2c90d67907a9',
+
+  /**
    * Episodio VOD con "siguiente episodio" configurado en la plataforma.
    * Cuando el contenido llega a nextEpisodeTime, el player emite nextEpisodeIncoming.
    * Tests se saltean si el valor empieza con TODO_.
@@ -131,6 +146,9 @@ export const MockContentIds = {
   episode: 'mock-episode-1',
   podcast: 'mock-podcast-1',
   dashVod: 'mock-dash-vod-1',
+  vodWithAdMarkers: 'mock-vod-admarkers-1',
+  /** VOD con metadata.preview.vtt para tests del componente WebVTTPreview (PR #707) */
+  vodWithVttPreview: 'mock-vtt-preview-1',
 } as const
 
 // ── URLs de streams HLS locales (servidos por webServer en playwright.config.ts) ──

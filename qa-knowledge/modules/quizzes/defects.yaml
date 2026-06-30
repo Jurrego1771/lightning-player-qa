@@ -1,0 +1,86 @@
+version: "1.0"
+module: quizzes
+last_updated: "2026-06-10"
+
+defects:
+  - id: QUIZ-DEF-001
+    status: known_limitation
+    severity: medium
+    title: "La UI lee question.text pero analytics lee question.question||text"
+    description: >
+      quiz.jsx pasa question={currentQuestion.text} al header, mientras que
+      buildAnalyticsData usa currentQuestion.question || currentQuestion.text. Si el
+      backend entrega el campo como 'question' (no 'text'), el overlay muestra la
+      pregunta vacía aunque el reporte de analytics sí contenga el texto correcto.
+      Inconsistencia de naming entre capa de presentación y capa de analytics.
+    workaround: "Asegurar que el campo del backend sea 'text' además de/en lugar de 'question'."
+    source_comment: "src/view/video/components/quiz/quiz.jsx:75 (question={currentQuestion.text}) vs src/view/video/hooks/useQuiz.js:149"
+    industry_known: false
+    regression_risk: medium
+
+  - id: QUIZ-DEF-002
+    status: known_limitation
+    severity: medium
+    title: "Sin focus trap ni cierre con Escape en el overlay modal"
+    description: >
+      El overlay declara role='dialog' aria-modal='true' pero no atrapa el foco del
+      teclado dentro del diálogo, no cierra con Escape y no restaura el foco al
+      cerrar. Contradice la semántica aria-modal y las WAI-ARIA Authoring Practices.
+    workaround: "Cierre disponible solo vía botón X (Close quiz) con click o teclado sobre el botón."
+    source_comment: "src/view/video/components/quiz/quiz.jsx (no hay manejo de keydown Escape ni focus trap)"
+    industry_known: true
+    regression_risk: low
+
+  - id: QUIZ-DEF-003
+    status: known_limitation
+    severity: medium
+    title: "Errores de pause/resume silenciados ocultan video que no se pausa o no reanuda"
+    description: >
+      controls.pause().catch(() => {}) y api.play().catch(() => {}). Si la pausa
+      falla, el video sigue reproduciéndose detrás del overlay (audio/imagen
+      continúan). Si el resume falla al completar, el video queda pausado tras cerrar
+      el quiz. Ningún error se reporta ni se reintenta.
+    workaround: "Ninguno automático; el usuario puede pulsar play manualmente si quedó pausado."
+    source_comment: "src/view/video/hooks/useQuiz.js:18-20 (resumePlayback) y :52 (controls.pause)"
+    industry_known: false
+    regression_risk: medium
+
+  - id: QUIZ-DEF-004
+    status: known_limitation
+    severity: high
+    title: "Quiz VOD se pierde si un seek cruza la ventana de activación de 2s"
+    description: >
+      Si el usuario hace seek saltando por encima de [trigger_time, trigger_time+2s],
+      o si currentTime avanza más de 2s entre ticks, quizActivationEffect nunca
+      encuentra el quiz y este no se muestra jamás en la sesión. No hay recuperación
+      de trigger perdido.
+    workaround: "Reproducir linealmente sobre el trigger_time; no hay forma de re-disparar tras un seek que lo salta."
+    source_comment: "src/view/video/atoms/quiz.js:193-198 (currentTime >= triggerTime && currentTime <= triggerTime + activationWindow)"
+    industry_known: true
+    regression_risk: high
+
+  - id: QUIZ-DEF-005
+    status: known_limitation
+    severity: low
+    title: "Quizzes live no se marcan como completados — posible reaparición"
+    description: >
+      COMPLETE_QUIZ solo añade a completedQuizzes cuando isVodContent. En live, si
+      Firestore re-emite un documento active con el mismo quiz_id (y timestamp aún
+      reciente), el quiz podría reaparecer aunque el usuario ya lo respondió.
+    workaround: "El backend debe cambiar status del documento Firestore a no-active tras cerrar el quiz."
+    source_comment: "src/view/video/atoms/quiz.js:130-142 (COMPLETE_QUIZ, completedQuizzes solo para VOD)"
+    industry_known: false
+    regression_risk: low
+
+  - id: QUIZ-DEF-006
+    status: known_limitation
+    severity: low
+    title: "Fallback de Suspense null retrasa la aparición del overlay en redes lentas"
+    description: >
+      index.jsx usa React.lazy con fallback={null}. En VOD el video se pausa al
+      activar, pero el chunk del overlay puede tardar; durante ese lapso el usuario
+      ve un video pausado sin explicación visible.
+    workaround: "Ninguno; el chunk se cachea tras la primera carga."
+    source_comment: "src/view/video/components/quiz/index.jsx:6 (Suspense fallback={null})"
+    industry_known: false
+    regression_risk: low

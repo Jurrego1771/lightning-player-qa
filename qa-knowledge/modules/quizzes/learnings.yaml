@@ -1,0 +1,129 @@
+version: "1.0"
+module: quizzes
+last_updated: "2026-06-10"
+
+learnings:
+  - id: QUIZ-LEARN-001
+    title: "VOD y LIVE comparten estado pero difieren en origen, pausa y persistencia"
+    discovery: "código fuente: src/view/video/atoms/quiz.js (rawQuizzesAtom, actionHandlers) + useQuiz.js"
+    detail: >
+      rawQuizzesAtom bifurca por type: VOD lee metadata.quizzes; live lee
+      liveQuizzesMapAtom (poblado por Firestore + fetch REST). Solo VOD pausa
+      (isVodContent gatea controls.pause()) y solo VOD persiste completados
+      (completedQuizzes Set). En live, COMPLETE_QUIZ NO añade a completados — un
+      mismo quiz_id podría reaparecer si Firestore lo re-emite.
+    impact_on_tests: >
+      Se necesitan baterías separadas para VOD (activación por tiempo + pausa +
+      no-reactivación) y para LIVE (trigger Firestore + sin pausa + frescura +
+      reintentos). No reutilizar el mismo fixture para ambos.
+
+  - id: QUIZ-LEARN-002
+    title: "Submit es de dos fases: primera calcula resultado, segunda avanza"
+    discovery: "código fuente: useQuiz.js submitAnswer (líneas 156-218)"
+    detail: >
+      El mismo botón Submit hace dos cosas distintas según session.result: si es
+      null, emite quizAnswered y calcula el resultado (sin avanzar); si ya hay
+      result, avanza a la siguiente pregunta o completa el quiz. El guard
+      isSubmittingRef (ref) + session.isSubmitting (estado) previene doble submit.
+    impact_on_tests: >
+      Un test de 'responder pregunta' requiere DOS clics en Submit para avanzar:
+      uno para ver feedback, otro para Continue/Finish. quizAnswered se emite UNA
+      sola vez (en la primera fase). No esperar avance tras un solo Submit.
+
+  - id: QUIZ-LEARN-003
+    title: "Single vs multiple choice se infiere del número de opciones correctas"
+    discovery: "código fuente: useQuiz.js isMultipleChoice (correctOptionIndices.length > 1)"
+    detail: >
+      No hay un flag explícito de tipo de pregunta. isMultipleChoice = (cantidad de
+      opciones con isCorrect=true) > 1. Eso cambia el input a checkbox, permite
+      selección múltiple, y formatea answer_index/text con separador '||'.
+    impact_on_tests: >
+      Para forzar el camino multiple-choice, el fixture debe tener ≥2 opciones con
+      isCorrect=true. Verificar que answer_index usa '||' y que la comparación es
+      exacta (todas las correctas, ninguna incorrecta).
+
+  - id: QUIZ-LEARN-004
+    title: "quizAnswered es interno — solo observable vía StreamMetrics"
+    discovery: "código fuente: useQuiz.js (internalEmitter.emit) + streammetrics/tracker.js (_onQuizAnswered) + constants.cjs"
+    detail: >
+      quizAnswered se emite por internalEmitter, no por externalEmitter. No hay
+      reenvío al api público. StreamMetrics es el único consumidor: produce el ping
+      'quiz_answered' y hace _doPost inmediato (no espera al ping batch).
+    impact_on_tests: >
+      No esperar player.on('quizAnswered'). Verificar el efecto observando el
+      request de StreamMetrics (beacon quiz_answered) o interceptando el POST. Es la
+      única forma pública de confirmar que el quiz fue respondido.
+
+  - id: QUIZ-LEARN-005
+    title: "Frescura de 15s descarta triggers live viejos, con fallback permisivo"
+    discovery: "código fuente: useLiveQuiz.js isQuizRecent / normalizeTimestamp"
+    detail: >
+      isQuizRecent compara contra ahora con maxAgeSeconds=15 y exige age>=0 (no
+      futuro). Pero si timestamp es falsy, retorna true (no descarta). normalizeTimestamp
+      maneja segundos vs milisegundos por longitud de dígitos y un regex de extracción.
+    impact_on_tests: >
+      Probar 3 casos: timestamp reciente (pasa), >15s (descarta), futuro/negativo
+      (descarta por age<0). Y el borde: timestamp ausente debería NO descartar.
+
+  - id: QUIZ-LEARN-006
+    title: "Reintentos de carga live con backoff lineal y dedupe por mapa"
+    discovery: "código fuente: src/view/video/atoms/quiz.js fetchQuizWithRetry (constantes QUIZ_RETRY_ATTEMPTS=3, QUIZ_RETRY_DELAY=2000)"
+    detail: >
+      fetchQuizWithRetry reintenta hasta 3 veces con delay QUIZ_RETRY_DELAY*attempt
+      (2s,4s,6s). En éxito, cachea el quiz en liveQuizzesMapAtom y limpia el contador.
+      processFirebaseQuiz primero consulta el mapa (cache hit) antes de hacer fetch.
+    impact_on_tests: >
+      Para test de reintentos, el mock del endpoint debe fallar N veces y luego
+      responder; verificar el patrón de backoff y que un cache hit (segundo trigger
+      del mismo quiz) NO repite el fetch.
+
+  - id: QUIZ-LEARN-007
+    title: "Validación robusta de índices: normaliza, filtra negativos/NaN, clampa currentIndex"
+    discovery: "código fuente: useQuiz.js normalizeAndSortIndices / currentQuestion clamp"
+    detail: >
+      compareQuizAnswers normaliza ambas listas (solo enteros >=0, ordenados) antes
+      de comparar; currentQuestion clampa el índice a [0, length-1]. selectOption
+      rechaza índices fuera de rango o no numéricos.
+    impact_on_tests: >
+      Casos negativos valiosos: payload con índices duplicados, negativos, no
+      enteros, o selectedOption desordenado deben seguir evaluando correctamente.
+      currentIndex fuera de rango no debe romper el render.
+
+  - id: QUIZ-LEARN-008
+    title: "PR #705 (i18n video-only): el overlay no renderiza hasta ready y depende de claves quiz.*"
+    discovery: "código fuente: quiz.jsx (if (!ready ...) return null) + investigación: relación con i18n module"
+    detail: >
+      quiz.jsx hace useTranslation('video') y bloquea el render con !ready. Todos los
+      textos y varias etiquetas ARIA salen de quiz.* en {en,es,pt}/video.json. Las
+      opciones usan defaults inline (segundo argumento de t) pero el título/feedback
+      no siempre. PR #705 mueve/añade estas claves.
+    impact_on_tests: >
+      En entornos donde i18n falle al cargar, el overlay no aparece — un fallo de
+      i18n se manifiesta como 'quiz nunca visible'. Tests de i18n del quiz deben
+      cruzar las 3 locales y verificar que ninguna clave quiz.* falta (ver
+      tests/contract/i18n-video-keys.spec.ts ya existente en el repo QA).
+
+  - id: QUIZ-LEARN-009
+    title: "Industria: pop-quiz interactivo es patrón maduro con tracking xAPI granular"
+    discovery: "investigación web: Kaltura xAPI guide, Vimeo interactive quiz, TechSmith"
+    detail: >
+      Plataformas educativas/OTT (Kaltura, Vimeo) implementan in-video questions que
+      pausan el video y exigen respuesta antes de continuar — exactamente el modelo
+      VOD de este player. El estándar de tracking es xAPI/SCORM hacia un LRS, con
+      statements de pause/resume y de respuesta (incluida la opción elegida).
+    impact_on_tests: >
+      El payload de quizAnswered (quiz_id, question_id, answer_index, correct_answer_index)
+      es análogo a un statement xAPI de quiz. QA puede validar completitud del payload
+      contra ese estándar de granularidad (qué se eligió + qué era correcto).
+
+  - id: QUIZ-LEARN-010
+    title: "Industria: aria-modal no atrapa el foco; faltan focus trap, Esc y retorno de foco"
+    discovery: "investigación web: WAI-ARIA Authoring Practices, MDN dialog role, A11Y Collective"
+    detail: >
+      Las mejores prácticas de diálogos modales exigen focus trap (Tab cicla dentro),
+      cierre con Esc y retorno de foco al disparador. El overlay solo declara
+      aria-modal='true' sin implementar estos comportamientos.
+    impact_on_tests: >
+      Documentar como known a11y gap (no como bug de bloqueo). Un test axe-core puede
+      pasar en estructura ARIA pero el comportamiento de teclado (focus trap/Esc)
+      requiere test manual o de teclado explícito.

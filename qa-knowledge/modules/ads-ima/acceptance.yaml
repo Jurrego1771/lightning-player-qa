@@ -194,6 +194,81 @@ acceptance_criteria:
       - "No hay eventos duplicados de la sesión anterior"
     covered_by: []
 
+  # ── OVERLAY ADS (NonLinear IMA) ─────────────────────────────────────────────
+
+  - id: IMA-AC-017
+    priority: MUST
+    scenario: "Overlay no pausa el video — corre concurrentemente con el contenido (BR-IMA-OVL-001)"
+    given: "Player con ads.overlay configurado con VAST URL válido y contenido VOD reproduciéndose"
+    when: "El overlay aparece en pantalla"
+    then:
+      - "El video continúa reproduciéndose (player.currentTime avanza)"
+      - "player.isPlayingAd NO es true (el ad lineal no está activo)"
+      - "No se emite adsContentPauseRequested"
+      - "Los controles del player siguen siendo accesibles (pointerEvents activos)"
+    industry_ref: "IAB VAST 3.0 §3.5 — NonLinear Ads corren concurrentemente con el contenido"
+    covered_by:
+      - "tests/e2e/ads-ima-overlay-macro-e2e.spec.ts"
+
+  - id: IMA-AC-018
+    priority: MUST
+    scenario: "Macros en overlay VAST URL se resuelven antes de la request al ad server (BR-IMA-OVL-002)"
+    given: "Player con ads.overlay que contiene tokens de macros como $custom.tag_custom$, $page-url$"
+    when: "OverlayAds inicializa y llama requestAds()"
+    then:
+      - "La request HTTP al ad server NO contiene tokens sin resolver ($custom.tag_custom$ literal)"
+      - "$custom.tag_custom$ se reemplaza por el valor de custom.tag_custom ('web' en plataforma web)"
+      - "$page-url$ se reemplaza por la URL del player codificada"
+      - "Si la macro es desconocida, permanece intacta — no se borra"
+    industry_ref: "IAB VAST — Las macros son responsabilidad del player antes de la request"
+    covered_by:
+      - "tests/integration/ads-ima-macro-resolution.spec.ts"
+      - "tests/e2e/ads-ima-overlay-macro-e2e.spec.ts"
+
+  - id: IMA-AC-019
+    priority: MUST
+    scenario: "Error en overlay no interrumpe el contenido principal (BR-IMA-OVL-001 + BR-IMA-004)"
+    given: "Player con ads.overlay apuntando a VAST que retorna error (404, vacío, timeout)"
+    when: "El sistema de overlay falla"
+    then:
+      - "El video continúa reproduciéndose sin interrupciones"
+      - "No se emite 'error' fatal del player"
+      - "Se emite adsError con el payload del error"
+      - "No hay crash de JS"
+    covered_by:
+      - "tests/integration/ads-ima-overlay-macro-resolution.spec.ts"
+
+  - id: IMA-AC-020
+    priority: SHOULD
+    scenario: "overlayPosition=0 — overlay aparece inmediatamente al iniciar el video"
+    given: "Player con ads.overlay y ads.overlayPosition=0"
+    when: "El video inicia la reproducción"
+    then:
+      - "El overlay se solicita al ad server en los primeros segundos del video"
+      - "No se necesita esperar a ningún cue point"
+    covered_by: []
+
+  - id: IMA-AC-021
+    priority: SHOULD
+    scenario: "overlayPosition=N — overlay aparece al alcanzar N segundos de reproducción"
+    given: "Player con ads.overlay y ads.overlayPosition=30"
+    when: "El video alcanza currentTime >= 30s"
+    then:
+      - "El overlay se solicita al ad server al llegar a los 30s (±1s por timeupdate resolution)"
+      - "Antes de los 30s no se hace request al ad server del overlay"
+    covered_by: []
+
+  - id: IMA-AC-022
+    priority: SHOULD
+    scenario: "Overlay no se monta si ads.overlay no está configurado"
+    given: "Player sin ads.overlay en la configuración de plataforma"
+    when: "El player inicializa y el contenido reproduce"
+    then:
+      - "No se hace ninguna request a pubads.g.doubleclick.net con sz=480x70 (nonlinear)"
+      - "No hay errores JS relacionados con OverlayAds"
+    covered_by:
+      - "tests/integration/ads-ima-overlay-macro-resolution.spec.ts"
+
   # ── AD BLOCKER ──────────────────────────────────────────────────────────────
 
   - id: IMA-AC-016

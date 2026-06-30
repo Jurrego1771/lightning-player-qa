@@ -1,0 +1,152 @@
+version: "1.0"
+module: i18n
+last_updated: "2026-06-09"
+
+existing_tests: []
+
+coverage_gaps:
+
+  - id: GAP-I18N-001
+    priority: MUST
+    ac_ref: [I18N-AC-001, I18N-AC-002, I18N-AC-003]
+    title: "Strings visibles en los 3 idiomas soportados (es/en/pt)"
+    suggested_spec: "tests/integration/i18n-language-switch.spec.ts"
+    notes: >
+      Inicializar player con cada uno de los 3 idiomas y verificar al menos un string
+      visible del namespace 'default' y uno del namespace 'video'.
+      Usar player mock con view='video'. Verificar: status.loading, status.playing,
+      share, download en cada idioma.
+      No usar strings hardcodeados — comparar contra los JSONs de referencia.
+
+  - id: GAP-I18N-002
+    priority: MUST
+    ac_ref: I18N-AC-004
+    title: "Idioma por defecto 'es' cuando language no se especifica"
+    suggested_spec: "tests/integration/i18n-language-switch.spec.ts"
+    notes: >
+      Init sin opciones de language. Verificar que strings visibles son en español.
+      Verificar que contextMapper retorna 'es' (puede verificarse en useTranslation.loading).
+
+  - id: GAP-I18N-003
+    priority: MUST
+    ac_ref: I18N-AC-007
+    risk_ref: I18N-RISK-002
+    defect_ref: I18N-DEF-004
+    title: "Idioma desconocido no rompe el player — degrada con claves"
+    suggested_spec: "tests/integration/i18n-language-switch.spec.ts"
+    notes: >
+      Init con language='fr'. Interceptar console.error para verificar el mensaje.
+      Verificar que el player alcanza ready=true. Verificar que strings visibles
+      son las claves (ej: 'status.loading') y no 'Cargando...' ni 'Loading...'.
+      Verificar que no hay uncaught exceptions.
+
+  - id: GAP-I18N-004
+    priority: MUST
+    ac_ref: I18N-AC-005
+    title: "Namespace 'video' se carga — sin keys crudas en skin video"
+    suggested_spec: "tests/integration/i18n-namespaces.spec.ts"
+    notes: >
+      Inicializar con view='video', language='en'. Abrir controles de TV o video.
+      Verificar que strings como 'Play', 'Pause', 'Settings' aparecen (no claves).
+      Verificar específicamente el string de tvControls y chromecast.*
+      ya que son los más extensos del namespace 'video'.
+
+  - id: GAP-I18N-005
+    priority: MUST
+    ac_ref: I18N-AC-006
+    title: "Namespace 'compact' se carga — sin keys crudas en vista compact"
+    suggested_spec: "tests/integration/i18n-namespaces.spec.ts"
+    notes: >
+      Inicializar con view='compact', language='en'. Verificar que strings
+      'LIVE', 'Play', 'Pause', 'Next', 'Previous', 'Loading...' son correctos.
+
+  - id: GAP-I18N-006
+    priority: MUST
+    ac_ref: [I18N-AC-007, I18N-RISK-004]
+    defect_ref: I18N-DEF-001
+    title: "namespace 'radio' en inglés muestra strings en español — bug documentado"
+    suggested_spec: "tests/integration/i18n-namespaces.spec.ts"
+    notes: >
+      Inicializar con view='radio', language='en'. Verificar que strings como
+      'volver en vivo' aparecen (no 'back to live'). Este test documenta el bug
+      I18N-DEF-001 y sirve como regression test. Marcar explícitamente con
+      un comentario que verifica el comportamiento incorrecto actual.
+
+  - id: GAP-I18N-007
+    priority: SHOULD
+    ac_ref: I18N-AC-012
+    title: "Interpolación de variables {{seconds}} en strings de chromecast"
+    suggested_spec: "tests/integration/i18n-interpolation.spec.ts"
+    notes: >
+      Verificar que t('chromecast.seekBackward', { seconds: 10 }) retorna
+      'Seek backward 10 seconds' (en) y 'Retroceder 10 segundos' (es).
+      No usar la UI real — testear el hook useTranslation directamente o
+      via un componente simple que llame t() con los parámetros correctos.
+
+  - id: GAP-I18N-008
+    priority: SHOULD
+    ac_ref: I18N-AC-009
+    risk_ref: I18N-RISK-006
+    title: "Traducciones custom del integrador via view.federation.translation"
+    suggested_spec: "tests/integration/i18n-custom-translation.spec.ts"
+    notes: >
+      Inicializar con view.federation.translation = JSON.stringify({ login: { title: 'Acceder' } }).
+      Verificar que el modal de login muestra 'Acceder' como título.
+      Verificar que otros strings de login no overrideados (button.submit) mantienen
+      su valor del JSON base.
+
+  - id: GAP-I18N-009
+    priority: SHOULD
+    ac_ref: I18N-AC-013
+    risk_ref: I18N-RISK-003
+    title: "loading=false antes del primer render visible — sin flash de keys"
+    suggested_spec: "tests/integration/i18n-loading-state.spec.ts"
+    notes: >
+      Verificar que entre el init y el primer momento donde un string i18n es visible,
+      el estado loading ya es false. Usar screenshot comparison o verificar que
+      los strings visibles nunca son las claves crudas.
+      Este test puede ser flaky por timing — usar waitForSelector + expect.poll().
+
+  - id: GAP-I18N-010
+    priority: SHOULD
+    ac_ref: I18N-AC-015
+    defect_ref: I18N-DEF-002
+    title: "ARIA labels usan idioma correcto — bug de hardcoding en audio tracks"
+    suggested_spec: "tests/a11y/i18n-aria.spec.ts"
+    notes: >
+      Inicializar con stream de múltiples audio tracks sin labels, language='es'.
+      Verificar que el selector de audio tracks es accesible pero documentar
+      que los labels 'Track 1', 'Track 2' están hardcodeados en inglés (I18N-DEF-002).
+      Este test también sirve como regression para accesibilidad del módulo i18n.
+
+  - id: GAP-I18N-011
+    priority: SHOULD
+    ac_ref: I18N-AC-010
+    risk_ref: I18N-RISK-001
+    title: "Cambio dinámico de idioma actualiza la UI sin reload"
+    suggested_spec: "tests/integration/i18n-language-switch.spec.ts"
+    notes: >
+      Inicializar con language='es'. Luego cambiar a language='en' via
+      la API de i18n (o simulando un cambio en el contexto).
+      Verificar que strings visibles cambian a inglés.
+      Verificar que SettingsLanguageDetector.isResolved=true activa changeLanguage() directa.
+
+  - id: GAP-I18N-012
+    priority: COULD
+    ac_ref: I18N-AC-017
+    title: "Namespace 'reels' — string 'visit' se traduce correctamente"
+    suggested_spec: "tests/integration/i18n-namespaces.spec.ts"
+    notes: >
+      Namespace con solo 1 string ('visit'). Inicializar con view='reels', language='pt'.
+      Verificar que CTA muestra 'Visitar'.
+
+  - id: GAP-I18N-013
+    priority: COULD
+    ac_ref: I18N-AC-016
+    defect_ref: I18N-DEF-003
+    title: "api.federation.missingTranslation — estado actual vacío documentado"
+    suggested_spec: "tests/integration/i18n-custom-translation.spec.ts"
+    notes: >
+      Verificar que api.federation.missingTranslation es {} (el handler está comentado).
+      Este test documenta el comportamiento actual y servirá como alerta si el handler
+      se re-activa en el futuro.

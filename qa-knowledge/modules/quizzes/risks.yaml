@@ -1,0 +1,136 @@
+version: "1.0"
+module: quizzes
+last_updated: "2026-06-10"
+
+risks:
+  - id: QUIZ-RISK-001
+    severity: high
+    title: "Ventana de activación VOD muy estrecha (2s) puede saltarse el quiz"
+    description: >
+      quizActivationEffect activa el quiz solo si currentTime cae en
+      [trigger_time, trigger_time + QUIZ_ACTIVATION_WINDOW(2s)]. Si el usuario hace
+      seek por encima de esa ventana, o si el currentTime salta más de 2s entre
+      ticks (buffering, framerate bajo, throttling de timers en background tab),
+      el quiz nunca se activa. No hay lógica de "trigger perdido" que lo recupere.
+    affected_files:
+      - "src/view/video/atoms/quiz.js"
+    trigger: "Seek que cruza el trigger_time; tick de currentTime con salto > 2s; pestaña en background con timers throttled."
+    mitigation: "Ninguna actual. La ventana es fija (2s) y no compensa saltos de tiempo."
+    industry_note: "Plataformas de interactive video (Kaltura, Vimeo) anclan el pop-quiz al cruce del timestamp, no a una ventana fija, precisamente para no perder el trigger en seeks."
+    test_priority: MUST
+
+  - id: QUIZ-RISK-002
+    severity: high
+    title: "Pausa/resume del quiz depende de get('controls')/get('api') con errores silenciados"
+    description: >
+      controls.pause() y api.play() se llaman con .catch(() => {}). Si controls/api
+      no están listos (race de inicialización) o cambian de contrato, la pausa no
+      ocurre (el video sigue corriendo bajo el overlay) o el resume no reanuda
+      (el video queda pausado tras cerrar el quiz) sin ninguna señal de error.
+    affected_files:
+      - "src/view/video/hooks/useQuiz.js"
+    trigger: "Quiz que se activa antes de que controls esté disponible; cambio en la firma de controls.pause/api.play."
+    mitigation: "Los .catch vacíos evitan crashes pero ocultan el fallo; no hay retry ni log."
+    test_priority: MUST
+
+  - id: QUIZ-RISK-003
+    severity: high
+    title: "Latencia de Firestore desincroniza el quiz live del momento en directo"
+    description: >
+      El quiz live se dispara por snapshot Firestore (~600-1500ms RTT) y luego se
+      carga por REST con hasta 3 reintentos (backoff 2s,4s,6s). En un fallo
+      transitorio, el quiz puede aparecer varios segundos después del momento
+      pensado por el productor, o no aparecer si el delay total supera la relevancia
+      del momento en vivo.
+    affected_files:
+      - "src/view/video/hooks/useLiveQuiz.js"
+      - "src/view/video/atoms/quiz.js"
+    trigger: "Latencia geográfica alta a la región Firestore; fallo transitorio del endpoint /quizzes que dispara reintentos."
+    mitigation: "Filtro de frescura de 15s (isQuizRecent) descarta triggers viejos; reintentos con backoff para fallos de carga."
+    industry_note: "Firebase RTT ~10x el de un websocket directo; la distancia a la región de la DB afecta directamente la puntualidad del quiz en vivo."
+    test_priority: SHOULD
+
+  - id: QUIZ-RISK-004
+    severity: medium
+    title: "normalizeTimestamp frágil ante formatos inesperados de timestamp Firestore"
+    description: >
+      normalizeTimestamp asume timestamps numéricos de 10-13 dígitos y usa un
+      regex para extraerlos de strings; valores con formato distinto (objeto
+      Firestore Timestamp, ISO string, ms vs s) pueden producir null y descartar
+      un quiz válido, o pasar el filtro de frescura incorrectamente.
+    affected_files:
+      - "src/view/video/hooks/useLiveQuiz.js"
+    trigger: "Documento Firestore con timestamp en formato no contemplado (Timestamp object, ISO, segundos vs milisegundos)."
+    mitigation: "Heurística de longitud (>13 = ms→s) y regex; isQuizRecent retorna true si timestamp es falsy (no descarta por defecto)."
+    test_priority: SHOULD
+
+  - id: QUIZ-RISK-005
+    severity: medium
+    title: "Quizzes live no pausan: el usuario puede perderse contenido en vivo al responder"
+    description: >
+      A diferencia de VOD, los quizzes live no pausan la reproducción (el efecto de
+      pausa está condicionado a isVodContent). Es un comportamiento deliberado (en
+      directo no se puede pausar el stream sin perder el live edge), pero implica que
+      QA debe verificar que NO se llama controls.pause() en live.
+    affected_files:
+      - "src/view/video/hooks/useQuiz.js"
+    trigger: "Quiz activo durante type=live."
+    mitigation: "Diseño intencional; isVodContent gatea la pausa."
+    test_priority: SHOULD
+
+  - id: QUIZ-RISK-006
+    severity: medium
+    title: "Overlay modal sin focus trap real"
+    description: >
+      El overlay declara aria-modal='true' pero no implementa focus trap ni
+      restauración de foco al cerrar. Con aria-modal=true los lectores de pantalla
+      tratan el resto como inerte, pero el foco del teclado puede salir del diálogo
+      (Tab al resto de controles del player), contradiciendo la semántica modal.
+    affected_files:
+      - "src/view/video/components/quiz/quiz.jsx"
+    trigger: "Navegación por Tab dentro del overlay; cierre del overlay (foco no retorna a un punto definido)."
+    mitigation: "Ninguna actual (no hay focus trap ni manejo de Escape global)."
+    industry_note: "WAI-ARIA Authoring Practices exige focus trap + Esc + retorno de foco para diálogos modales; aria-modal por sí solo no atrapa el foco del teclado."
+    test_priority: SHOULD
+
+  - id: QUIZ-RISK-007
+    severity: medium
+    title: "Inconsistencia de campo question.text vs question.question"
+    description: >
+      quiz.jsx renderiza el texto de la pregunta como currentQuestion.text, mientras
+      que buildAnalyticsData lo reporta como currentQuestion.question || currentQuestion.text.
+      Si el backend usa el campo 'question' (no 'text'), la UI muestra vacío pero el
+      analytics sí reporta texto — o viceversa. Riesgo de UI sin pregunta visible.
+    affected_files:
+      - "src/view/video/components/quiz/quiz.jsx"
+      - "src/view/video/hooks/useQuiz.js"
+    trigger: "Quiz cuyo objeto pregunta usa la clave 'question' en lugar de 'text'."
+    mitigation: "buildAnalyticsData tiene fallback; la UI (quiz.jsx) NO."
+    test_priority: SHOULD
+
+  - id: QUIZ-RISK-008
+    severity: low
+    title: "Cola FIFO sin límite ni expiración para quizzes encolados"
+    description: >
+      Si llegan muchos quizzes mientras hay uno activo (especialmente en live con
+      varios triggers), todos se encolan sin límite ni TTL. En live, un quiz encolado
+      puede mostrarse mucho después de ser relevante.
+    affected_files:
+      - "src/view/video/atoms/quiz.js"
+    trigger: "Múltiples ACTIVATE_QUIZ con quiz activo presente (ráfaga de triggers en live)."
+    mitigation: "Dedupe por _id evita duplicados; no hay TTL ni cap de tamaño."
+    test_priority: COULD
+
+  - id: QUIZ-RISK-009
+    severity: low
+    title: "Code-splitting con fallback null retrasa la aparición del overlay"
+    description: >
+      index.jsx usa React.lazy con Suspense fallback={null}. En redes lentas, tras
+      activar el quiz el chunk puede tardar en cargar y el overlay aparece con delay;
+      en VOD el video ya está pausado, generando una pantalla pausada sin overlay
+      visible momentáneamente.
+    affected_files:
+      - "src/view/video/components/quiz/index.jsx"
+    trigger: "Primera activación de quiz en red lenta (chunk aún no descargado)."
+    mitigation: "Ninguna (fallback null intencional para no parpadear)."
+    test_priority: COULD

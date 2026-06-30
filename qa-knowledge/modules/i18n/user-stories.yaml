@@ -1,0 +1,145 @@
+version: "1.0"
+module: i18n
+last_updated: "2026-06-09"
+
+user_stories:
+
+  - id: US-I18N-001
+    persona: Viewer
+    narrative:
+      as: "espectador hispanohablante"
+      want: "que la interfaz del player esté en español"
+      so_that: "entiendo todos los controles y mensajes sin necesidad de tradución"
+    business_value: HIGH
+    risk_area:
+      - i18n-core
+    related_features: []
+    acceptance:
+      - I18N-AC-002
+      - I18N-AC-004
+      - I18N-AC-008
+    notes: >
+      Idioma por defecto. Cubre la gran mayoría del mercado objetivo LATAM.
+      Verificar namespace 'default' y 'video' en español.
+
+  - id: US-I18N-002
+    persona: Viewer
+    narrative:
+      as: "espectador anglohablante en plataforma multiregión"
+      want: "ver la interfaz del player en inglés"
+      so_that: "navego los controles en mi idioma nativo"
+    business_value: HIGH
+    risk_area:
+      - i18n-core
+    related_features: []
+    acceptance:
+      - I18N-AC-001
+      - I18N-AC-005
+      - I18N-AC-006
+    notes: >
+      language='en'. Cubre mercados anglohablantes de LATAM y expansión a USA/UK.
+      Atención: namespace 'radio' en inglés tiene bug de contenido (I18N-DEF-001).
+
+  - id: US-I18N-003
+    persona: Viewer
+    narrative:
+      as: "espectador lusohablante (Brasil/Portugal)"
+      want: "ver la interfaz del player en portugués"
+      so_that: "entiendo los controles sin fricción"
+    business_value: HIGH
+    risk_area:
+      - i18n-core
+    related_features: []
+    acceptance:
+      - I18N-AC-003
+      - I18N-AC-008
+    notes: >
+      language='pt'. Brasil es uno de los mercados principales de Mediastream.
+      Verificar namespace 'default', 'video', 'compact', 'federation' en portugués.
+
+  - id: US-I18N-004
+    persona: Integrator
+    narrative:
+      as: "integrador que embebe el player en una plataforma en inglés"
+      want: "configurar el idioma del player al inicializarlo"
+      so_that: "la interfaz del player coincide con el idioma de mi plataforma"
+    business_value: HIGH
+    risk_area:
+      - i18n-api
+    related_features: []
+    acceptance:
+      - I18N-AC-001
+      - I18N-AC-013
+    notes: >
+      Flujo de init con language en opciones. Crítico que loading=false antes
+      del primer render para evitar flash de keys.
+
+  - id: US-I18N-005
+    persona: Integrator
+    narrative:
+      as: "integrador que necesita personalizar strings del sistema de login"
+      want: "overridear los textos de federation (login/registro/perfil) con mi propio copy"
+      so_that: "la experiencia de autenticación es consistente con mi marca"
+    business_value: MEDIUM
+    risk_area:
+      - i18n-federation
+    related_features:
+      - federation
+    acceptance:
+      - I18N-AC-009
+      - I18N-AC-014
+    notes: >
+      Via view.federation.translation. Solo namespace federation.
+      Verificar deep merge: keys overrideadas cambian, keys no overrideadas se mantienen.
+
+  - id: US-I18N-006
+    persona: Integrator
+    narrative:
+      as: "integrador que implementa un player multilingüe dinámico"
+      want: "cambiar el idioma del player sin recargar la página"
+      so_that: "el usuario puede cambiar el idioma de la plataforma y el player lo sigue"
+    business_value: MEDIUM
+    risk_area:
+      - i18n-core
+      - i18n-dynamic
+    related_features: []
+    acceptance:
+      - I18N-AC-010
+    notes: >
+      Vía changeLanguage() de i18next. Segunda ruta (post-init).
+      Ver I18N-LEARN-002: primer init vs cambio dinámico usan rutas diferentes.
+
+  - id: US-I18N-007
+    persona: QA-Engineer
+    narrative:
+      as: "ingeniero QA que valida accesibilidad del player"
+      want: "que los ARIA labels de los controles estén en el idioma configurado"
+      so_that: "los usuarios con lectores de pantalla reciben descripciones en su idioma"
+    business_value: MEDIUM
+    risk_area:
+      - accessibility
+      - i18n-core
+    related_features: []
+    acceptance:
+      - I18N-AC-015
+    notes: >
+      Importante para WCAG 2.1 AA. Hay un defecto conocido (I18N-DEF-002) en los
+      fallback labels de audio tracks que están hardcodeados en inglés.
+      Los controles TV sí usan i18n correctamente.
+
+  - id: US-I18N-008
+    persona: Integrator
+    narrative:
+      as: "integrador que embebe el player con un idioma no soportado"
+      want: "que el player no se rompa y siga siendo funcional"
+      so_that: "el usuario puede usar los controles básicos aunque sin traducción perfecta"
+    business_value: LOW
+    risk_area:
+      - i18n-resilience
+    related_features: []
+    acceptance:
+      - I18N-AC-007
+    notes: >
+      Degradación graceful ante idiomas no soportados (I18N-RISK-002, I18N-DEF-004).
+      El player debe seguir siendo funcional aunque muestre claves crudas.
+      No hay fallback automático a español.

@@ -1,0 +1,175 @@
+version: "1.0"
+module: i18n
+last_updated: "2026-06-09"
+
+acceptance_criteria:
+
+  # ── MUST ────────────────────────────────────────────────────────────────────
+
+  - id: I18N-AC-001
+    priority: MUST
+    scenario: "Player inicializado con language='en' muestra strings en inglés"
+    given: "Player configurado con options.language='en'"
+    when: "Player se inicializa y renderiza la UI"
+    then:
+      - "strings de controles visibles están en inglés (ej: 'Play', 'Pause', 'Loading...')"
+      - "useTranslation.loading pasa a false"
+      - "useTranslation.ready pasa a true"
+
+  - id: I18N-AC-002
+    priority: MUST
+    scenario: "Player inicializado con language='es' muestra strings en español"
+    given: "Player configurado con options.language='es'"
+    when: "Player se inicializa y renderiza la UI"
+    then:
+      - "strings de controles visibles están en español (ej: 'Reproducir', 'Pausar', 'Cargando...')"
+      - "namespace 'default' cargado correctamente"
+
+  - id: I18N-AC-003
+    priority: MUST
+    scenario: "Player inicializado con language='pt' muestra strings en portugués"
+    given: "Player configurado con options.language='pt'"
+    when: "Player se inicializa y renderiza la UI"
+    then:
+      - "strings de controles visibles están en portugués (ej: 'Reproduzir', 'Pausar', 'Carregando...')"
+      - "namespace 'default' cargado correctamente"
+
+  - id: I18N-AC-004
+    priority: MUST
+    scenario: "Idioma por defecto es español cuando language no se especifica"
+    given: "Player inicializado sin opciones language"
+    when: "Player renderiza la UI"
+    then:
+      - "strings aparecen en español"
+      - "contextMapper retorna 'es' como fallback"
+
+  - id: I18N-AC-005
+    priority: MUST
+    scenario: "Namespace 'video' se carga correctamente para la skin video"
+    given: "Player con view='video' y language='en'"
+    when: "Player renderiza controles de la skin video"
+    then:
+      - "strings de tvControls, chromecast, nextEpisode, live se renderizan en inglés"
+      - "no aparecen translation keys crudas (ej: 'tvControls.play')"
+
+  - id: I18N-AC-006
+    priority: MUST
+    scenario: "Namespace 'compact' se carga para vista compact"
+    given: "Player con view='compact' y language='en'"
+    when: "Player renderiza la vista compact"
+    then:
+      - "strings 'LIVE', 'Play', 'Pause', 'Previous', 'Next' aparecen en inglés"
+      - "no se muestran claves crudas"
+
+  - id: I18N-AC-007
+    priority: MUST
+    scenario: "Idioma desconocido no rompe el player — muestra claves"
+    given: "Player configurado con language='fr' (idioma sin archivos JSON)"
+    when: "Player intenta cargar traducciones"
+    then:
+      - "player no lanza excepción no capturada"
+      - "UI sigue renderizando (aunque con claves en lugar de strings)"
+      - "console.error se llama con 'Error loading language'"
+      - "player alcanza estado ready=true"
+
+  - id: I18N-AC-008
+    priority: MUST
+    scenario: "strings de estado de playback se traducen correctamente"
+    given: "Player en estado 'buffering' con language='pt'"
+    when: "El badge/indicator de estado es visible"
+    then:
+      - "texto visible es 'Carregando...' (no 'Loading...' ni la key 'status.loading')"
+
+  - id: I18N-AC-009
+    priority: MUST
+    scenario: "Namespace 'federation' soporta traducciones custom del integrador"
+    given: >
+      Player con view.federation.translation = JSON.stringify({ login: { title: 'Acceder' } })
+    when: "Modal de login de federation se muestra"
+    then:
+      - "título del modal es 'Acceder' (override del integrador)"
+      - "merge no elimina strings no overrideados"
+
+  # ── SHOULD ──────────────────────────────────────────────────────────────────
+
+  - id: I18N-AC-010
+    priority: SHOULD
+    scenario: "Cambio dinámico de idioma después de init actualiza la UI"
+    given: "Player inicializado con language='es', UI visible"
+    when: "Se llama changeLanguage('en') via i18n instance"
+    then:
+      - "strings de UI se actualizan a inglés sin recargar el player"
+      - "SettingsLanguageDetector.isResolved=true activa la ruta changeLanguage() directa"
+
+  - id: I18N-AC-011
+    priority: SHOULD
+    scenario: "Namespace 'radio' se carga para vista radio"
+    given: "Player con view='radio' y language='pt'"
+    when: "Player renderiza tabs y controles de radio"
+    then:
+      - "strings de navegación en portugués"
+      - "no aparecen claves crudas en tabs o controles"
+
+  - id: I18N-AC-012
+    priority: SHOULD
+    scenario: "Interpolación de variables en strings funciona correctamente"
+    given: "Player con Chromecast activo y language='es'"
+    when: "UI muestra 'seekBackward' con {{seconds}}"
+    then:
+      - "string renderizado es 'Retroceder 10 segundos' (con valor de {{seconds}} interpolado)"
+      - "no se muestra '{{seconds}}' literal"
+
+  - id: I18N-AC-013
+    priority: SHOULD
+    scenario: "loading=false antes de que la UI intente renderizar strings traducidos"
+    given: "Player inicializándose"
+    when: "useTranslation detecta language resuelto"
+    then:
+      - "loading pasa a false antes de que los componentes rendericen con t()"
+      - "no hay parpadeo de claves crudas en la primera renderización"
+
+  - id: I18N-AC-014
+    priority: SHOULD
+    scenario: "api.federation.defaultTranslation es el JSON en inglés"
+    given: "Player con federation plugin activo"
+    when: "Se accede a api.federation.defaultTranslation"
+    then:
+      - "retorna el contenido de src/view/i18n/en/federation.json"
+      - "incluye claves de login, register, recoverPassword, error, profile"
+
+  - id: I18N-AC-015
+    priority: SHOULD
+    scenario: "ARIA labels de controles usan el idioma correcto"
+    given: "Player con language='en'"
+    when: "Controles con aria-label son inspeccionados"
+    then:
+      - "aria-label de botón play es 'Play' (no 'Reproducir' ni la key)"
+      - "valores de aria-label son string no vacíos"
+
+  # ── COULD ───────────────────────────────────────────────────────────────────
+
+  - id: I18N-AC-016
+    priority: COULD
+    scenario: "missingKeys se acumula en runtime para claves no encontradas"
+    given: "Player con idioma que tiene namespace incompleto"
+    when: "useTranslation intenta traducir una clave inexistente"
+    then:
+      - "api.federation.missingTranslation registra la clave faltante"
+      - "UI muestra la key como fallback (missingKeyNoValueFallbackToKey=true)"
+
+  - id: I18N-AC-017
+    priority: COULD
+    scenario: "Namespace 'reels' se carga para vista reels"
+    given: "Player con view='reels' y language='es'"
+    when: "CTA de reels se renderiza"
+    then:
+      - "string 'Visitar' aparece (no la key 'visit')"
+
+  - id: I18N-AC-018
+    priority: COULD
+    scenario: "returnEmptyString=true — string vacío se devuelve como vacío"
+    given: "Namespace federation con campo 'subtitle' vacío en JSON"
+    when: "t('recoverPassword.subtitle') es llamado"
+    then:
+      - "retorna string vacío ''"
+      - "no retorna la key 'recoverPassword.subtitle'"

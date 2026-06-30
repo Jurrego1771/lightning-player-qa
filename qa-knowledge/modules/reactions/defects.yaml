@@ -1,0 +1,95 @@
+version: "1.0"
+module: reactions
+last_updated: "2026-06-10"
+
+defects:
+  - id: REACT-DEF-001
+    status: open
+    severity: high
+    title: "getReactionGif null no manejado en ReactionsSelector/Viewer → posible TypeError"
+    description: >
+      getReactionGif devuelve null cuando reactionCode no está en dynamicReactionsConfig, pero los
+      consumidores acceden a gifData.src / gifData.alt sin null-check. Un reactionCode remoto o
+      desfasado del config provoca 'Cannot read properties of null (reading src)' y rompe el render
+      del overlay React.
+    workaround: "Mantener config↔supportedReactions sincronizados; evitar reacciones legacy. No hay guarda en código."
+    source_comment: "src/view/video/components/reactions/utils/reactionGifMap.js:8 (return null); ReactionsSelector.jsx:125; ReactionsViewer.jsx:265"
+    industry_known: false
+    regression_risk: high
+
+  - id: REACT-DEF-002
+    status: known_limitation
+    severity: medium
+    title: "Animaciones de reacciones ignoran prefers-reduced-motion"
+    description: >
+      La animación flotante (Web Animations API) no consulta prefers-reduced-motion. Usuarios con
+      preferencia de movimiento reducido reciben movimiento no esencial sobre el video.
+    workaround: "Ninguno a nivel usuario. A nivel producto: deshabilitar liveReactions."
+    source_comment: "src/view/video/components/reactions/components/ReactionsViewer.jsx:289-327 (element.animate sin guarda matchMedia)"
+    industry_known: true
+    regression_risk: low
+
+  - id: REACT-DEF-003
+    status: known_limitation
+    severity: medium
+    title: "Tres mecanismos distintos de descubrimiento del manager (backoff / polling 500ms / retry 500ms)"
+    description: >
+      useReactionsManager (backoff exp, 12 intentos), ReactionsButton (setInterval 500ms x10) y
+      ReactionsViewer (retryInterval 500ms) implementan estrategias diferentes para getComponent('reactions').
+      Genera timing inconsistente y posibilidad de que un componente quede conectado y otro no en el
+      mismo render.
+    workaround: "Unificar en un único hook de descubrimiento (useReactionsManager). Pendiente refactor."
+    source_comment: "useReactionsManager.js:41; ReactionsButton.jsx:35; ReactionsViewer.jsx:222"
+    industry_known: false
+    regression_risk: medium
+
+  - id: REACT-DEF-004
+    status: known_workaround
+    severity: medium
+    title: "Eco optimista puede suprimir una 2ª reacción idéntica del mismo usuario en <5s"
+    description: >
+      La ventana de dedup de 5s (mismo playerId+reactionCode) puede tratar una segunda reacción
+      legítima rápida como eco remoto de la primera y no renderizarla, aunque sí se emitió al backend.
+    workaround: "El debounce (250ms) y el rate-limit ya limitan el spam; el caso es de baja frecuencia."
+    source_comment: "src/view/video/components/reactions/components/ReactionsViewer.jsx:33-52, 97-108"
+    industry_known: true
+    regression_risk: medium
+
+  - id: REACT-DEF-005
+    status: known_limitation
+    severity: low
+    title: "Feature degrada en silencio si falta flag o reactions config"
+    description: >
+      Sin options.liveReactions o sin context.reactions la UI no aparece ni emite error visible. QA
+      puede interpretar erróneamente 'desactivada' como 'rota'. El fixture live.json del repo QA tiene
+      reactions: null.
+    workaround: "Usar una estación de prueba con reactions configurado; afirmar ausencia como caso negativo cuando no hay config."
+    source_comment: "src/plugins/index.js:48-50; fixtures/platform-responses/content/live.json (reactions: null)"
+    industry_known: false
+    regression_risk: low
+
+  - id: REACT-DEF-006
+    status: known_limitation
+    severity: low
+    title: "Reacciones flotan solo en el 30% izquierdo del viewport"
+    description: >
+      ReactionAnimation calcula randomX dentro de leftZoneWidth = viewportWidth * 0.3. Las reacciones
+      siempre aparecen en el tercio izquierdo, lo que en ciertos layouts (controles a la izquierda,
+      RTL) puede solaparse con UI o sentirse desbalanceado.
+    workaround: "Cosmético; no afecta funcionalidad."
+    source_comment: "src/view/video/components/reactions/components/ReactionsViewer.jsx:273-275"
+    industry_known: false
+    regression_risk: low
+
+  - id: REACT-DEF-007
+    status: known_limitation
+    severity: low
+    title: "requestIdleCallback ausente en Safari/algunos WebView TV → limpieza por fallback temporizado"
+    description: >
+      La limpieza de reacciones expiradas prefiere requestIdleCallback; donde no existe usa un
+      setTimeout (idleTimeout-500). Bajo carga alta en TV de gama baja la limpieza puede retrasarse,
+      acumulando nodos temporalmente.
+    workaround: "Fallback ya implementado; caps de maxVisibleReactions/processedIds limitan el crecimiento."
+    source_comment: "src/view/video/components/reactions/components/ReactionsViewer.jsx:197-201"
+    industry_known: true
+    regression_risk: low

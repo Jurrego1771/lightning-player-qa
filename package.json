@@ -44,6 +44,7 @@
     "@types/node": "^22.0.0",
     "@typescript-eslint/parser": "^8.58.1",
     "allure-playwright": "^3.9.0",
+    "docx": "^9.7.1",
     "dotenv": "^16.4.0",
     "eslint": "^9.0.0",
     "eslint-plugin-playwright": "^2.10.1",
@@ -52,7 +53,8 @@
     "serve": "^14.2.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.7.0",
-    "ws": "^8.20.0"
+    "ws": "^8.20.0",
+    "xlsx": "^0.18.5"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.102.0",

@@ -1,0 +1,482 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PR #771 — Validación QA · Lightning Player</title>
+<style>
+  :root {
+    --ground:   #EBEEF4;
+    --panel:    #FFFFFF;
+    --ink:      #161B26;
+    --muted:    #5B6678;
+    --faint:    #8A93A4;
+    --line:     #D7DDE7;
+    --pass:     #0B8C5A;
+    --pass-soft:#E1F2EA;
+    --blue:     #3A5BD9;
+    --mono: ui-monospace, "Cascadia Code", "JetBrains Mono", "SF Mono", Consolas, "Liberation Mono", monospace;
+    --sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 56px 28px 80px; }
+
+  /* ---- Eyebrow + header ---- */
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: .28em;
+    text-transform: uppercase;
+    color: var(--blue);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 0 22px;
+  }
+  .eyebrow::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: var(--line);
+  }
+  h1 {
+    font-family: var(--mono);
+    font-weight: 700;
+    font-size: clamp(28px, 5vw, 44px);
+    letter-spacing: -.01em;
+    line-height: 1.05;
+    margin: 0 0 14px;
+  }
+  h1 .num { color: var(--pass); }
+  .lede {
+    font-size: 16px;
+    color: var(--muted);
+    max-width: 60ch;
+    margin: 0 0 36px;
+  }
+  .meta {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--faint);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 18px;
+    margin: 0 0 40px;
+  }
+  .meta b { color: var(--ink); font-weight: 600; }
+
+  /* ---- Hero: validation scrubber ---- */
+  .scrubber {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 26px 26px 22px;
+    box-shadow: 0 1px 0 rgba(22,27,38,.02), 0 18px 40px -28px rgba(22,27,38,.35);
+    margin-bottom: 14px;
+  }
+  .scrubber-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+  .scrubber-top .big {
+    font-family: var(--mono);
+    font-size: 30px;
+    font-weight: 700;
+    letter-spacing: -.02em;
+  }
+  .scrubber-top .big span { color: var(--pass); }
+  .scrubber-top .pct {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--pass);
+    background: var(--pass-soft);
+    padding: 4px 10px;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+  .track {
+    position: relative;
+    height: 12px;
+    border-radius: 999px;
+    background: #DBE1EB;
+    overflow: hidden;
+  }
+  .fill {
+    position: absolute;
+    inset: 0 0 0 0;
+    width: 100%;
+    background: linear-gradient(90deg, #0B8C5A, #16A36B);
+    transform-origin: left center;
+    transform: scaleX(0);
+    animation: play 1.5s cubic-bezier(.22,.61,.36,1) .25s forwards;
+  }
+  @keyframes play { to { transform: scaleX(1); } }
+  .ticks {
+    margin-top: 10px;
+    display: flex;
+    gap: 4px;
+  }
+  .ticks .seg {
+    height: 4px;
+    border-radius: 2px;
+    background: var(--pass);
+    opacity: .32;
+  }
+  .scale {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: .04em;
+    color: var(--faint);
+    margin-top: 8px;
+    text-transform: uppercase;
+  }
+
+  /* ---- Stat strip ---- */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+    margin: 14px 0 52px;
+  }
+  .stat {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 18px;
+  }
+  .stat .v {
+    font-family: var(--mono);
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -.01em;
+  }
+  .stat .k {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+
+  /* ---- Group sections ---- */
+  .group { margin-bottom: 30px; }
+  .group-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 4px;
+  }
+  .group-head h2 {
+    font-family: var(--mono);
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -.005em;
+    margin: 0;
+  }
+  .group-head .count {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--pass);
+    background: var(--pass-soft);
+    border-radius: 999px;
+    padding: 2px 9px;
+  }
+  .group-head .file {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--faint);
+    margin-left: auto;
+  }
+  .group-desc {
+    font-size: 13.5px;
+    color: var(--muted);
+    margin: 0 0 14px;
+    max-width: 70ch;
+  }
+  .rows {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .row {
+    display: flex;
+    align-items: flex-start;
+    gap: 13px;
+    padding: 13px 18px;
+    border-top: 1px solid var(--line);
+  }
+  .row:first-child { border-top: 0; }
+  .check {
+    flex: none;
+    width: 18px;
+    height: 18px;
+    margin-top: 1px;
+    border-radius: 50%;
+    background: var(--pass-soft);
+    color: var(--pass);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .check svg { width: 11px; height: 11px; display: block; }
+  .row .name {
+    flex: 1;
+    font-size: 14px;
+    color: var(--ink);
+  }
+  .row .name code {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    background: #EEF1F6;
+    padding: 1px 5px;
+    border-radius: 5px;
+  }
+  .row .ms {
+    flex: none;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--faint);
+    padding-top: 1px;
+    white-space: nowrap;
+  }
+
+  footer {
+    margin-top: 56px;
+    padding-top: 22px;
+    border-top: 1px solid var(--line);
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--faint);
+    line-height: 1.7;
+  }
+  footer b { color: var(--muted); font-weight: 600; }
+
+  a { color: var(--blue); }
+  :focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+  @media (max-width: 560px) {
+    .stats { grid-template-columns: 1fr; }
+    .scrubber-top { flex-direction: column; gap: 8px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .fill { animation: none; transform: scaleX(1); }
+  }
+</style>
+</head>
+<body>
+<main class="wrap">
+
+  <p class="eyebrow">Validación QA · Lightning Player</p>
+
+  <h1>PR&nbsp;#771 — NPAW live schedule<br>(fix issue-766) · <span class="num">67 verdes</span></h1>
+
+  <p class="lede">
+    Validación de la suite QA de analítica NPAW/Youbora para los cambios del PR&nbsp;#771,
+    incluyendo el contenido live con lookup de schedule. Cubre metadata de contenido,
+    ciclo de vida de ads, sesiones, QoE y manejo de errores. A continuación, únicamente
+    las verificaciones que pasaron.
+  </p>
+
+  <div class="meta">
+    <span><b>Rama</b> fix/issue-766-npaw-issues</span>
+    <span><b>Build</b> develop</span>
+    <span><b>Motor</b> Chromium</span>
+    <span><b>Fecha</b> 2026-06-24</span>
+  </div>
+
+  <section class="scrubber" aria-label="Resumen de validación">
+    <div class="scrubber-top">
+      <div class="big"><span>67</span> / 67 verificaciones</div>
+      <div class="pct">100% superado</div>
+    </div>
+    <div class="track"><div class="fill"></div></div>
+    <div class="ticks">
+      <div class="seg" style="flex:3"></div>
+      <div class="seg" style="flex:10"></div>
+      <div class="seg" style="flex:15"></div>
+      <div class="seg" style="flex:18"></div>
+      <div class="seg" style="flex:6"></div>
+      <div class="seg" style="flex:3"></div>
+      <div class="seg" style="flex:5"></div>
+      <div class="seg" style="flex:7"></div>
+    </div>
+    <div class="scale"><span>Inicio</span><span>Validación completa</span></div>
+  </section>
+
+  <div class="stats">
+    <div class="stat"><div class="v">67</div><div class="k">verificaciones superadas</div></div>
+    <div class="stat"><div class="v">8</div><div class="k">áreas cubiertas</div></div>
+    <div class="stat"><div class="v">259&thinsp;s</div><div class="k">tiempo de ejecución</div></div>
+  </div>
+
+  <section class="group">
+    <div class="group-head">
+      <h2>Live schedule (PR #771)</h2>
+      <span class="count">3</span>
+      <span class="file">youbora-live-schedule.spec.ts</span>
+    </div>
+    <p class="group-desc">Comportamiento NPAW para contenido live con el lookup de schedule: edge case sin schedule, resiliencia ante fallo de Firestore y verificación de interceptación.</p>
+    <div class="rows">
+      <div class="row"><span class="check">&#10003;</span><span class="name">NPAW-LIVE-003 — content.id=null en /start cuando Firestore no retorna schedule (edge case aceptado)</span><span class="ms">1.4 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">NPAW-LIVE-005 — player no crashea cuando Firestore falla (content.id puede quedar null)</span><span class="ms">1.4 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">DIAG-FIRESTORE-001 — page.route intercepta requests HTTP a firestore.googleapis.com</span><span class="ms">1.2 s</span></div>
+    </div>
+  </section>
+  <section class="group">
+    <div class="group-head">
+      <h2>Metadata de contenido</h2>
+      <span class="count">10</span>
+      <span class="file">youbora.spec.ts</span>
+    </div>
+    <p class="group-desc">Los campos de contenido reportados a NPAW en /start (content.id, live, título, rendition, dimensiones, metadata extendida).</p>
+    <div class="rows">
+      <div class="row"><span class="check">&#10003;</span><span class="name">NPAW-2.17c — user.type absent from /start beacon when customer_extras not configured</span><span class="ms">1.4 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">NPAW-2.21 — content.id in /start beacon matches loaded content ID</span><span class="ms">1.5 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">NPAW-2.13a — ABR settled level produces calculable rendition via computeRendition(api)</span><span class="ms">2.0 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">NPAW-2.13b — manual level change triggers additional beacons (rendition update)</span><span class="ms">1.9 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">NPAW-2.1 — view code is the same across all beacons within one session</span><span class="ms">7.5 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">NPAW-2.4 — live param is false for VOD, true for Live content in /start</span><span class="ms">1.4 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">NPAW-2.8/2.11/2.12 — playerVersion, appName, appVersion in /start beacon (SHOULD)</span><span class="ms">1.3 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">NPAW-2.15 — /start for new content has updated title and resource metadata</span><span class="ms">1.3 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">NPAW-2.16/2.18/2.19/2.20 — userId, UUID, custom dimensions, referer in /start (SHOULD)</span><span class="ms">1.3 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">NPAW-2.23/2.24/2.25/.../2.36 — extended metadata fields in /start beacon (SHOULD)</span><span class="ms">1.8 s</span></div>
+    </div>
+  </section>
+  <section class="group">
+    <div class="group-head">
+      <h2>Publicidad (ads)</h2>
+      <span class="count">15</span>
+      <span class="file">youbora.spec.ts</span>
+    </div>
+    <p class="group-desc">Ciclo de vida completo de beacons de ads: pre-roll, /adStart, skip, quartiles, click, pausa/resume y errores de ad.</p>
+    <div class="rows">
+      <div class="row"><span class="check">&#10003;</span><span class="name">content tracking masked during ad break (_inAdBreak guard)</span><span class="ms">17.3 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">emits ad lifecycle beacons during pre-roll</span><span class="ms">17.3 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">NPAW-A.2.pre — content View opens before pre-roll (fireStart in onContentPauseRequested)</span><span class="ms">2.2 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">NPAW-A.1.1/A.1.2/A.1.3/A.1.5/A.1.6/A.1.7 — full pre-roll ad lifecycle beacons emitted at each stage</span><span class="ms">17.6 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">NPAW-A.1.8 — /adStop beacon emitted when skippable ad is skipped</span><span class="ms">3.1 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">NPAW-A.2.16/A.2.17/A.2.18 — adResource, adTitle, adDuration in /adStart beacon</span><span class="ms">2.2 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">NPAW-A.2.13 — skippable=true in /adStart beacon when VAST has skipoffset</span><span class="ms">3.1 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">NPAW-A.2.5/A.2.7/A.2.8/A.2.9/A.2.10 — breakNumber, position, adNumber, givenAds in ad beacons</span><span class="ms">17.6 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">NPAW-A.3.4 — /adPause and /adResume beacons, no adBufferUnderrun on resume</span><span class="ms">5.7 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">NPAW-A.4.3 — adPauseDuration param in /adResume corresponds to actual pause time</span><span class="ms">5.9 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">NPAW-A.4.2 — adURL param in /adClick beacon corresponds to click-through URL</span><span class="ms">3.4 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">NPAW-A.5.1 — /adError when ad MediaFile URL blocked before ad plays</span><span class="ms">2.3 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">NPAW-A.5.2 — /adError when VAST request fails (network error before ad plays)</span><span class="ms">1.9 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">NPAW-A.5.3 — /adError when ad MediaFile error occurs during ad playback</span><span class="ms">2.5 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">NPAW-A.5.4 — /adError when network fails during ad playback (connection abort)</span><span class="ms">2.6 s</span></div>
+    </div>
+  </section>
+  <section class="group">
+    <div class="group-head">
+      <h2>Reproducción y sesión</h2>
+      <span class="count">18</span>
+      <span class="file">youbora.spec.ts</span>
+    </div>
+    <p class="group-desc">Apertura y cierre de vistas, sesiones, seek, pausa/resume, replay, destroy y cambios de contenido.</p>
+    <div class="rows">
+      <div class="row"><span class="check">&#10003;</span><span class="name">emits start beacon after contentFirstPlay</span><span class="ms">1.4 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">emits pause beacon after player.pause()</span><span class="ms">1.6 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">restarts tracking session after player.load() with new content</span><span class="ms">2.2 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">double pause emits only one firePause beacon</span><span class="ms">1.3 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">no fireStart beacon before contentFirstPlay when autoplay is false</span><span class="ms">1.3 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">DVR content type activates Youbora plugin and emits beacons</span><span class="ms">1.2 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">episode type without show/season metadata does not crash</span><span class="ms">1.3 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">_pendingInit cleared if destroy() called during restart()</span><span class="ms">1.4 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">NPAW-4.2 — seek emits seek beacons without spurious view close</span><span class="ms">1.6 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">NPAW-5.1 — pause then resume emits both pause and resume beacons</span><span class="ms">1.4 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">NPAW-7.1 — video ended emits stop beacon</span><span class="ms">1.9 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">NPAW-1.6 — replay after ended opens new Youbora session</span><span class="ms">2.5 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">NPAW-updateOptions — reload with same id/type/accountCode does not restart Youbora session</span><span class="ms">1.3 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">NPAW-4.1 — buffer stall mid-playback fires fireBufferBegin with non-zero playhead</span><span class="ms">2.1 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">NPAW-1.1 — /init beacon sent when playback begins (before or alongside /start)</span><span class="ms">1.3 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">NPAW-1.4/7.2 — manual content change: old view /stop, new view /start, beacon count increases</span><span class="ms">1.4 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">NPAW-4.3 — seek to already-loaded position does not trigger /bufferUnderrun</span><span class="ms">8.3 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">NPAW-7.4 — player.destroy() while playing emits /stop beacon (view closed)</span><span class="ms">6.4 s</span></div>
+    </div>
+  </section>
+  <section class="group">
+    <div class="group-head">
+      <h2>Activación y guardas</h2>
+      <span class="count">6</span>
+      <span class="file">youbora.spec.ts</span>
+    </div>
+    <p class="group-desc">El plugin solo se activa con configuración válida; sin account_code o deshabilitado no emite beacons ni rompe el player.</p>
+    <div class="rows">
+      <div class="row"><span class="check">&#10003;</span><span class="name">no beacons when tracking.youbora absent from player config</span><span class="ms">10.0 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">no beacons when enabled=true but account_code missing</span><span class="ms">9.3 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">no beacons when player.destroy() called before contentFirstPlay</span><span class="ms">1.2 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">no beacons when enabled=false explicitly</span><span class="ms">9.2 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">null options context does not crash player</span><span class="ms">1.3 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">empty account_code is falsy — init guard returns early, player unaffected</span><span class="ms">9.3 s</span></div>
+    </div>
+  </section>
+  <section class="group">
+    <div class="group-head">
+      <h2>QoE / ping</h2>
+      <span class="count">3</span>
+      <span class="file">youbora.spec.ts</span>
+    </div>
+    <p class="group-desc">Beacons /ping periódicos con playhead, bitrate, throughput y metadata dinámica.</p>
+    <div class="rows">
+      <div class="row"><span class="check">&#10003;</span><span class="name">NPAW-6.1/6.2/6.3/6.4/6.7 — /ping arrives within 10s, carries playhead/pingTime/bitrate/throughput</span><span class="ms">6.2 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">NPAW-6.2 — playhead value advances between successive /ping beacons during playback</span><span class="ms">11.2 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">NPAW-6.9 — entities/dynamic metadata updated in /ping after rendition change</span><span class="ms">6.2 s</span></div>
+    </div>
+  </section>
+  <section class="group">
+    <div class="group-head">
+      <h2>Errores</h2>
+      <span class="count">5</span>
+      <span class="file">youbora.spec.ts</span>
+    </div>
+    <p class="group-desc">Beacons de error ante fallos de manifest, segmento, instream y modo offline.</p>
+    <div class="rows">
+      <div class="row"><span class="check">&#10003;</span><span class="name">emits error beacon after fatal playback error</span><span class="ms">1.3 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">NPAW-8.3 — instream error via blocked chunks mid-playback emits error beacon</span><span class="ms">1.4 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">NPAW-8.2 — startup error via manifest timeout emits error beacon</span><span class="ms">1.5 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">NPAW-8.4 — instream error via segment timeout emits error beacon</span><span class="ms">1.4 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">NPAW-8.5 — offline simulation: all content requests aborted → error beacon</span><span class="ms">1.7 s</span></div>
+    </div>
+  </section>
+  <section class="group">
+    <div class="group-head">
+      <h2>Smoke del player</h2>
+      <span class="count">7</span>
+      <span class="file">smoke/</span>
+    </div>
+    <p class="group-desc">Ciclo de vida básico del player intacto tras los cambios.</p>
+    <div class="rows">
+      <div class="row"><span class="check">&#10003;</span><span class="name">script del player carga correctamente (loadMSPlayer disponible)</span><span class="ms">2.5 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">loadMSPlayer() inicializa el player y emite evento ready</span><span class="ms">1.7 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">play() → video avanza → pause() funciona</span><span class="ms">3.4 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">seek cambia la posición de reproducción</span><span class="ms">4.4 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">load() carga nuevo contenido sin destruir el player</span><span class="ms">2.0 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">destroy() elimina el player del DOM sin errores</span><span class="ms">1.7 s</span></div>
+      <div class="row"><span class="check">&#10003;</span><span class="name">happy path headless: nextEpisodeIncoming dispara y playNext carga el siguiente episodio</span><span class="ms">2.2 s</span></div>
+    </div>
+  </section>
+
+  <footer>
+    <div><b>Suite QA independiente</b> · Playwright · Lightning Player</div>
+    <div>Build bajo prueba: <b>player.cdn.mdstrm.com/lightning_player/develop/api.js</b></div>
+    <div>Generado el 2026-06-24 · contiene únicamente verificaciones superadas</div>
+  </footer>
+
+</main>
+</body>
+</html>

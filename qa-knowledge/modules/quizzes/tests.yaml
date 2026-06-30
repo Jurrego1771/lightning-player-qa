@@ -1,0 +1,181 @@
+version: "1.0"
+module: quizzes
+last_updated: "2026-06-10"
+
+existing_tests:
+  - spec_file: "tests/contract/i18n-video-keys.spec.ts"
+    description: >
+      (Indirecto) Contract de claves i18n de la vista video. Si incluye el namespace
+      quiz.*, valida que las claves de título/botones/feedback existan en en/es/pt.
+      Verificar que cubre quiz.title, quiz.submitAnswer, quiz.continue, quiz.finish,
+      quiz.feedbackCorrect, quiz.feedbackIncorrect, quiz.question.
+    tags: ["@contract"]
+    ac_coverage:
+      - QUIZ-AC-014
+    notes: >
+      Spec añadido en la rama actual (ver git status). No es específico de quizzes —
+      conviene confirmar que el set de claves incluido cubre todo quiz.* o ampliarlo.
+      No existe ningún spec dedicado a quizzes todavía.
+
+coverage_gaps:
+  - id: GAP-QUIZ-001
+    priority: MUST
+    ac_ref: QUIZ-AC-001
+    title: "Activación VOD por trigger_time pausa la reproducción y muestra el overlay"
+    suggested_spec: "tests/integration/quizzes-vod-activation.spec.ts"
+    notes: >
+      Cargar VOD con metadata.quizzes (trigger_time bajo). Reproducir hasta cruzar
+      la ventana y verificar: overlay role='dialog' visible y el video pausado
+      (paused state). Considerar seekTo(trigger_time) para no esperar reproducción
+      lineal larga, cuidando no saltar la ventana de 2s (ver GAP-QUIZ-009).
+    industry_note: "Pop-quiz que pausa es el patrón de interactive video de Kaltura/Vimeo — happy path principal en VOD."
+
+  - id: GAP-QUIZ-002
+    priority: MUST
+    ac_ref: QUIZ-AC-002
+    title: "Respuesta correcta emite beacon quiz_answered de StreamMetrics"
+    suggested_spec: "tests/integration/quizzes-answer-analytics.spec.ts"
+    notes: >
+      quizAnswered es interno: interceptar el POST de StreamMetrics y verificar el
+      ping 'quiz_answered' con quiz_id, question_id, answer_index, correct_answer_index.
+      Recordar el doble Submit (fase 1 calcula resultado y emite; fase 2 avanza).
+      No esperar player.on('quizAnswered') — no es público.
+
+  - id: GAP-QUIZ-003
+    priority: MUST
+    ac_ref: QUIZ-AC-005
+    title: "Completar quiz VOD reanuda la reproducción (api.play)"
+    suggested_spec: "tests/integration/quizzes-complete-resume.spec.ts"
+    notes: >
+      Tras Finish en la última pregunta, verificar COMPLETE_QUIZ → overlay
+      desaparece y el video vuelve a reproducir (no paused). Usar quiz de 1 pregunta
+      para simplificar; verificar también el flujo multi-pregunta (Continue avanza).
+
+  - id: GAP-QUIZ-004
+    priority: MUST
+    ac_ref: QUIZ-AC-006
+    title: "Quiz VOD completado no se reactiva tras seek hacia atrás"
+    suggested_spec: "tests/integration/quizzes-no-reactivation.spec.ts"
+    notes: >
+      Completar un quiz, luego seekTo a antes del trigger_time y volver a cruzar la
+      ventana. Verificar que el overlay NO reaparece y la reproducción no se pausa.
+      Valida completedQuizzes (Set) en VOD.
+
+  - id: GAP-QUIZ-005
+    priority: MUST
+    ac_ref: QUIZ-AC-013
+    title: "sourcechange resetea todo el estado de quizzes"
+    suggested_spec: "tests/integration/quizzes-reset-on-sourcechange.spec.ts"
+    notes: >
+      Activar/completar un quiz en contenido A, cargar contenido B (sourcechange) y
+      verificar que B puede activar sus propios quizzes desde cero (completados de A
+      no persisten). Valida quizCleanupEffect → RESET_ALL.
+
+  - id: GAP-QUIZ-006
+    priority: MUST
+    ac_ref: QUIZ-AC-009
+    title: "Quiz live se dispara desde Firestore y carga vía API sin pausar"
+    suggested_spec: "tests/integration/quizzes-live-firestore-trigger.spec.ts"
+    notes: >
+      Requiere mock de Firestore (live_quizzes status==active) y del endpoint
+      /api/live-stream/{id}/quizzes/{id}. Verificar overlay aparece y que controls.pause()
+      NO se invoca en live. CRÍTICO: no mockear de forma que rompa el wrapper de
+      Firestore (onSnapshot). Alternativa: stub de useFirestore vía onData.
+
+  - id: GAP-QUIZ-007
+    priority: SHOULD
+    ac_ref: QUIZ-AC-007
+    title: "Opción múltiple: checkbox + comparación exacta + formato '||'"
+    suggested_spec: "tests/integration/quizzes-multiple-choice.spec.ts"
+    notes: >
+      Fixture con ≥2 opciones isCorrect=true. Verificar inputs type=checkbox,
+      que result.isCorrect solo es true con el conjunto exacto, y que answer_index
+      en el beacon usa '||' ordenado ascendente.
+
+  - id: GAP-QUIZ-008
+    priority: SHOULD
+    ac_ref: QUIZ-AC-010
+    title: "Trigger live antiguo (>15s) se descarta por frescura"
+    suggested_spec: "tests/integration/quizzes-live-freshness.spec.ts"
+    notes: >
+      Emitir vía onData un doc con timestamp >15s atrás y otro reciente. Verificar
+      que solo el reciente dispara overlay. Cubrir bordes: timestamp futuro (age<0)
+      descarta; timestamp ausente NO descarta (isQuizRecent retorna true).
+
+  - id: GAP-QUIZ-009
+    priority: SHOULD
+    ac_ref: QUIZ-RISK-001
+    title: "Seek que cruza la ventana de 2s pierde el quiz VOD (regresión esperada)"
+    suggested_spec: "tests/integration/quizzes-vod-seek-miss.spec.ts"
+    notes: >
+      Documentar el comportamiento actual: seekTo(trigger_time + 5) hace que el quiz
+      nunca aparezca. Es una known_limitation (QUIZ-DEF-004); el test sirve de oráculo
+      de regresión si el player añade recuperación de trigger perdido.
+
+  - id: GAP-QUIZ-010
+    priority: SHOULD
+    ac_ref: QUIZ-AC-011
+    title: "Reintentos de carga del quiz live con backoff"
+    suggested_spec: "tests/integration/quizzes-live-retry.spec.ts"
+    notes: >
+      Mock del endpoint que falla 2 veces y luego responde. Verificar 3 intentos
+      máximo con backoff 2s/4s/6s y que un cache hit no re-fetchea. Usar page.clock
+      o reloj falso para no esperar el backoff real.
+
+  - id: GAP-QUIZ-011
+    priority: SHOULD
+    ac_ref: QUIZ-AC-012
+    title: "Encolado FIFO de un segundo quiz mientras hay uno activo"
+    suggested_spec: "tests/integration/quizzes-queue.spec.ts"
+    notes: >
+      Activar quiz A, disparar quiz B (otro _id) y verificar que B no aparece hasta
+      completar/cerrar A. Verificar dedupe: re-disparar A mientras A activo no
+      duplica en cola.
+
+  - id: GAP-QUIZ-012
+    priority: SHOULD
+    ac_ref: QUIZ-AC-004
+    title: "Submit bloqueado sin selección y guard anti-doble-submit"
+    suggested_spec: "tests/integration/quizzes-submit-guards.spec.ts"
+    notes: >
+      Verificar botón disabled sin selección; y que dobles clics rápidos en Submit
+      no emiten quizAnswered más de una vez (isSubmittingRef + isSubmitting).
+
+  - id: GAP-QUIZ-013
+    priority: SHOULD
+    ac_ref: QUIZ-AC-014
+    title: "Localización del overlay en es/en/pt y bloqueo hasta ready"
+    suggested_spec: "tests/integration/quizzes-i18n.spec.ts"
+    notes: >
+      Cruzar las 3 locales y verificar textos correctos en título/botones/feedback.
+      Verificar que si i18n no está ready, el overlay no se monta. Complementa el
+      contract i18n-video-keys ya existente.
+
+  - id: GAP-QUIZ-014
+    priority: COULD
+    ac_ref: QUIZ-AC-015
+    title: "Accesibilidad ARIA del overlay (axe-core) + known a11y gaps"
+    suggested_spec: "tests/a11y/quizzes-a11y.spec.ts"
+    notes: >
+      axe-core sobre el overlay activo: verificar role=dialog, aria-modal,
+      progressbar coherente, status aria-live. Documentar como known gaps la
+      ausencia de focus trap, Escape y retorno de foco (QUIZ-DEF-002), no como fallo.
+
+  - id: GAP-QUIZ-015
+    priority: COULD
+    ac_ref: QUIZ-RISK-007
+    title: "Pregunta con campo 'question' (no 'text') muestra UI vacía"
+    suggested_spec: "tests/integration/quizzes-question-field-mismatch.spec.ts"
+    notes: >
+      Fixture con currentQuestion.question definido y text ausente. Verificar el
+      defecto QUIZ-DEF-001: header vacío en UI pero question_text presente en el
+      beacon. Oráculo de regresión si se unifica el campo.
+
+  - id: GAP-QUIZ-016
+    priority: COULD
+    ac_ref: QUIZ-AC-008
+    title: "Cierre manual (X) reanuda y procesa siguiente en cola"
+    suggested_spec: "tests/integration/quizzes-close-button.spec.ts"
+    notes: >
+      Click en Close: overlay desaparece, api.play() en VOD, y si hay quiz en cola
+      se procesa el siguiente. Verificar que el quiz cerrado se marca completado en VOD.

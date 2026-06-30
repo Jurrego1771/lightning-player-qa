@@ -1,0 +1,147 @@
+version: "1.0"
+module: reactions
+last_updated: "2026-06-10"
+
+existing_tests: []
+# No existen tests para reactions en el repo QA al 2026-06-10.
+# Grep de 'reaction' en tests/ no devolvió specs (solo coincidencias en fixtures de contenido).
+# La feature es nueva (PR #705 feature/i18nvide-only en el player repo).
+#
+# PRECONDICIÓN DESBLOQUEADA (2026-06-10):
+#   Live stream con reactions habilitado: 6a15a4e5a23b8b92586beb63
+#   Usar en tests como: { type: 'live', id: '6a15a4e5a23b8b92586beb63' }
+#   Las reactions son config del player — no hardcoded en el stream.
+
+coverage_gaps:
+  - id: GAP-REACT-001
+    priority: MUST
+    ac_ref: REACT-AC-001
+    title: "Visibilidad del FAB de reacciones: solo en live con config + playing, oculto en VOD"
+    suggested_spec: "tests/integration/reactions.spec.ts"
+    notes: >
+      Requiere una estación live CON reactions config (el fixture live.json tiene reactions: null —
+      ver REACT-DEF-005). Caso negativo en VOD/audio no requiere config. Verificar shouldShowReactions
+      por API pública/DOM del botón, no por clases internas.
+    industry_note: "n/a"
+
+  - id: GAP-REACT-002
+    priority: MUST
+    ac_ref: REACT-AC-002
+    title: "emitReaction válido: success + evento reactionEmitted + POST + eco optimista"
+    suggested_spec: "tests/integration/reactions.spec.ts"
+    notes: >
+      Llamar player.emitReaction('heart'); afirmar resolución { success: true }, captura del evento
+      público reactionEmitted con payload correcto, y POST a /api/live-stream/{playbackId}/reactions
+      (vía interceptor de red). No mockear el SDK firestore de forma que rompa el listener (ver
+      learning npaw_lma_no_mock — mismo subsistema firestore).
+    industry_note: "n/a"
+
+  - id: GAP-REACT-003
+    priority: MUST
+    ac_ref: REACT-AC-003
+    title: "Gating por ads: reactionsDisabled durante ad break, rehabilitado al terminar"
+    suggested_spec: "tests/integration/reactions-ads-gating.spec.ts"
+    notes: >
+      Disparar ad break (mock VAST) y verificar FAB oculto + selector cerrado; al terminar, FAB
+      reaparece si sigue playing. Validar también _buffering como segundo trigger de disabled.
+    industry_note: "n/a"
+
+  - id: GAP-REACT-004
+    priority: MUST
+    ac_ref: REACT-AC-004
+    title: "Rate limit cliente: 11ª reacción/min → RATE_LIMITED sin POST, sin abrir breaker"
+    suggested_spec: "tests/integration/reactions-ratelimit.spec.ts"
+    notes: >
+      Emitir 10 reacciones (respetando debounce 250ms entre ellas para que cuenten) y verificar que
+      la 11ª devuelve error RATE_LIMITED (user_error) y que NO incrementa el circuit breaker.
+    industry_note: "La industria recomienda debounce + cuota por minuto; ambos deben probarse por separado."
+
+  - id: GAP-REACT-005
+    priority: MUST
+    ac_ref: REACT-AC-005
+    title: "Validación/seguridad: códigos inválidos, >16 chars y patrones XSS rechazados"
+    suggested_spec: "tests/contract/reactions-validation.spec.ts"
+    notes: >
+      Casos: 'notareaction', 'a'.repeat(20), '<script', 'javascript:alert', 'heart ' con espacios.
+      Verificar VALIDATION_FAILED y ausencia de POST/evento. Probar intersección sistema↔live config.
+    industry_note: "Reacciones son user input no confiable → allowlist; cubrir como contract test."
+
+  - id: GAP-REACT-006
+    priority: MUST
+    ac_ref: REACT-AC-006
+    title: "Render de reacciones remotas deduplicadas, max 5 visibles, expiran a 3s"
+    suggested_spec: "tests/integration/reactions-viewer.spec.ts"
+    notes: >
+      Inyectar batch de reacciones remotas (vía firestore mock controlado o evento reactionsUpdate);
+      verificar dedup (no doble render), tope de 5 simultáneas, desaparición tras displayDuration.
+      Incluir caso de eco local→remoto que NO debe duplicar.
+    industry_note: "Optimistic UI + dedup: probar que el eco remoto reconcilia y no duplica."
+
+  - id: GAP-REACT-007
+    priority: MUST
+    ac_ref: REACT-AC-001
+    title: "Robustez ante reactionCode sin gif (null) — no crashear el overlay"
+    suggested_spec: "tests/integration/reactions-viewer.spec.ts"
+    notes: >
+      Reproducir REACT-RISK-001/REACT-DEF-001: reacción remota con código fuera del config. Hoy
+      probablemente lanza TypeError. Documentar como gap MUST; el test sirve de regresión cuando se
+      añada el null-guard.
+    industry_note: "n/a"
+
+  - id: GAP-REACT-008
+    priority: SHOULD
+    ac_ref: REACT-AC-007
+    title: "Estado 'connecting' del FAB con backoff y resolución al registrar el manager"
+    suggested_spec: "tests/integration/reactions.spec.ts"
+    notes: >
+      Verificar aria-label 'Connecting reactions...' + disabled mientras isConnecting; transición a
+      habilitado al registrarse el manager; desaparición tras agotar 12 intentos.
+    industry_note: "n/a"
+
+  - id: GAP-REACT-009
+    priority: SHOULD
+    ac_ref: REACT-AC-008
+    title: "Accesibilidad del selector: roles ARIA y navegación por teclado H/V + Escape"
+    suggested_spec: "tests/a11y/reactions-a11y.spec.ts"
+    notes: >
+      axe-core sobre el selector abierto (role=menu, menuitems con aria-label). Navegación con
+      Arrow/Tab/Enter/Escape para horizontal y vertical; foco circular; foco inicial en primer item.
+    industry_note: "Componentes interactivos sobre video deben ser operables por teclado (WCAG 2.1.1)."
+
+  - id: GAP-REACT-010
+    priority: SHOULD
+    ac_ref: REACT-AC-009
+    title: "Circuit breaker: 5 fallos de transporte abren breaker 30s, luego reset"
+    suggested_spec: "tests/integration/reactions-resilience.spec.ts"
+    notes: >
+      Forzar fallos de red en el POST (interceptor → 500) hasta abrir el breaker; verificar
+      CIRCUIT_BREAKER_OPEN en emisiones siguientes y reseteo tras 30s. El player no debe crashear.
+    industry_note: "Backoff exponencial + breaker ante 429/5xx es práctica recomendada (Firebase)."
+
+  - id: GAP-REACT-011
+    priority: SHOULD
+    ac_ref: REACT-AC-002
+    title: "prefers-reduced-motion: animación debe atenuarse (gap conocido, test de regresión)"
+    suggested_spec: "tests/a11y/reactions-reduced-motion.spec.ts"
+    notes: >
+      Emular emulateMedia({ reducedMotion: 'reduce' }) y verificar que la reacción no realiza el
+      movimiento flotante. HOY fallaría (REACT-DEF-002); dejar el test para guiar el fix.
+    industry_note: "WCAG 2.3.3 / MDN: animaciones JS-driven deben consultar matchMedia."
+
+  - id: GAP-REACT-012
+    priority: COULD
+    ac_ref: REACT-AC-010
+    title: "Preload de íconos animados una sola vez al abrir el selector"
+    suggested_spec: "tests/performance/reactions-preload.spec.ts"
+    notes: "Verificar que preloadAnimatedIcons se invoca una vez (animatedPreloadedRef) y cachea las URLs."
+    industry_note: "n/a"
+
+  - id: GAP-REACT-013
+    priority: COULD
+    ac_ref: REACT-AC-006
+    title: "Estrés: alto volumen de reacciones sin fuga de memoria ni caída de FPS en TV"
+    suggested_spec: "tests/performance/reactions-stress.spec.ts"
+    notes: >
+      Inyectar batches sostenidos; medir crecimiento de nodos DOM y heap (CDP), FPS objetivo 60.
+      Validar caps maxVisibleReactions/processedIds y limpieza por requestIdleCallback/fallback.
+    industry_note: "Animaciones bajo 60fps se sienten janky; listeners/timers deben limpiarse en unmount."

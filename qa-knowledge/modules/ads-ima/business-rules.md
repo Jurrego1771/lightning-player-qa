@@ -95,6 +95,65 @@ Las macros incluyen dimensiones del player, URL de la página, timestamp, y par�
 custom. Para dominios mdstrm.com, los macros forzados (page-url, player-width, etc.)
 se añaden como query params incluso si no estaban en la URL original.
 
+## Reglas de overlay ads (NonLinear IMA)
+
+**BR-IMA-OVL-001** — El overlay NUNCA pausa el video (regla definitoria del formato NonLinear)
+
+A diferencia de los ads lineales, el overlay se muestra concurrentemente con el contenido. No
+se llama `element.pause()` en `overlayAds.jsx`. IMA no recibe un proxy con control de pausa —
+solo un getter de `currentTime`. Si se observa que el video se pausa al aparecer un overlay,
+es un bug. Esta es la diferencia definitoria entre NonLinear (overlay) y Linear (pre/mid/post-roll)
+según la especificación IAB VAST 3.0/4.x.
+
+**BR-IMA-OVL-002** — El overlay VAST URL debe tener las macros resueltas antes de enviarse al ad server
+
+`OverlayAds` llama `resolveAdTagMacros(overlay, options)` antes de asignar `req.adTagUrl`.
+Si la URL llega al ad server con tokens `$...$` sin resolver, el ad server la rechaza con
+HTTP 400 (comportamiento observado con Google Ad Manager). Este fue el bug corregido en PR #725:
+`overlayAds.jsx` asignaba la URL cruda sin pasar por `resolveAdTagMacros`.
+
+**BR-IMA-OVL-003** — `OverlayAds` solo se monta si `ads.overlay` tiene valor y el player está listo
+
+Condición de montaje: `overlayUrl !== null` (la plataforma devuelve un URL válido, no la
+cadena `'null'`) AND `isPlayerReady === true`. Si falta cualquiera de las dos condiciones,
+el componente no se monta y no se hace ninguna request al ad server de overlay.
+
+**BR-IMA-OVL-004** — `overlayPosition` controla el tiempo de aparición en segundos
+
+El overlay escucha `timeupdate` del elemento de media y se activa cuando `currentTime >=
+overlayPosition`. Si `overlayPosition === 0`, el overlay se activa en el primer play
+(inmediatamente). La plataforma expone este campo como `ads.overlayPosition` en la config
+del content. Si el campo no está configurado, el default es `0`.
+
+**BR-IMA-OVL-005** — El close button del overlay lo gestiona IMA internamente
+
+`OverlayAds` usa `settings.uiElements = []` (igual que los ads lineales). El cierre del
+overlay queda a cargo del IMA SDK según las instrucciones del VAST (`minSuggestedDuration`).
+El player no implementa un botón de cierre propio para el overlay. Según IAB, el close
+button debe estar siempre visible o aparecer al cumplirse `minSuggestedDuration`.
+
+**BR-IMA-OVL-006** — El overlay no bloquea la interacción del usuario con el player
+
+`OverlayAds` inicia con `pointerEvents: 'none'` en el contenedor. Solo activa
+`pointerEvents: 'auto'` mientras el IMA SDK está reproduciendo el overlay (entre
+`adsManager.start()` y `ALL_ADS_COMPLETED` / `AD_ERROR`). Los controles del player
+permanecen accesibles durante el overlay.
+
+**BR-IMA-OVL-007** — La posición vertical del overlay es sobre la barra de controles
+
+El contenedor del overlay se posiciona a `bottom = controlHeight + 20px`. El contenido
+visual nunca oculta la barra de controles del player. La altura del overlay no debe
+superar el 20% de la altura total del player (lineamiento IAB Digital Video Ad Format
+Guidelines — altura máxima recomendada: 1/5 del player + 20px por sombras).
+
+**BR-IMA-OVL-008** — `$custom.X$` permite acceso directo a campos del objeto custom
+
+La macro `$custom.X$` usa lodash `get(custom, 'X')` para resolver campos arbitrarios
+del objeto `custom` (ej: `$custom.tag_custom$` → `custom.tag_custom`). Esto permite a
+la plataforma definir custom params específicos por plataforma (web/android/ios) que el
+player inyecta en la URL del overlay antes de la request. Es el mecanismo detrás de la
+configuración `schedule[overlay_custom_params][web][params][tag_custom]` en la plataforma.
+
 ## Reglas de la industria aplicables
 
 **BR-IMA-IND-001** — IMA SDK es Chromium-only en tests automatizados

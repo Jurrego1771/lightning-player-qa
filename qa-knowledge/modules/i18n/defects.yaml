@@ -1,0 +1,78 @@
+version: "1.0"
+module: i18n
+last_updated: "2026-06-09"
+
+defects:
+
+  - id: I18N-DEF-001
+    status: open
+    severity: medium
+    title: "namespace 'radio' en inglés tiene strings en español — sin traducción real"
+    description: >
+      src/view/i18n/en/radio.json y src/view/i18n/es/radio.json son idénticos.
+      Ambos contienen texto en español. Usuarios con language='en' en vista radio
+      ven strings como 'volver en vivo', 'al aire', 'reproducir' en lugar de sus
+      equivalentes en inglés.
+    affected_files:
+      - src/view/i18n/en/radio.json
+    trigger: "language='en' con view='radio'"
+    workaround: "Ninguno disponible. Usar language='es' para vista radio."
+    regression_risk: low
+    related_ac: I18N-AC-011
+
+  - id: I18N-DEF-002
+    status: open
+    severity: low
+    title: "Audio track fallback labels hardcodeados en inglés — no i18n"
+    description: >
+      audioTracksAccordionItem.jsx usa strings hardcodeados para los labels de tracks
+      sin pasar por el sistema i18n:
+        - 'Default' cuando no hay selectedTrack
+        - 'Track' cuando track no tiene label ni language
+        - 'Track ${index + 1}' cuando track no tiene id
+      Estos strings siempre aparecen en inglés independientemente del language configurado.
+    affected_files:
+      - src/view/video/components/controls/options/audioTracksAccordionItem.jsx
+    trigger: "language='es' o 'pt' con stream de múltiples audio tracks sin labels"
+    workaround: "Ninguno. Los strings son hardcodeados."
+    regression_risk: low
+    related_ac: I18N-AC-015
+
+  - id: I18N-DEF-003
+    status: known_limitation
+    severity: low
+    title: "missingKeyHandler comentado — api.federation.missingTranslation siempre vacío"
+    description: >
+      La configuración de i18next tiene el bloque missingKeyHandler comentado.
+      El objeto missingKeys se exporta pero nunca se popula en runtime.
+      api.federation.missingTranslation (que expone missingKeys) siempre es {}.
+      No hay forma de detectar programáticamente claves de traducción faltantes
+      en producción sin re-activar el handler.
+    affected_files:
+      - src/view/common/hook/useTranslation/index.js
+      - src/federation/index.js
+    trigger: "Namespace incompleto (clave existe en código pero no en JSON)"
+    workaround: >
+      Detectar claves faltantes en tiempo de build con herramientas estáticas.
+      En runtime, la clave se muestra como texto (missingKeyNoValueFallbackToKey).
+    regression_risk: low
+    related_ac: I18N-AC-016
+
+  - id: I18N-DEF-004
+    status: known_limitation
+    severity: medium
+    title: "No hay fallback automático a idioma base cuando language es desconocido"
+    description: >
+      Si se pasa un language code sin archivos JSON (ej: 'fr'), el dynamic import
+      falla, se loguea console.error, y retorna {}. i18next no tiene fallbackLng
+      configurado — no cae automáticamente a 'es' ni a 'en'. Todos los strings
+      muestran las claves crudas, produciendo una UI no usable.
+    affected_files:
+      - src/view/common/hook/useTranslation/settingsBackend.js
+      - src/view/common/hook/useTranslation/index.js
+    trigger: "options.language con código no soportado"
+    workaround: >
+      El integrador debe asegurarse de pasar solo 'es', 'en' o 'pt'.
+      No hay validación en el player que rechace otros valores.
+    regression_risk: low
+    related_ac: I18N-AC-007

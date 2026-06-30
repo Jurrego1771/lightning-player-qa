@@ -1,0 +1,24 @@
+{
+  "src": {
+    "hls": "http://localhost:9001/vod/master.m3u8",
+    "mp4": "http://localhost:9001/vod/master.m3u8"
+  },
+  "drm": null,
+  "poster": "",
+  "title": "QA Test VOD con adMarkers",
+  "description": "Test video con adMarkers estáticos para validar la macro $markers$",
+  "ads": {},
+  "account": "mock-account",
+  "dvr": null,
+  "subtitles": [],
+  "reactions": null,
+  "player": {
+    "type": "video"
+  },
+  "adMarkers": [
+    { "_id": "ad-marker-10", "position": 10 },
+    { "_id": "ad-marker-30", "position": 30 },
+    { "_id": "ad-marker-60", "position": 60 }
+  ],
+  "mediaId": "mock-vod-admarkers"
+}

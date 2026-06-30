@@ -34,6 +34,8 @@ function readFixture(relativePath: string): string {
 const FIXTURES = {
   content: {
     vod: readFixture('content/vod.json'),
+    vodWithAdMarkers: readFixture('content/vod-with-ad-markers.json'),
+    vodWithVttPreview: readFixture('content/vod-with-vtt-preview.json'),
     episode: readFixture('content/episode.json'),
     live: readFixture('content/live.json'),
     audio: readFixture('content/audio.json'),
@@ -111,6 +113,10 @@ export async function setupPlatformMocks(page: Page): Promise<void> {
         body = FIXTURES.content.dash
       } else if (parsedPath.includes('mock-episode')) {
         body = FIXTURES.content.episode
+      } else if (parsedPath.includes('mock-vod-admarkers')) {
+        body = FIXTURES.content.vodWithAdMarkers
+      } else if (parsedPath.includes('mock-vtt-preview')) {
+        body = FIXTURES.content.vodWithVttPreview
       } else {
         body = FIXTURES.content.vod
       }

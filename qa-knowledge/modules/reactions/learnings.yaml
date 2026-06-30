@@ -1,0 +1,122 @@
+version: "1.0"
+module: reactions
+last_updated: "2026-06-10"
+
+learnings:
+  - id: REACT-LEARN-001
+    title: "El feature está físicamente partido en dos árboles: view/ (UI) y analytics/ (manager)"
+    discovery: "código fuente: src/view/video/components/reactions/ y src/analytics/reactions/"
+    detail: >
+      La UI (botón, selector, viewer) vive bajo view/video; toda la lógica de emisión, validación,
+      rate-limit, circuit breaker y transporte vive bajo analytics/reactions (ReactionsManager). El
+      puente es el component registry: el plugin LiveReactions hace register('reactions', manager) y
+      la UI hace getComponent('reactions'). El módulo QA analytics-reactions cubre la capa analytics.
+    impact_on_tests: >
+      Un test E2E debe tener AMBAS capas activas. Mockear solo una deja la feature inerte. La API
+      pública testeable (emitReaction/getReactions) la expone el plugin analytics, no la UI.
+
+  - id: REACT-LEARN-002
+    title: "Solo aplica a live, y solo si plataforma envía flag + config"
+    discovery: "código fuente: plugins/index.js (liveReactions && isLive), loadConfig.js (reactions), utils.shouldShowReactions"
+    detail: >
+      Tres condiciones AND para que algo aparezca: type==='live', options.liveReactions truthy
+      (1|'1'|true|'true'), y context.reactions con al menos un reactionCode. El fixture live.json
+      del repo QA tiene reactions: null → con ese fixture la feature NUNCA se monta.
+      DESBLOQUEADO: estación live 6a15a4e5a23b8b92586beb63 tiene reactions habilitado.
+      Las reactions son configuración del player (no hardcoded en el stream).
+    impact_on_tests: >
+      Usar ContentId '6a15a4e5a23b8b92586beb63' (type: 'live') para todos los tests funcionales
+      de reactions. El fixture live.json genérico sigue teniendo reactions: null — usar este ID
+      directamente en los tests, no el fixture genérico.
+
+  - id: REACT-LEARN-003
+    title: "Eco optimista local + reconciliación con remoto en ventana de 5s"
+    discovery: "código fuente: ReactionsViewer.handleLocalReaction / handleReactionsUpdate / isDuplicateReaction"
+    detail: >
+      Al emitir, el manager dispara 'localReaction' y la UI pinta la reacción inmediatamente
+      (source='local') antes de confirmar el servidor (optimistic UI). Cuando el mismo evento vuelve
+      desde Firestore, el dedup lo reconcilia: borra el local y muestra el remoto si coinciden
+      playerId+reactionCode dentro de 5000ms.
+    impact_on_tests: >
+      Tests no deben asumir que cada emisión = exactamente una animación persistente; hay una fase
+      local efímera. Validar que NO hay doble render del mismo evento (local+remoto duplicado).
+
+  - id: REACT-LEARN-004
+    title: "Doble lista de validación: sistema (cerrada) + live (configurable)"
+    discovery: "código fuente: ReactionValidator.isValid + ReactionsConfig.validation.supportedReactions"
+    detail: >
+      Un reactionCode debe estar en validSystemReactions (heart/smile/surprised/confetti/claps,
+      hardcodeado) Y, si el live configuró una lista propia (supportedReactions del config), también
+      en esa. Un código que el live habilitó pero no está en la lista del sistema se rechaza.
+    impact_on_tests: >
+      Probar la intersección: código en config del live pero no en sistema → rechazado; código del
+      sistema pero no en la lista del live → rechazado.
+
+  - id: REACT-LEARN-005
+    title: "Circuit breaker + categorización de errores en emitReaction"
+    discovery: "código fuente: ReactionsManager._handleEmissionError / _trackFailure / _categorizeTransportError"
+    detail: >
+      Errores se clasifican en user_error / network_error / temporary_error / auth_error /
+      system_error. Solo los NO user_error incrementan consecutiveFailures; a los 5 se abre el
+      circuit breaker por 30s. Los network/temporary se reintentan con backoff (2^n * 1000ms, hasta
+      3 intentos). emitReaction NUNCA lanza al caller: devuelve { success: false, error } y el plugin
+      lo envuelve además.
+    impact_on_tests: >
+      Para abrir el breaker en test hay que provocar 5 fallos de transporte (no de validación).
+      Validar que un VALIDATION_FAILED o RATE_LIMITED no abre el breaker.
+
+  - id: REACT-LEARN-006
+    title: "Gating de visibilidad reacciona en vivo a ads y buffering vía manager"
+    discovery: "código fuente: ReactionsManager._onAdsStarted/_onBuffering/_onPlaying + useReactionsPermission"
+    detail: >
+      El manager escucha _adsStarted/_adsAllAdsCompleted/_buffering/_playing y emite
+      reactionsEnabled/reactionsDisabled. useReactionsPermission sincroniza canShowReactions y cierra
+      el selector si se deshabilita. shouldShowReactions añade !isAdsPlaying && !isBuffering &&
+      isPlaying. Es decir: doble gate (estado del manager + estado de la UI).
+    impact_on_tests: >
+      Tests de ad/buffering deben verificar tanto el evento (reactionsDisabled) como el efecto UI
+      (FAB oculto, selector cerrado).
+
+  - id: REACT-LEARN-007
+    title: "Patrón de la industria adoptado: timed reactions estilo YouTube Live / Emote Wall Twitch"
+    discovery: "investigación web: socialmediatoday (YouTube timed reactions), getstream.io, Twitch reactions"
+    detail: >
+      Lightning sigue el patrón moderno: reacciones efímeras que flotan sobre el video (no en el chat),
+      evitando saturar la interfaz principal — exactamente lo que Twitch hace al sacar GIFs fuera del
+      chat. La paleta de 5 emojis (happy/sad/surprised + claps + heart) cubre el set 'no negociable'
+      que la industria recomienda para 2025.
+    impact_on_tests: >
+      Las expectativas de UX (efímero, fuera del chat, set reducido) son correctas según industria;
+      no testear contra patrones de chat persistente.
+
+  - id: REACT-LEARN-008
+    title: "Rate limiting client-side combina debounce (250ms) + cuota por minuto (10) — alineado a industria"
+    discovery: "investigación web: Medium/CSS-Tricks debounce vs throttle, Firebase FCM throttling/quotas; código: ReactionScheduler"
+    detail: >
+      ReactionScheduler hace debounce de 250ms (coalesce de spam rápido) Y mantiene una ventana
+      deslizante de 60s con tope de 10. La industria recomienda exactamente esta combinación
+      (debounce para ráfagas + cuota para sostenido) y backoff exponencial ante 429/fallos, que el
+      manager también implementa.
+    impact_on_tests: >
+      Validar las DOS barreras por separado: ráfaga rápida (debounce coalesce a una) y volumen
+      sostenido (>10/min → RATE_LIMITED).
+
+  - id: REACT-LEARN-009
+    title: "Animación JS-driven sin guarda de prefers-reduced-motion (gap de accesibilidad moderno)"
+    discovery: "investigación web: MDN prefers-reduced-motion, Josh Comeau React reduced motion; código: ReactionsViewer (no matchMedia)"
+    detail: >
+      El estándar moderno (WCAG 2.3.3, MDN) exige que animaciones no esenciales consulten
+      prefers-reduced-motion. La animación flotante usa element.animate sin esta guarda. Es un patrón
+      que la industria considera incompleto en 2025.
+    impact_on_tests: >
+      Añadir un test a11y que emule prefers-reduced-motion: reduce y verifique que el movimiento se
+      atenúa/desactiva (actualmente fallaría → documentar como gap).
+
+  - id: REACT-LEARN-010
+    title: "navigator.vibrate como feedback háptico: progressive enhancement, no soportado iOS/desktop"
+    discovery: "código fuente: ReactionsFloatingButton/ReactionsSelector (navigator.vibrate guard)"
+    detail: >
+      Se usa Vibration API con guard (if navigator.vibrate). iOS Safari y desktop no la soportan;
+      es enhancement, no requisito. Patrón correcto (no rompe sin soporte).
+    impact_on_tests: >
+      No assertir vibración en navegadores sin soporte; verificar que la interacción funciona igual.
