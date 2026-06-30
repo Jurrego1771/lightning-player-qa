@@ -58,7 +58,7 @@ lightning-player-qa/
 │   ├── a11y/               ← axe-core WCAG 2.1 AA
 │   └── performance/        ← QoE metrics con CDP
 ├── skills/                 ← scripts TypeScript ejecutables (funciones sin LLM)
-│   ├── get_pr_diff.ts · load_risk_map.ts · search_tests.ts · run_playwright.ts
+│   ├── get_pr_diff.ts · load_risk_map.ts · search_tests.ts
 │   ├── write_test_file.ts · visual_diff.ts · capture_state.ts · get_flaky_history.ts
 │   ├── retry_test.ts · get_commit_frequency.ts · get_issue_history.ts · get_module_size.ts
 │   ├── update_risk_map.ts · create_gh_issue.ts · comment_pr.ts · notify_slack.ts

@@ -295,14 +295,13 @@ Complementa `tests/performance/qoe-metrics.spec.ts` existente con métricas de c
 
 ### 3.7 Coverage Tracking Over Time ✅ 2026-06-06
 
-Actualmente `test_coverage_ratio` en `risk_map.yaml` es estático.  
-Automatizar: después de cada CI run, calcular ratio real desde `covered_by[]` en behavior.json y actualizar risk_map.yaml via A11.
+Actualmente `test_coverage_ratio` en `risk_map.yaml` es estático.
+Automatizar: después de cada CI run, recalcular el ratio y actualizar risk_map.yaml via A11.
 
-```typescript
-// skills/update_coverage_ratio.ts — nuevo skill
-// Para cada módulo: ratio = ACs con covered_by.length > 0 / total ACs
-// Llamar desde A11 (risk-calibrator) después de cada merge a main
-```
+**Decisión (2026-06):** se adoptó la métrica **por archivos** que A11 ya implementa
+(`archivos_con_≥1_test / total_key_files`). La variante por-ACs (`covered_by[] / total ACs`,
+antes `skills/update_coverage_ratio.ts`) quedó descartada y la skill fue eliminada para no
+mantener dos definiciones de coverage en competencia.
 
 ### Criterio de completitud Fase 3
 - CI completa en < 10 min con 4 shards

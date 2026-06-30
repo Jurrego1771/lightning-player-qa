@@ -49,6 +49,10 @@ tmp_b64.json
 # Screenshots de debug en raíz
 [0-9][0-9]-*.png
 
+# Artefactos locales de QA (evidencias, screenshots, payloads sueltos) — fuera de la raíz
+.artifacts/
+scratchpad/
+
 # Reportes generados
 qa-report*.html
 playwright-report-tv/

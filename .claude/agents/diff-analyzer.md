@@ -1,6 +1,6 @@
 ---
 name: diff-analyzer
-description: "Recibe una rama, PR o commit, obtiene el diff y clasifica cada archivo modificado en su módulo del player. Produce state/session_state.json con el diff clasificado. Es el primer agente del pipeline (A1) — delegar cuando el usuario quiere iniciar un análisis de impacto antes de correr tests.\n\n<example>\nContext: El usuario quiere saber qué módulos del player afecta un PR antes de correr tests.\nuser: \"Analiza el PR #87 del player.\"\nassistant: \"Usaré diff-analyzer para obtener el diff del PR y clasificar cada archivo en su módulo del player.\"\n<commentary>\nDelegar a diff-analyzer como primer paso del pipeline QA. El agente obtiene el diff y escribe state/session_state.json con el campo diff clasificado, listo para que risk-mapper (A2) lo procese.\n</commentary>\n</example>\n\n<example>\nContext: CI falló en una rama y se quiere entender el alcance antes de investigar.\nuser: \"¿Qué archivos cambiaron en feature/ads-dai-sync y a qué módulos pertenecen?\"\nassistant: \"Lanzo diff-analyzer con la rama feature/ads-dai-sync para clasificar los cambios.\"\n<commentary>\nUsar diff-analyzer con nombre de rama cuando aún no hay PR. El agente usa gh CLI para obtener el diff del repositorio remoto.\n</commentary>\n</example>"
+description: "Recibe una rama, PR o commit, obtiene el diff y clasifica cada archivo modificado en su módulo del player. Produce state/session_state.json con el diff clasificado. Es el primer agente del pipeline (A1) — delegar cuando el usuario quiere iniciar un análisis de impacto antes de correr tests.\n\n<example>\nContext: El usuario quiere saber qué módulos del player afecta un PR antes de correr tests.\nuser: \"Analiza el PR #87 del player.\"\nassistant: \"Usaré diff-analyzer para obtener el diff del PR y clasificar cada archivo en su módulo del player.\"\n<commentary>\nDelegar a diff-analyzer como primer paso del pipeline QA. El agente obtiene el diff y escribe state/session_state.json con el campo diff clasificado, listo para que risk-mapper (A2) lo procese.\n</commentary>\n</example>\n\n<example>\nContext: CI falló en una rama y se quiere entender el alcance antes de investigar.\nuser: \"¿Qué archivos cambiaron en feature/ads-dai-sync y a qué módulos pertenecen?\"\nassistant: \"Lanzo diff-analyzer con la rama feature/ads-dai-sync para clasificar los cambios.\"\n<commentary>\nUsar diff-analyzer con nombre de rama cuando aún no hay PR. El agente obtiene el diff vía la skill skills/get_pr_diff.ts.\n</commentary>\n</example>"
 tools: Bash Read Glob Grep
 model: claude-sonnet-4-6
 color: purple
@@ -29,7 +29,7 @@ Construye en tu cabeza el **mapa de clasificación**: `prefix → {module, risk_
 
 ---
 
-## TOOL CALL 2 — Detectar tipo de ref y obtener metadatos del PR
+## TOOL CALL 2 — Metadatos del PR (solo si `type=pr`)
 
 Primero, identifica el tipo de ref a partir del input del usuario:
 - Número puro (`719`) → `type=pr`
@@ -37,53 +37,45 @@ Primero, identifica el tipo de ref a partir del input del usuario:
 - `HEAD` → `type=head`
 - Otro → `type=branch`
 
-**Si `type=pr`:**
+**Solo si `type=pr`** — obtener los metadatos que el diff por sí solo no aporta:
 
 ```bash
 REPO="<PLAYER_GITHUB_REPO del paso anterior>"
 PR="<número de PR>"
 gh pr view "$PR" --repo "$REPO" \
-  --json title,body,headRefName,baseRefName,labels,author,files,comments,isDraft
+  --json title,body,headRefName,baseRefName,labels,author,comments,isDraft
 ```
 
 Extraer y guardar en memoria:
 - `title`, `body` (primeros 500 chars), `headRefName`, `baseRefName`, `labels[].name`, `author.login`, `isDraft`
-- `files[]`: lista de `{path, additions, deletions, status}` — solo para saber qué archivos cambiaron
 - `comments[]`: últimos 10 `body` de comentarios — para extraer reviewer_signals
 
-**Si `type=branch`:**
-
-```bash
-REPO="<PLAYER_GITHUB_REPO>"
-BASE=$(gh api "repos/$REPO" --jq '.default_branch' 2>/dev/null)
-gh api "repos/$REPO/compare/$BASE...<branch>" --jq '.files[] | {path: .filename, additions, deletions, status, patch}'
-```
-
-**Si `type=commit`:**
-
-```bash
-gh api "repos/<REPO>/commits/<hash>" --jq '.files[] | {path: .filename, additions, deletions, status, patch}'
-```
-
-**Si `type=head`:**
-
-```bash
-BASE=$(gh api "repos/<REPO>" --jq '.default_branch')
-SHA=$(gh api "repos/<REPO>/git/ref/heads/$BASE" --jq '.object.sha')
-gh api "repos/<REPO>/commits/$SHA" --jq '.files[] | {path: .filename, additions, deletions, status, patch}'
-```
+Para `branch`/`commit`/`head` no hay metadatos de PR → omitir esta llamada (los campos `pr_metadata` quedan en `null`).
 
 ---
 
-## TOOL CALL 3 — Obtener el diff completo (solo para PR)
+## TOOL CALL 3 — Obtener el diff vía skill (todos los tipos de ref)
 
-Solo si `type=pr`:
+El diff (archivos + patches) lo resuelve **siempre** la skill canónica `skills/get_pr_diff.ts`. No reimplementar `gh pr diff` / `gh api compare` a mano — la skill ya parsea el unified diff, cuenta `+/-` por archivo y devuelve el patch completo de cada bloque.
 
 ```bash
-gh pr diff "$PR" --repo "$REPO"
+# PR:     npx ts-node skills/get_pr_diff.ts "$PR"
+# branch: npx ts-node skills/get_pr_diff.ts "<branch>"
+# commit: npx ts-node skills/get_pr_diff.ts "<hash>"
+# head:   npx ts-node skills/get_pr_diff.ts          (sin argumento → último commit del default branch)
+npx ts-node skills/get_pr_diff.ts "<ref o vacío para head>"
 ```
 
-Para branch/commit/head: el patch ya vino en TOOL CALL 2.
+La skill emite JSON en stdout:
+
+```json
+{ "ref": "<resuelto>", "type": "pr|branch|commit", "files": [ { "path": "...", "additions": 0, "deletions": 0, "patch": "<bloque diff completo>" } ] }
+```
+
+Usar `files[]` como la **fuente autoritativa** de archivos cambiados y sus patches. Notas:
+- La skill ya filtra a archivos de código (`.js/.jsx/.ts/.cjs`) en branch/commit local; aun así aplica el filtro de ruido de la sección A por si entran otros paths.
+- El campo `status` (`added`/`deleted`/`modified`) **no** viene en el JSON → inferirlo del header del patch: `new file mode` → `added`, `deleted file mode` → `deleted`, en otro caso → `modified`.
+- Si la skill termina con error (`ERROR:` en stderr, exit≠0) → **DETENER** y reportar el mensaje al usuario. Causas típicas: `PLAYER_GITHUB_REPO`/`PLAYER_LOCAL_REPO` sin configurar, o ref inexistente.
 
 ---
 
@@ -110,11 +102,12 @@ Para cada archivo que pase el filtro:
 
 ### C. Extraer del patch por archivo
 
-Para cada archivo con patch disponible, leer líneas `+` (no `+++`) y extraer:
+Para cada archivo del `files[]` que devolvió la skill, leer líneas `+` (no `+++`) y extraer:
 - `symbols_changed`: nombres de `function`, `const`, `class`, `export default` — solo top-level, sin getters/setters triviales
 - `events_touched`: cualquier `Events.XXX`, `emit('XXX')`, `dispatchEvent('XXX')`
+- `status`: inferido del header del patch — `new file mode` → `added`, `deleted file mode` → `deleted`, en otro caso → `modified`
 
-Si el patch no está disponible (branch/commit API truncó) → arrays vacíos, no llamar tool extra.
+Si el patch está vacío → arrays vacíos y `status: "modified"`, no llamar tool extra.
 
 ### D. Detectar cross_cutting_risk
 
