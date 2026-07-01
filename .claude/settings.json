@@ -32,7 +32,18 @@
       "Bash(ls *)",
       "Bash(mkdir *)",
       "Bash(echo *)",
-      "Bash(node -e *)"
+      "Bash(node -e *)",
+      "Bash(cat *)",
+      "Bash(find *)",
+      "Bash(grep *)",
+      "Bash(jq *)",
+      "Bash(cp *)",
+      "Bash(mv *)",
+      "Bash(python3 *)",
+      "Bash(gh api *)",
+      "Bash(gh pr *)",
+      "Bash(gh issue *)",
+      "Bash(curl *)"
     ]
   }
 }
