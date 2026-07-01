@@ -308,4 +308,6 @@ Y reportar "Pipeline terminado en A1 (docs-only)." sin continuar a A2.
 5. **behavior_status: una sola llamada batch.** No un loop de llamadas separadas.
 6. **modules_affected solo contiene módulos de risk_map.yaml.** Nunca path fragments ni `unknown`.
 7. **change_type=docs → pipeline termina en A1.** No invocar A2.
-8. **MERGE si el archivo ya existe con risk_assessment/test_plan no-null.** Preservar esos campos. En la práctica A1 siempre corre primero, así que sobreescribir es seguro — pero si `risk_assessment != null` en el JSON existente, preguntar al usuario antes de sobreescribir.
+8. **MERGE si el archivo ya existe con risk_assessment/test_plan no-null.** Preservar esos campos. En la práctica A1 siempre corre primero, así que sobreescribir es seguro. Si `risk_assessment != null` en el JSON existente:
+   - **Modo autónomo/headless** (`CI=true` o sesión no interactiva): **sobreescribir sin preguntar** — un run headless inicia estado limpio, y A1 es el punto de entrada del pipeline. NUNCA bloquear esperando input; en CI no hay usuario que responda.
+   - **Modo interactivo** (`CI=false`): preguntar al usuario antes de sobreescribir.

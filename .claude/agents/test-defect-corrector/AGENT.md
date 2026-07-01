@@ -84,9 +84,9 @@ page.locator('[aria-label="Play"]')
 import { test, expect } from '../../fixtures'
 ```
 
-### Step 3b: Checkpoint de aprobación — OBLIGATORIO antes de escribir código
+### Step 3b: Checkpoint de aprobación — condicional al modo
 
-**No implementes el fix sin confirmación del usuario.** Presenta:
+Presenta **siempre** el plan (a la salida en headless, o al usuario en interactivo):
 
 1. **Archivos que se modificarán** — lista exacta con paths
 2. **Cambio propuesto** — descripción del diff en lenguaje natural (no código aún)
@@ -104,7 +104,11 @@ Formato de presentación:
    ¿Procedemos?
 ```
 
-Esperar respuesta afirmativa antes de continuar.
+**Modo interactivo** (`CI=false`): esperar respuesta afirmativa antes de continuar.
+
+**Modo autónomo/headless** (`CI=true` o sesión no interactiva): **no bloquear esperando input.**
+- Emitir el plan al log y proceder al Step 4. La red de seguridad es el **Step 5 (validación con browser real)**: ningún fix se da por bueno ni se elimina el triage file sin pasar la validación.
+- **Carve-out de seguridad:** si el cambio toca `fixtures/` o `helpers/` compartidos (riesgo de regresión medio/alto), **NO auto-aplicar** — dejar el triage file intacto y reportar que requiere revisión humana. En headless solo se auto-corrigen defectos de bajo riesgo, contenidos al propio spec.
 
 ### Step 4: Implement the Fix
 
